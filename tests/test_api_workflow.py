@@ -82,6 +82,11 @@ def test_complete_mock_research_workflow(client: TestClient) -> None:
         result = client.post(f"/api/experiments/{experiment.json()['id']}:run")
         assert result.status_code == 200
         assert result.json()["metrics"]["worst_site_dice"] > 0
+        if strategy == "local":
+            brief = client.post(f"/api/studies/{study_id}/evidence-brief:generate")
+            assert brief.status_code == 200
+            assert brief.json()["artifact_type"] == "evidence_brief"
+            assert brief.json()["content"]["leading_strategy"] == "local"
 
     after_training = client.get(f"/api/studies/{study_id}").json()
     assert after_training["status"] == "RESULTS_REVIEW"
@@ -122,6 +127,7 @@ def test_complete_mock_research_workflow(client: TestClient) -> None:
     assert {item["artifact_type"] for item in artifacts} == {
         "research_protocol",
         "experiment_proposal",
+        "evidence_brief",
         "evidence_review",
         "privacy_assessment",
         "research_narrative",

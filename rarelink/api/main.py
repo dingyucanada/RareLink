@@ -690,6 +690,77 @@ def generate_review(
     return study_view(study)
 
 
+@app.post("/api/studies/{study_id}/evidence-brief:generate")
+def generate_evidence_brief(
+    study_id: str,
+    session: SessionDep,
+    config: SettingsDep,
+) -> dict[str, Any]:
+    """Generate a judge-facing explanation from aggregate evidence only.
+
+    Unlike the final review, this is available as soon as one locked experiment
+    has completed. It never changes study state and is intentionally separate
+    from the human-approved research report.
+    """
+    study = require_study(session, study_id)
+    existing = session.exec(
+        select(AgentArtifact)
+        .where(
+            AgentArtifact.study_id == study.id,
+            AgentArtifact.artifact_type == "evidence_brief",
+        )
+        .order_by(AgentArtifact.created_at.desc())
+    ).first()
+    if existing:
+        return artifact_view(existing)
+    experiments = session.exec(
+        select(Experiment)
+        .where(
+            Experiment.study_id == study.id,
+            Experiment.status == ExperimentStatus.COMPLETED,
+        )
+        .order_by(Experiment.created_at)
+    ).all()
+    if not experiments:
+        raise HTTPException(status_code=409, detail="Complete at least one experiment first")
+    evidence = [
+        {
+            "experiment_id": item.id,
+            "strategy": item.strategy,
+            "parameters": as_json(item.parameters_json, {}),
+            "metrics": as_json(item.metrics_json, {}),
+        }
+        for item in experiments
+    ]
+    review = build_research_agent(config).review_evidence(
+        as_json(study.contract_json, {}), evidence
+    )
+    artifact = store_agent_artifact(
+        session,
+        study.id,
+        "evidence-narrator-agent",
+        "evidence_brief",
+        review.model_dump(),
+        review.source,
+    )
+    session.flush()
+    append_event(
+        session,
+        study.id,
+        "agent.evidence-brief.created",
+        "evidence-narrator-agent",
+        {
+            "artifact_id": artifact.id,
+            "source": review.source,
+            "completed_experiment_ids": [item.id for item in experiments],
+            "input_boundary": "aggregate_metrics_only",
+        },
+    )
+    session.commit()
+    session.refresh(artifact)
+    return artifact_view(artifact)
+
+
 @app.post("/api/studies/{study_id}/report:generate")
 def generate_report(
     study_id: str,

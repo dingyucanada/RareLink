@@ -7,19 +7,22 @@ import {
   Check,
   CircleAlert,
   Database,
+  Eye,
   FileCheck2,
+  FileSearch,
   FlaskConical,
   Gauge,
   LockKeyhole,
   Network,
   Play,
+  RefreshCcw,
   Server,
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api";
-import type { AgentArtifact, Experiment, Study, StudyStatus, TrainingJob } from "./types";
+import type { AgentArtifact, EvidenceBrief, Experiment, Study, StudyStatus, TrainingJob } from "./types";
 import { stages, statusIndex } from "./workflow";
 
 const MetricChart = lazy(() => import("./components/MetricChart"));
@@ -80,6 +83,74 @@ function SiteCards({ study }: { study: Study }) {
         </article>
       ))}
     </div>
+  );
+}
+
+function JudgeJourney({ study, experiments }: { study: Study; experiments: Experiment[] }) {
+  const completed = experiments.filter((item) => item.status === "COMPLETED").length;
+  return (
+    <section className="judge-journey">
+      <div className="journey-intro">
+        <span><Eye size={17} /> JUDGE PATH · 90 SECONDS</span>
+        <strong>不是“训练一个模型”，而是让多中心科研形成可审计证据。</strong>
+      </div>
+      <div className="journey-steps">
+        <div><span>01</span><strong>数据留在科室</strong><small>原始 MRI 与标签不离站</small></div>
+        <div><span>02</span><strong>DGX Spark 本地训练</strong><small>统一内存保护串行真实任务</small></div>
+        <div><span>03</span><strong>FLARE 聚合更新</strong><small>Local / FedAvg / FedProx 对照</small></div>
+        <div><span>04</span><strong>Agent 解释证据</strong><small>{completed ? `${completed} 项完成实验 · 仅聚合指标` : "等待首项实验完成"}</small></div>
+      </div>
+    </section>
+  );
+}
+
+function EvidenceBriefPanel({
+  study,
+  experiments,
+  artifacts,
+}: {
+  study: Study;
+  experiments: Experiment[];
+  artifacts: AgentArtifact[];
+}) {
+  const client = useQueryClient();
+  const completed = experiments.filter((item) => item.status === "COMPLETED");
+  const brief = artifacts.find((item) => item.artifact_type === "evidence_brief")?.content as
+    | EvidenceBrief
+    | undefined;
+  const mutation = useMutation({
+    mutationFn: () => api.generateEvidenceBrief(study.id),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["agent-artifacts", study.id] });
+      void client.invalidateQueries({ queryKey: ["events", study.id] });
+    },
+  });
+  return (
+    <section className="panel evidence-brief-panel">
+      <div className="panel-title">
+        <div><BrainCircuit size={18} /><span><strong>Agent 证据解读</strong><small>只接收锁定合同与聚合指标，不接触影像、标签或患者字段</small></span></div>
+        {brief && <span className="agent-source">{brief.source}</span>}
+      </div>
+      {!completed.length ? (
+        <div className="placeholder">先完成一项实验；随后 Agent 将解释平均表现、最弱站点与公平性风险。</div>
+      ) : brief ? (
+        <div className="evidence-brief">
+          <div className="evidence-lead"><span>当前工程候选</span><strong>{brief.leading_strategy.toUpperCase()}</strong><p>{brief.recommendation}</p></div>
+          <div><small>AGGREGATE EVIDENCE</small><ul>{brief.evidence.map((item) => <li key={item}>{item}</li>)}</ul></div>
+          <div><small>FAIRNESS CHECK</small><ul>{brief.fairness_findings.map((item) => <li key={item}>{item}</li>)}</ul></div>
+          <div className="limitations"><small>BOUNDARY</small><ul>{brief.limitations.map((item) => <li key={item}>{item}</li>)}</ul></div>
+        </div>
+      ) : (
+        <div className="evidence-empty">
+          <div><FileSearch size={22} /><span><strong>把指标变成可解释研究结论</strong><small>输入：{completed.length} 项完成实验的聚合 Dice、HD95、最弱站点与站点差异。</small></span></div>
+          <button className="secondary-button" onClick={() => mutation.mutate()} disabled={mutation.isPending}>
+            {mutation.isPending ? <RefreshCcw className="spin" size={15} /> : <BrainCircuit size={15} />}
+            {mutation.isPending ? "正在生成…" : "生成证据解读"}
+          </button>
+          {mutation.error && <p className="inline-error">{mutation.error instanceof Error ? mutation.error.message : "生成失败"}</p>}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -249,6 +320,7 @@ function App() {
         </section>
 
         <StatusRail study={study} />
+        <JudgeJourney study={study} experiments={experiments.data ?? []} />
         <ActionPanel study={study} experiments={experiments.data ?? []} artifacts={artifacts.data ?? []} />
 
         <section className="metrics-strip">
@@ -263,6 +335,8 @@ function App() {
             <div className="panel-title"><div><Network size={18} /><span><strong>站点可行性</strong><small>原始数据不离开逻辑站点</small></span></div>{study.feasibility && <em>{study.feasibility.finding}</em>}</div>
             <SiteCards study={study} />
           </section>
+
+          <EvidenceBriefPanel study={study} experiments={experiments.data ?? []} artifacts={artifacts.data ?? []} />
 
           {(trainingJobs.data?.length ?? 0) > 0 && (
             <section className="panel wide">

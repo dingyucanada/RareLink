@@ -99,6 +99,15 @@ export interface AgentArtifact {
   created_at: string;
 }
 
+export interface EvidenceBrief {
+  leading_strategy: string;
+  recommendation: string;
+  evidence: string[];
+  fairness_findings: string[];
+  limitations: string[];
+  source: string;
+}
+
 export interface TrainingJob {
   id: string;
   experiment_id: string;

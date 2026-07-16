@@ -69,6 +69,8 @@ export const api = {
     request<Experiment[]>(`/api/studies/${studyId}/experiments`),
   generateReview: (studyId: string) =>
     request<Study>(`/api/studies/${studyId}/review:generate`, { method: "POST" }),
+  generateEvidenceBrief: (studyId: string) =>
+    request<AgentArtifact>(`/api/studies/${studyId}/evidence-brief:generate`, { method: "POST" }),
   generateReport: (studyId: string) =>
     request<Study>(`/api/studies/${studyId}/report:generate`, { method: "POST" }),
   events: (studyId: string) => request<AuditEvent[]>(`/api/studies/${studyId}/events`),
