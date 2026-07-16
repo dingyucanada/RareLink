@@ -1,13 +1,15 @@
 # Development progress
 
-## DGX Spark hardware milestone (2026-07-16)
+## DGX Spark hardware milestone (2026-07-16 to 2026-07-17)
 
 - [x] Deployed on a real NVIDIA DGX Spark GB10 with ARM64 and CUDA 13.0
 - [x] Ran MONAI 3D SegResNet on CUDA and persisted a model checkpoint
 - [x] Completed three-logical-site NVIDIA FLARE 2.7.2 FedAvg and FedProx aggregation
 - [x] Completed the API training-job path from queue to global-model evidence
 - [x] Published the React and FastAPI services through the allocated 8888/9000 mappings
-- [x] Recorded evidence and limitations in `outputs/DGX-Spark-实机验证报告.md`
+- [x] Recorded initial node evidence in `outputs/DGX-Spark-实机验证报告.md`
+- [x] Published the formal migration, experiment, reasoning, and limitation record in
+  `outputs/RareLink-2026-07-17-DGX-Spark系统移植与实机实验正式报告.md`
 
 ## Completed vertical slice
 
