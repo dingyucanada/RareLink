@@ -1,7 +1,7 @@
 import pytest
 
 from rarelink.privacy import DPSGDConfig, summarize_site_privacy
-from scripts.nvflare_monai_client import train_round
+from scripts.nvflare_monai_client import _prime_empty_batch_collator, train_round
 from scripts.run_repeated_benchmark import _summarize_privacy_comparison
 
 
@@ -91,3 +91,22 @@ def test_training_skips_empty_poisson_draw_but_counts_scheduled_step() -> None:
     assert loss > 0
     assert scheduled == 2
     assert nonempty == 1
+
+
+def test_opacus_collator_is_primed_for_first_empty_dict_draw() -> None:
+    torch = pytest.importorskip("torch")
+    from opacus.data_loader import DPDataLoader
+    from torch.utils.data import DataLoader
+
+    dataset = [
+        {
+            "image": torch.randn(4, 4, 4, 4),
+            "label": torch.zeros(1, 4, 4, 4, dtype=torch.long),
+        }
+    ]
+    private_loader = DPDataLoader.from_data_loader(DataLoader(dataset, batch_size=1))
+
+    assert _prime_empty_batch_collator(private_loader) is True
+    empty = private_loader.collate_fn([])
+    assert set(empty) == {"image", "label"}
+    assert empty["image"].shape[0] == 0

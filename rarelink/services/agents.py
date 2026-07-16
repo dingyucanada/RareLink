@@ -103,6 +103,17 @@ class TemplateResearchAgentTeam:
             mean_metric = strategy["metrics"]["mean_dice"]
             worst_metric = strategy["metrics"]["worst_site_dice"]
             improvement = repeated.get("worst_site_improvement_vs_local", {}).get(best_strategy)
+            seed_count = len(repeated.get("seeds", []))
+            privacy = repeated.get("privacy_comparison") or {}
+            privacy_limitation = (
+                f"DP-SGD reports cumulative local-training epsilon={privacy['epsilon']:.4f} "
+                f"at delta={privacy['delta']}; it is not an end-to-end system guarantee."
+                if privacy.get("mechanism") == "opacus_sample_level_dp_sgd"
+                else (
+                    "SVT results report filter configuration parameters, not end-to-end "
+                    "sample-level DP."
+                )
+            )
             return EvidenceReview(
                 leading_strategy=best_strategy,
                 recommendation=(
@@ -128,13 +139,10 @@ class TemplateResearchAgentTeam:
                 limitations=[
                     repeated["interpretation_boundary"],
                     (
-                        "Student-t intervals from three seeds are wide and descriptive, "
-                        "not clinical inference."
+                        f"Student-t intervals from {seed_count} seeds are descriptive engineering "
+                        "evidence, not clinical inference."
                     ),
-                    (
-                        "SVT results report filter configuration parameters, not end-to-end "
-                        "sample-level DP."
-                    ),
+                    privacy_limitation,
                 ],
                 source="template",
             )

@@ -67,6 +67,25 @@ def _plain_tensor(value):  # type: ignore[no-untyped-def]
     return value.as_tensor() if hasattr(value, "as_tensor") else value
 
 
+def _prime_empty_batch_collator(data_loader) -> bool:  # type: ignore[no-untyped-def]
+    """Teach Opacus the MONAI dict structure before a possible first empty draw.
+
+    Opacus 1.6 derives first-empty fallback dtypes by iterating ``dataset[0]``.
+    For a dict sample that yields string keys and therefore ``dtype=type``. A
+    real non-empty collated sample avoids that upstream edge case while retaining
+    the exact Poisson sampler and empty-batch semantics.
+    """
+    collator = getattr(data_loader, "collate_fn", None)
+    if collator is None or not hasattr(collator, "first_batch"):
+        return False
+    if collator.first_batch is not None:
+        return True
+    original = getattr(collator, "wrapped_collator_fn", None)
+    sample = data_loader.dataset[0]
+    collator.first_batch = copy.deepcopy(original([sample]) if original else [sample])
+    return True
+
+
 def train_round(  # type: ignore[no-untyped-def]
     model,
     train_loader,
@@ -206,6 +225,8 @@ def main() -> None:
             poisson_sampling=privacy_config.poisson_sampling,
             grad_sample_mode=privacy_config.grad_sample_mode,
         )
+        if not _prime_empty_batch_collator(train_loader):
+            raise RuntimeError("Unable to initialize Opacus empty-batch collator")
 
     round_index = 0
     optimizer_steps = 0
