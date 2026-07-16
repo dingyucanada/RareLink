@@ -42,6 +42,11 @@
 - [x] MONAI Dice and official HD95 metric integration through SciPy
 - [x] Public MSD Task01 direct-download script, archive/file hashes and deterministic non-IID split
 - [x] Optional public-demo access gate and injected pre-training failure/retry demo
+- [x] Three-seed, four-strategy repeated benchmark with Student-t intervals and win rates
+- [x] FLARE mTLS startup-kit provisioning and three-client secure registration on Spark
+- [x] SVTPrivacy model-update filter and privacy-utility comparison with claim boundaries
+- [x] Four-modal synthetic MRI Canvas preview with local segmentation overlays
+- [x] Evidence cockpit cards for robustness, mTLS runtime and privacy configuration
 
 ## Next Spark milestone
 
