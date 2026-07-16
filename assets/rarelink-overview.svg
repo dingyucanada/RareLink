@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="760" viewBox="0 0 1400 760" role="img" aria-labelledby="title desc">
+  <title id="title">RareLink evidence-traceable federated research architecture</title>
+  <desc id="desc">A visual overview showing hospital sites with local MRI data, DGX Spark and NVIDIA FLARE, a Step 3.7 agent team receiving only controlled aggregates, and an evidence cockpit.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#071426"/><stop offset="1" stop-color="#101d38"/>
+    </linearGradient>
+    <linearGradient id="cyan" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#54d6ff"/><stop offset="1" stop-color="#3b82f6"/></linearGradient>
+    <linearGradient id="violet" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#a78bfa"/><stop offset="1" stop-color="#ec4899"/></linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="12" stdDeviation="14" flood-color="#000" flood-opacity=".28"/></filter>
+    <marker id="arrowCyan" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#54d6ff"/></marker>
+    <marker id="arrowViolet" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#c4b5fd"/></marker>
+    <style>
+      .h{font:700 30px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#f8fafc}.sub{font:500 16px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#9fb2ca}.label{font:700 18px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#f8fafc}.body{font:500 15px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#b8c8dc}.tiny{font:600 13px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#8da5c2}.metric{font:800 32px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#fff}.metricLabel{font:600 14px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#a8bdd6}
+    </style>
+  </defs>
+  <rect width="1400" height="760" rx="28" fill="url(#bg)"/>
+  <circle cx="1250" cy="80" r="180" fill="#2563eb" opacity=".10"/><circle cx="120" cy="690" r="210" fill="#a855f7" opacity=".08"/>
+  <text x="70" y="74" class="h">RareLink 稀联</text>
+  <text x="70" y="108" class="sub">Data-local · Evidence-traceable · Agent-assisted federated research</text>
+  <rect x="70" y="140" width="1260" height="92" rx="18" fill="#0b1d35" stroke="#1d3858"/>
+  <text x="100" y="178" class="label">核心承诺</text>
+  <text x="100" y="207" class="body">原始 MRI 留在科室，Spark 在本地训练，FLARE 协作聚合，Step 3.7 只读取受控文本，最终输出可回溯证据。</text>
+
+  <!-- local sites -->
+  <rect x="70" y="280" width="280" height="270" rx="20" fill="#0d243d" stroke="#245274" filter="url(#shadow)"/>
+  <text x="98" y="320" class="label">医院 / 科室站点</text>
+  <text x="98" y="348" class="tiny">DATA STAYS LOCAL</text>
+  <g transform="translate(102 375)"><path d="M0 28L72 0l72 28v100H0z" fill="#123555" stroke="#54d6ff" stroke-width="3"/><path d="M26 128V70h92v58M58 70V38h28v32" fill="none" stroke="#8de5ff" stroke-width="4"/><circle cx="45" cy="93" r="5" fill="#54d6ff"/><circle cx="99" cy="93" r="5" fill="#54d6ff"/></g>
+  <text x="98" y="526" class="body">MRI / 标签 / 站点字段</text>
+  <text x="98" y="550" class="tiny">患者级数据不出院</text>
+  <path d="M350 415 C400 415 410 415 455 415" fill="none" stroke="#54d6ff" stroke-width="4" marker-end="url(#arrowCyan)"/>
+  <text x="365" y="395" class="tiny">受控模型更新</text>
+
+  <!-- spark -->
+  <rect x="455" y="280" width="390" height="270" rx="20" fill="#102943" stroke="#3b82f6" stroke-width="2" filter="url(#shadow)"/>
+  <text x="485" y="320" class="label">NVIDIA DGX Spark</text>
+  <text x="485" y="348" class="tiny">LOCAL COMPUTE + FEDERATED ORCHESTRATION</text>
+  <rect x="485" y="375" width="330" height="53" rx="12" fill="#142f4d"/><text x="507" y="408" class="body">MONAI · PyTorch · CUDA 13</text>
+  <rect x="485" y="440" width="330" height="53" rx="12" fill="#142f4d"/><text x="507" y="473" class="body">NVIDIA FLARE · FedAvg / FedProx</text>
+  <text x="485" y="530" class="tiny">3 logical sites · serialized memory-safe training</text>
+  <path d="M845 415 C895 415 905 415 950 415" fill="none" stroke="#c4b5fd" stroke-width="4" marker-end="url(#arrowViolet)"/>
+  <text x="863" y="395" class="tiny">仅聚合指标 / 协议</text>
+
+  <!-- agent -->
+  <rect x="950" y="280" width="380" height="270" rx="20" fill="#231d40" stroke="#a78bfa" stroke-width="2" filter="url(#shadow)"/>
+  <text x="980" y="320" class="label">Step 3.7 Agent Team</text>
+  <text x="980" y="348" class="tiny">CONTROLLED TEXT ONLY</text>
+  <g transform="translate(980 378)"><rect width="153" height="38" rx="10" fill="#3a2c63"/><text x="14" y="25" class="body">研究主任</text><rect x="169" width="153" height="38" rx="10" fill="#3a2c63"/><text x="183" y="25" class="body">实验设计</text><rect y="51" width="153" height="38" rx="10" fill="#3a2c63"/><text x="14" y="76" class="body">隐私评审</text><rect x="169" y="51" width="153" height="38" rx="10" fill="#3a2c63"/><text x="183" y="76" class="body">证据叙事</text></g>
+  <text x="980" y="515" class="tiny">输入脱敏 · 输出门控 · 人工审批</text>
+
+  <!-- bottom metrics -->
+  <rect x="70" y="610" width="1260" height="96" rx="18" fill="#0b1d35" stroke="#1d3858"/>
+  <g transform="translate(105 632)"><text class="metric">25/25</text><text y="43" class="metricLabel">重复实验组合</text></g>
+  <g transform="translate(350 632)"><text class="metric">26/26</text><text y="43" class="metricLabel">Agent 红队通过</text></g>
+  <g transform="translate(595 632)"><text class="metric">mTLS</text><text y="43" class="metricLabel">注册 / 重连 / 拒绝</text></g>
+  <g transform="translate(865 632)"><text class="metric">ε 6.076881</text><text y="43" class="metricLabel">sample-level DP-SGD</text></g>
+  <g transform="translate(1165 632)"><text class="metric">NIfTI</text><text y="43" class="metricLabel">公开 MRI I/O</text></g>
+  <text x="70" y="738" class="tiny">Engineering prototype · synthetic / aggregate evidence · not clinical validation</text>
+</svg>
