@@ -1,8 +1,13 @@
 import argparse
 import json
+import sys
 from pathlib import Path
 
-from rarelink.imaging.public_benchmark import MSD_TASK01_URL, prepare_msd_task01
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from rarelink.imaging.public_benchmark import MSD_TASK01_URL, prepare_msd_task01  # noqa: E402
 
 parser = argparse.ArgumentParser(
     description="Directly download and create a three-site MSD Task01 benchmark on this node"

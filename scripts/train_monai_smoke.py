@@ -1,8 +1,13 @@
 import argparse
 import json
+import sys
 from pathlib import Path
 
-from rarelink.imaging.monai_runner import run_monai_smoke
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from rarelink.imaging.monai_runner import run_monai_smoke  # noqa: E402
 
 parser = argparse.ArgumentParser(description="Run a single-site MONAI smoke training job")
 parser.add_argument("--manifest", type=Path, required=True)

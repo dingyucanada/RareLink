@@ -2,10 +2,15 @@ import argparse
 import copy
 import json
 import math
+import sys
 import time
 from pathlib import Path
 
-from rarelink.imaging.monai_runner import _remap_brats_label, _resolve_image
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from rarelink.imaging.monai_runner import _remap_brats_label, _resolve_image  # noqa: E402
 
 
 def build_site_loaders(manifest_path: Path, site_id: str):  # type: ignore[no-untyped-def]
