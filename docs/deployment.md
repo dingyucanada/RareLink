@@ -281,6 +281,30 @@ RARELINK_DEMO_ACCESS_TOKEN=replace-with-a-random-demo-code
 RARELINK_SIMULATE_TRAINING_FAILURE=true
 ```
 
+### 8.2 样本级 DP-SGD 与断点续跑
+
+Spark 镜像固定安装 Opacus 1.6.0。三轮 DP-SGD 工程验证：
+
+```bash
+sudo docker exec -it rarelink-api python3 scripts/run_nvflare_simulation.py \
+  --manifest data/runtime/synthetic-demo-v1/manifest.json \
+  --strategy fedavg_dpsgd --rounds 3 --local-epochs 1 \
+  --dp-noise-multiplier 1.2 --dp-max-grad-norm 1.0 --dp-delta 0.00001 \
+  --workspace artifacts/nvflare-dpsgd
+```
+
+正式矩阵意外中断后，使用同一参数和 `--resume`。脚本只复用已经写入
+`trial-records.json` 的完整种子—策略组合；没有记录的失败项会重跑：
+
+```bash
+sudo docker exec -it rarelink-api python3 scripts/run_repeated_benchmark.py \
+  --manifest data/runtime/synthetic-demo-v1/manifest.json \
+  --seeds 2026 2027 2028 2029 2030 \
+  --strategies local fedavg fedprox fedavg_svt fedavg_dpsgd \
+  --rounds 3 --local-epochs 1 --resume \
+  --workspace artifacts/repeated-benchmark
+```
+
 ## 9. 演示证据
 
 录屏时应同时展示：

@@ -211,6 +211,11 @@ def main() -> None:
     parser.add_argument("--dp-max-grad-norm", type=float, default=1.0)
     parser.add_argument("--dp-delta", type=float, default=1e-5)
     parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Reuse completed seed/strategy records from the same workspace",
+    )
+    parser.add_argument(
         "--workspace", type=Path, default=Path("artifacts/repeated-benchmark")
     )
     args = parser.parse_args()
@@ -223,10 +228,19 @@ def main() -> None:
     if len(set(args.seeds)) != len(args.seeds):
         raise ValueError("Seeds must be unique")
 
-    records: list[dict[str, Any]] = []
     args.workspace.mkdir(parents=True, exist_ok=True)
+    records_path = args.workspace / "trial-records.json"
+    records: list[dict[str, Any]] = (
+        json.loads(records_path.read_text(encoding="utf-8"))
+        if args.resume and records_path.exists()
+        else []
+    )
+    completed_pairs = {(int(item["seed"]), str(item["strategy"])) for item in records}
     for seed in args.seeds:
         for strategy in args.strategies:
+            if (seed, strategy) in completed_pairs:
+                print(f"reusing seed={seed} strategy={strategy}", flush=True)
+                continue
             trial_workspace = args.workspace / f"seed-{seed}" / strategy
             print(f"running seed={seed} strategy={strategy}", flush=True)
             if strategy == "local":
@@ -250,7 +264,7 @@ def main() -> None:
                     trial_workspace,
                 )
             records.append(record)
-            (args.workspace / "trial-records.json").write_text(
+            records_path.write_text(
                 json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8"
             )
 

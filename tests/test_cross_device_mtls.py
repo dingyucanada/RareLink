@@ -41,3 +41,17 @@ def test_cross_device_evidence_rejects_same_runtime() -> None:
             "site-c",
             1,
         )
+
+
+def test_cross_device_evidence_classifies_startup_signature_rejection() -> None:
+    report = build_cross_device_mtls_evidence(
+        runtime("federation-server", "spark"),
+        runtime("federation-client", "mac"),
+        "Successfully registered client:site-c",
+        "Successfully registered client:site-c",
+        "Signature verification failed for client.crt",
+        "site-c",
+        1,
+    )
+
+    assert report["negative_control"]["reason_category"] == "startup_signature_rejection"

@@ -87,11 +87,20 @@ def train_round(  # type: ignore[no-untyped-def]
     loss_function = DiceCELoss(to_onehot_y=True, softmax=True)
     proximal_loss = PTFedProxLoss(mu=fedprox_mu)
     running_loss = 0.0
+    scheduled_steps = 0
+    nonempty_steps = 0
     model.train()
     for _epoch in range(epochs):
         for batch in train_loader:
+            scheduled_steps += 1
             images = _plain_tensor(batch["image"]).to(device)
             labels = _plain_tensor(batch["label"]).to(device)
+            # Poisson sampling can legitimately draw an empty batch. Expanded-
+            # weights Conv3d rejects batch size zero, so an empty draw performs
+            # no optimizer update while the server accountant conservatively
+            # counts the scheduled mechanism invocation.
+            if images.shape[0] == 0:
+                continue
             optimizer.zero_grad(set_to_none=True)
             with torch.autocast(device_type=device.type, enabled=scaler.is_enabled()):
                 predictions = model(images)
@@ -102,8 +111,12 @@ def train_round(  # type: ignore[no-untyped-def]
             scaler.step(optimizer)
             scaler.update()
             running_loss += float(loss.detach().cpu())
-    steps = epochs * len(train_loader)
-    return running_loss / steps, steps
+            nonempty_steps += 1
+    return (
+        running_loss / nonempty_steps if nonempty_steps else 0.0,
+        scheduled_steps,
+        nonempty_steps,
+    )
 
 
 def evaluate(model, validation_loader, device):  # type: ignore[no-untyped-def]
@@ -205,7 +218,7 @@ def main() -> None:
         if device.type == "cuda":
             torch.cuda.reset_peak_memory_stats(device)
         started = time.perf_counter()
-        loss, steps = train_round(
+        loss, steps, nonempty_steps = train_round(
             model,
             train_loader,
             device,
@@ -233,6 +246,7 @@ def main() -> None:
                 "sample_count": sample_count,
                 "sample_rate": sample_rate,
                 "optimizer_steps": optimizer_steps,
+                "nonempty_optimizer_steps": nonempty_steps,
                 "poisson_sampling": True,
                 "grad_sample_mode": "ew",
                 "secure_rng": False,
@@ -249,6 +263,7 @@ def main() -> None:
                         "hd95": hd95,
                         "train_loss": loss,
                         "steps": steps,
+                        "nonempty_steps": nonempty_steps,
                         "elapsed_seconds": round(time.perf_counter() - started, 4),
                         "peak_gpu_memory_mb": (
                             round(torch.cuda.max_memory_allocated(device) / (1024 * 1024), 3)

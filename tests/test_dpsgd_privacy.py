@@ -1,6 +1,7 @@
 import pytest
 
 from rarelink.privacy import DPSGDConfig, summarize_site_privacy
+from scripts.nvflare_monai_client import train_round
 from scripts.run_repeated_benchmark import _summarize_privacy_comparison
 
 
@@ -65,3 +66,28 @@ def test_repeated_privacy_comparison_uses_accounted_dpsgd_budget() -> None:
     assert summary is not None
     assert summary["repeated_trial_count"] == 3
     assert summary["epsilon_across_trials"] == {"min": 4.1, "max": 4.3}
+
+
+def test_training_skips_empty_poisson_draw_but_counts_scheduled_step() -> None:
+    torch = pytest.importorskip("torch")
+    model = torch.nn.Conv3d(4, 3, kernel_size=1)
+    loader = [
+        {
+            "image": torch.empty(0, 4, 4, 4, 4),
+            "label": torch.empty(0, 1, 4, 4, 4, dtype=torch.long),
+        },
+        {
+            "image": torch.randn(1, 4, 4, 4, 4),
+            "label": torch.randint(0, 3, (1, 1, 4, 4, 4)),
+        },
+    ]
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
+    scaler = torch.amp.GradScaler("cuda", enabled=False)
+
+    loss, scheduled, nonempty = train_round(
+        model, loader, torch.device("cpu"), 1, 0.0, optimizer, scaler
+    )
+
+    assert loss > 0
+    assert scheduled == 2
+    assert nonempty == 1

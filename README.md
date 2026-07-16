@@ -23,10 +23,14 @@ RareLink 是面向罕见病多中心科研的智能体联邦学习终端。每�
 - real MONAI 3D SegResNet single-site training;
 - real NVIDIA FLARE 2.7.2 three-site FedAvg and FedProx simulation.
 - persisted real training jobs with live progress, logs, Dice/HD95, and global-model evidence.
-- aligned three-seed Local/FedAvg/FedProx/SVT experiment matrices with t-intervals and worst-site
-  win rates;
+- resumable aligned Local/FedAvg/FedProx/SVT/DP-SGD experiment matrices with Student-t intervals
+  and worst-site win rates;
 - NVIDIA FLARE mTLS provisioning plus token-free three-client registration evidence;
 - a real NVIDIA FLARE `SVTPrivacy` update-filter comparison with explicit accounting limits;
+- Opacus sample-level DP-SGD with per-sample clipping, Poisson sampling, RDP composition across
+  FLARE rounds, and explicit `(epsilon, delta)` claim boundaries;
+- a deterministic 26-case Agent red team enforced before and after Step 3.7;
+- two-device mTLS evidence tooling for registration, dropout/reconnect, and wrong-identity rejection;
 - local-only four-modal synthetic MRI and segmentation overlays that reject patient-data manifests.
 
 真实训练链路已在本地 CPU 完成工程冒烟验证：三逻辑院区均参与聚合并生成全局模型。控制台
@@ -92,7 +96,40 @@ npm run build
 .venv/bin/python scripts/train_monai_smoke.py --manifest data/runtime/synthetic-demo-v1/manifest.json --site site-a --epochs 1
 .venv/bin/python scripts/run_nvflare_simulation.py --manifest data/runtime/synthetic-demo-v1/manifest.json --strategy fedavg --rounds 1 --local-epochs 1 --workspace artifacts/nvflare-fedavg
 .venv/bin/python scripts/run_nvflare_simulation.py --manifest data/runtime/synthetic-demo-v1/manifest.json --strategy fedprox --rounds 1 --local-epochs 1 --workspace artifacts/nvflare-fedprox
+.venv/bin/python scripts/run_nvflare_simulation.py --manifest data/runtime/synthetic-demo-v1/manifest.json --strategy fedavg_dpsgd --rounds 3 --local-epochs 1 --dp-noise-multiplier 1.2 --dp-max-grad-norm 1.0 --dp-delta 0.00001 --workspace artifacts/nvflare-dpsgd
 ```
+
+`fedavg_dpsgd` uses Opacus expanded-weights gradients because MONAI SegResNet contains residual
+operations that are incompatible with hook-mode per-sample gradients. Empty Poisson draws perform no
+optimizer update but are conservatively counted in server-side RDP composition. The resulting budget
+covers sample-level local training only; it is not a user-level, institution-level, transport, or
+clinical privacy guarantee.
+
+Run the formal aligned matrix with interruption-safe resume:
+
+```bash
+python3 scripts/run_repeated_benchmark.py \
+  --manifest data/runtime/synthetic-demo-v1/manifest.json \
+  --seeds 2026 2027 2028 2029 2030 \
+  --strategies local fedavg fedprox fedavg_svt fedavg_dpsgd \
+  --rounds 3 --local-epochs 1 \
+  --dp-noise-multiplier 1.2 --dp-max-grad-norm 1.0 --dp-delta 0.00001 \
+  --resume --workspace artifacts/repeated-benchmark
+```
+
+## Agent safety evidence
+
+The deterministic gateway redacts patient identifiers, raw-image fields, DICOM UIDs, medical file
+paths, contact data, credentials, and small groups before Step 3.7. Structured output is blocked if it
+contains diagnosis/treatment directives, requests patient data, makes clinical-validation claims, or
+tries to escalate the locked data-egress contract.
+
+```bash
+python3 scripts/run_agent_redteam.py
+```
+
+The checked-in suite contains 26 attack and safe-control cases. Its result is a bounded engineering
+evaluation, not a complete penetration test or medical-safety certification.
 
 ## Public benchmark evidence
 
