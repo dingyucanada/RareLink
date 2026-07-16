@@ -49,8 +49,9 @@ def download_archive(url: str, destination: Path, expected_md5: str | None = Non
         return destination
     temporary.unlink(missing_ok=True)
     downloaded = 0
-    with urllib.request.urlopen(url) as response, temporary.open("wb") as output:
-        while chunk := response.read(8 * 1024 * 1024):
+    request = urllib.request.Request(url, headers={"User-Agent": "RareLink/0.1 benchmark-preparer"})
+    with urllib.request.urlopen(request, timeout=30) as response, temporary.open("wb") as output:
+        while chunk := response.read(1024 * 1024):
             output.write(chunk)
             downloaded += len(chunk)
             if downloaded % (256 * 1024 * 1024) < len(chunk):
