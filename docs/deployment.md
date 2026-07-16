@@ -259,6 +259,28 @@ RARELINK_API_PROXY=http://localhost:9000 \
 如果前端运行在独立容器内，可使用 host network，或将 `RARELINK_API_PROXY` 指向容器可访问
 的后端地址。代理目标只用于 Vite 开发服务器，不会写入浏览器端 JavaScript。
 
+### 8.1 演示访问门与失败恢复
+
+公网端口用于比赛演示时，建议配置一次性演示访问码，避免陌生访问者直接调用研究 API。它是
+轻量访问门，不是生产级身份认证；真实医院应接入院内 SSO、VPN、审计和最小权限控制。
+
+```bash
+# 仅放入节点 .env，不提交仓库，不使用 Step API Key 作为访问码
+RARELINK_DEMO_ACCESS_TOKEN=replace-with-a-random-demo-code
+```
+
+前端启动时以同一个临时值设置 `VITE_RARELINK_DEMO_TOKEN`。该值会随比赛前端构建被使用，因此
+只应作为演示防护，不得视为高强度密钥；演示结束后立即撤销。`/api/health`、`/docs` 和
+`/openapi.json` 保持可访问，其他 API 需要请求头 `X-RareLink-Demo-Token`。
+
+故障演示时，可临时设置下列开关并重启 API。系统会在**模型和数据处理之前**写入一个安全的
+模拟失败、将研究置为 `FAILED_RETRYABLE`，并保留任务、错误和审计事件。控制台的“重试失败的
+真实训练任务”会创建一个新的可追溯任务；演示完成后必须删除该开关再重试。
+
+```bash
+RARELINK_SIMULATE_TRAINING_FAILURE=true
+```
+
 ## 9. 演示证据
 
 录屏时应同时展示：

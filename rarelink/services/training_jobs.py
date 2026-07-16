@@ -95,6 +95,11 @@ def execute_training_job(job_id: str) -> None:
             strategy = job.strategy
 
         try:
+            if settings.rarelink_simulate_training_failure:
+                update_job_progress(job_id, 12, "Injected demo failure before model execution")
+                raise RuntimeError(
+                    "DEMO_FAILURE_INJECTED: no data or model was processed; retry is safe."
+                )
             runner = MonaiNvflareRunner(
                 settings,
                 job_id,

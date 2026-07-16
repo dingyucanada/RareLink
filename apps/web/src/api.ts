@@ -1,9 +1,12 @@
 import type { AgentArtifact, AuditEvent, Capabilities, Experiment, Study, TrainingJob } from "./types";
 
+const DEMO_TOKEN = import.meta.env.VITE_RARELINK_DEMO_TOKEN as string | undefined;
 const JSON_HEADERS = { "Content-Type": "application/json" };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, init);
+  const headers = new Headers(init?.headers);
+  if (DEMO_TOKEN) headers.set("X-RareLink-Demo-Token", DEMO_TOKEN);
+  const response = await fetch(path, { ...init, headers });
   if (!response.ok) {
     const payload = await response.json().catch(() => ({ detail: response.statusText }));
     throw new Error(payload.detail ?? "RareLink request failed");
@@ -73,5 +76,8 @@ export const api = {
     request<AgentArtifact[]>(`/api/studies/${studyId}/agent-artifacts`),
   trainingJobs: (studyId: string) =>
     request<TrainingJob[]>(`/api/studies/${studyId}/training-jobs`),
-  exportUrl: (studyId: string) => `/api/studies/${studyId}/export`,
+  exportUrl: (studyId: string) => {
+    const query = DEMO_TOKEN ? `?access_token=${encodeURIComponent(DEMO_TOKEN)}` : "";
+    return `/api/studies/${studyId}/export${query}`;
+  },
 };

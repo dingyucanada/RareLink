@@ -4,6 +4,21 @@ import zipfile
 
 from fastapi.testclient import TestClient
 
+from rarelink.api import main as api_main
+from rarelink.config import Settings
+
+
+def test_optional_demo_access_gate(client: TestClient, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(
+        api_main,
+        "settings",
+        Settings(_env_file=None, rarelink_demo_access_token="competition-demo-code"),
+    )
+    assert client.get("/api/studies").status_code == 401
+    assert client.get(
+        "/api/studies", headers={"X-RareLink-Demo-Token": "competition-demo-code"}
+    ).status_code == 200
+
 
 def test_complete_mock_research_workflow(client: TestClient) -> None:
     created = client.post(

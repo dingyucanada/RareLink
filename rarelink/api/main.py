@@ -1,6 +1,7 @@
 import importlib.util
 import io
 import json
+import secrets
 import zipfile
 from contextlib import asynccontextmanager
 from typing import Annotated, Any
@@ -8,7 +9,7 @@ from typing import Annotated, Any
 import yaml
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 from sqlmodel import Session, select
 
 from rarelink import __version__
@@ -55,6 +56,25 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def demo_access_gate(request, call_next):  # type: ignore[no-untyped-def]
+    """Optional lightweight gate for a public competition demo.
+
+    This is deliberately not presented as production identity management. A
+    deployment sets the token in the server environment; the Vite demo client
+    can send it as a header while evaluators use the same access code.
+    """
+    expected = settings.rarelink_demo_access_token
+    if not expected or request.url.path in {"/api/health", "/docs", "/openapi.json"}:
+        return await call_next(request)
+    provided = request.headers.get("X-RareLink-Demo-Token") or request.query_params.get(
+        "access_token", ""
+    )
+    if not secrets.compare_digest(provided, expected):
+        return JSONResponse(status_code=401, content={"detail": "Demo access token required"})
+    return await call_next(request)
 
 SessionDep = Annotated[Session, Depends(get_session)]
 SettingsDep = Annotated[Settings, Depends(get_settings)]

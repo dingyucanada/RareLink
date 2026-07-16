@@ -40,6 +40,8 @@
 - [x] Real three-site NVFLARE FedAvg metrics and global model persisted through the API job path
 - [x] React live job cards for queue, progress, errors, logs, and global-model evidence
 - [x] MONAI Dice and official HD95 metric integration through SciPy
+- [x] Public MSD Task01 direct-download script, archive/file hashes and deterministic non-IID split
+- [x] Optional public-demo access gate and injected pre-training failure/retry demo
 
 ## Next Spark milestone
 
@@ -62,3 +64,6 @@
   throughput or speedup claim is made.
 - NVFLARE `SimEnv` can emit a harmless Python multiprocessing semaphore warning during interpreter
   shutdown; success is determined by the persisted global-model postcondition, not process text alone.
+- The allocated node's direct connection to the official MSD archive was measured at roughly 20–30 KiB/s
+  on 2026-07-16. The public benchmark tooling is complete, but a full 7.1 GiB download should be resumed
+  only when the competition network window permits it; no data are transferred through SSH.

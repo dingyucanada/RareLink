@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     rarelink_allow_llm: bool = True
     rarelink_demo_cache: bool = False
     rarelink_fl_mode: str = "mock"
+    rarelink_demo_access_token: str = ""
+    rarelink_simulate_training_failure: bool = False
     cors_origins: str = "http://localhost:5173"
 
     @property
