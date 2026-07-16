@@ -185,8 +185,14 @@ export interface SystemEvidence {
   } | null;
   privacy_comparison: {
     mechanism: string;
-    epsilon_parameter_per_call: number;
-    fraction_shared: number;
+    epsilon?: number;
+    delta?: number;
+    epsilon_parameter_per_call?: number;
+    fraction_shared?: number;
+    noise_multiplier?: number;
+    max_grad_norm?: number;
+    rounds_accounted?: number;
+    sample_level_dp_accounted?: boolean;
     accounting_scope: string;
     end_to_end_sample_dp_claimed: boolean;
   } | null;

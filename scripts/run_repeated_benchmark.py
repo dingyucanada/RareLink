@@ -75,6 +75,9 @@ def _run_federated(
     dp_epsilon: float,
     dp_fraction: float,
     dp_noise_var: float,
+    dp_noise_multiplier: float,
+    dp_max_grad_norm: float,
+    dp_delta: float,
     workspace: Path,
 ) -> dict[str, Any]:
     script = Path(__file__).with_name("run_nvflare_simulation.py")
@@ -111,6 +114,17 @@ def _run_federated(
                 str(dp_noise_var),
             ]
         )
+    if strategy == "fedavg_dpsgd":
+        command.extend(
+            [
+                "--dp-noise-multiplier",
+                str(dp_noise_multiplier),
+                "--dp-max-grad-norm",
+                str(dp_max_grad_norm),
+                "--dp-delta",
+                str(dp_delta),
+            ]
+        )
     started = time.perf_counter()
     with log_path.open("w", encoding="utf-8") as log_stream:
         completed = subprocess.run(
@@ -139,6 +153,42 @@ def _run_federated(
     }
 
 
+def _summarize_privacy_comparison(
+    records: list[dict[str, Any]],
+    dp_epsilon: float,
+    dp_fraction: float,
+    dp_noise_var: float,
+) -> dict[str, Any] | None:
+    dpsgd = [
+        item["privacy"]
+        for item in records
+        if item["strategy"] == "fedavg_dpsgd" and item.get("privacy")
+    ]
+    if dpsgd:
+        epsilon_values = [float(item["epsilon"]) for item in dpsgd]
+        result = dict(dpsgd[-1])
+        result.update(
+            {
+                "repeated_trial_count": len(dpsgd),
+                "epsilon_across_trials": {
+                    "min": round(min(epsilon_values), 6),
+                    "max": round(max(epsilon_values), 6),
+                },
+            }
+        )
+        return result
+    if any(item["strategy"] == "fedavg_svt" for item in records):
+        return {
+            "mechanism": "nvflare_svt_model_update_filter",
+            "epsilon_parameter_per_call": dp_epsilon,
+            "fraction_shared": dp_fraction,
+            "noise_var_parameter": dp_noise_var,
+            "accounting_scope": "filter_configuration_only",
+            "end_to_end_sample_dp_claimed": False,
+        }
+    return None
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Run an aligned multi-seed Local/FedAvg/FedProx evidence matrix"
@@ -148,7 +198,7 @@ def main() -> None:
     parser.add_argument(
         "--strategies",
         nargs="+",
-        choices=["local", "fedavg", "fedprox", "fedavg_svt"],
+        choices=["local", "fedavg", "fedprox", "fedavg_svt", "fedavg_dpsgd"],
         default=["local", "fedavg", "fedprox"],
     )
     parser.add_argument("--rounds", type=int, default=1)
@@ -157,6 +207,9 @@ def main() -> None:
     parser.add_argument("--dp-epsilon", type=float, default=0.1)
     parser.add_argument("--dp-fraction", type=float, default=0.01)
     parser.add_argument("--dp-noise-var", type=float, default=0.1)
+    parser.add_argument("--dp-noise-multiplier", type=float, default=1.2)
+    parser.add_argument("--dp-max-grad-norm", type=float, default=1.0)
+    parser.add_argument("--dp-delta", type=float, default=1e-5)
     parser.add_argument(
         "--workspace", type=Path, default=Path("artifacts/repeated-benchmark")
     )
@@ -191,6 +244,9 @@ def main() -> None:
                     args.dp_epsilon,
                     args.dp_fraction,
                     args.dp_noise_var,
+                    args.dp_noise_multiplier,
+                    args.dp_max_grad_norm,
+                    args.dp_delta,
                     trial_workspace,
                 )
             records.append(record)
@@ -207,17 +263,11 @@ def main() -> None:
             "rounds": args.rounds,
             "local_epochs": args.local_epochs,
             "fedprox_mu": args.fedprox_mu,
-            "privacy_comparison": (
-                {
-                    "mechanism": "nvflare_svt_model_update_filter",
-                    "epsilon_parameter_per_call": args.dp_epsilon,
-                    "fraction_shared": args.dp_fraction,
-                    "noise_var_parameter": args.dp_noise_var,
-                    "accounting_scope": "filter_configuration_only",
-                    "end_to_end_sample_dp_claimed": False,
-                }
-                if "fedavg_svt" in args.strategies
-                else None
+            "privacy_comparison": _summarize_privacy_comparison(
+                records,
+                args.dp_epsilon,
+                args.dp_fraction,
+                args.dp_noise_var,
             ),
             "simulated_sites": True,
         }

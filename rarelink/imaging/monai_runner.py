@@ -104,6 +104,7 @@ def run_monai_smoke(
         init_filters=8,
         blocks_down=(1, 1, 1),
         blocks_up=(1, 1),
+        act=("RELU", {"inplace": False}),
     ).to(device)
     loss_function = DiceCELoss(to_onehot_y=True, softmax=True)
     optimizer = torch.optim.AdamW(model.parameters(), lr=2e-4, weight_decay=1e-5)

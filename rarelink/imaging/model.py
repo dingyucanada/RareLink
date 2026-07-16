@@ -9,6 +9,8 @@ def segmentation_model_config() -> dict[str, object]:
             "init_filters": 8,
             "blocks_down": (1, 1, 1),
             "blocks_up": (1, 1),
+            # Opacus per-sample gradient hooks require non-inplace activations.
+            "act": ("RELU", {"inplace": False}),
         },
     }
 

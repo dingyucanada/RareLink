@@ -30,6 +30,7 @@ spark = [
   "numpy>=2,<3",
   "nibabel>=5.3,<6",
   "nvflare>=2.7,<2.9",
+  "opacus>=1.5,<2",
   "scipy>=1.14,<2",
 ]
 

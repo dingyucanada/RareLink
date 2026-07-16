@@ -20,7 +20,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run RareLink's three-site NVFLARE simulation")
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument(
-        "--strategy", choices=["fedavg", "fedprox", "fedavg_svt"], default="fedavg"
+        "--strategy",
+        choices=["fedavg", "fedprox", "fedavg_svt", "fedavg_dpsgd"],
+        default="fedavg",
     )
     parser.add_argument("--rounds", type=int, default=2)
     parser.add_argument("--local-epochs", type=int, default=1)
@@ -29,6 +31,9 @@ def main() -> None:
     parser.add_argument("--dp-epsilon", type=float, default=0.1)
     parser.add_argument("--dp-fraction", type=float, default=0.01)
     parser.add_argument("--dp-noise-var", type=float, default=0.1)
+    parser.add_argument("--dp-noise-multiplier", type=float, default=1.2)
+    parser.add_argument("--dp-max-grad-norm", type=float, default=1.0)
+    parser.add_argument("--dp-delta", type=float, default=1e-5)
     parser.add_argument("--workspace", type=Path, default=Path("artifacts/nvflare-simulation"))
     parser.add_argument("--metrics-dir", type=Path)
     parser.add_argument("--export-dir", type=Path)
@@ -49,6 +54,19 @@ def main() -> None:
         f"--fedprox-mu {proximal_mu} --metrics-dir {shlex.quote(str(metrics_dir))} "
         f"--seed {args.seed}"
     )
+    if args.strategy == "fedavg_dpsgd":
+        from rarelink.privacy import DPSGDConfig
+
+        dp_config = DPSGDConfig(
+            noise_multiplier=args.dp_noise_multiplier,
+            max_grad_norm=args.dp_max_grad_norm,
+            delta=args.dp_delta,
+        )
+        dp_config.validate()
+        train_args += (
+            f" --dp-sgd --dp-noise-multiplier {dp_config.noise_multiplier}"
+            f" --dp-max-grad-norm {dp_config.max_grad_norm} --dp-delta {dp_config.delta}"
+        )
     recipe = FedAvgRecipe(
         name=f"rarelink-{args.strategy}",
         min_clients=len(sites),
@@ -126,6 +144,7 @@ def main() -> None:
                 "train_loss": round(float(payload["train_loss"]), 6),
                 "elapsed_seconds": payload.get("elapsed_seconds"),
                 "peak_gpu_memory_mb": payload.get("peak_gpu_memory_mb"),
+                "privacy": payload.get("privacy"),
             }
         )
     dice_values = [item["dice"] for item in site_metrics]
@@ -142,6 +161,10 @@ def main() -> None:
         else None
     )
     sdk_status = run.get_status()
+    if args.strategy == "fedavg_dpsgd":
+        from rarelink.privacy import summarize_site_privacy
+
+        privacy = summarize_site_privacy(site_metrics, dp_config, args.rounds)
     summary = {
         "job_id": run.get_job_id(),
         "status": sdk_status or "completed_with_global_model",

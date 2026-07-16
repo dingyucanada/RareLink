@@ -23,6 +23,7 @@ def test_serializable_monai_model_contract_has_three_output_classes() -> None:
     assert config["class_path"] == "monai.networks.nets.SegResNet"
     assert config["args"]["in_channels"] == 4
     assert config["args"]["out_channels"] == 3
+    assert config["args"]["act"] == ("RELU", {"inplace": False})
 
     model = build_segmentation_model()
     assert model.state_dict()["conv_final.2.conv.weight"].shape[0] == 3

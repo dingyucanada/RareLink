@@ -57,25 +57,43 @@ def build_site_loaders(manifest_path: Path, site_id: str):  # type: ignore[no-un
     )
 
 
-def train_round(model, train_loader, device, epochs: int, fedprox_mu: float):  # type: ignore[no-untyped-def]
+def _base_model(model):  # type: ignore[no-untyped-def]
+    """Return the serializable module underneath an Opacus GradSampleModule."""
+    return getattr(model, "_module", model)
+
+
+def _plain_tensor(value):  # type: ignore[no-untyped-def]
+    """Strip MONAI MetaTensor dispatch before Opacus expanded-weights execution."""
+    return value.as_tensor() if hasattr(value, "as_tensor") else value
+
+
+def train_round(  # type: ignore[no-untyped-def]
+    model,
+    train_loader,
+    device,
+    epochs: int,
+    fedprox_mu: float,
+    optimizer,
+    scaler,
+):
     import torch
     from monai.losses import DiceCELoss
     from nvflare.app_opt.pt.fedproxloss import PTFedProxLoss
 
-    reference_model = copy.deepcopy(model).to(device)
-    reference_model.requires_grad_(False)
+    reference_model = None
+    if fedprox_mu > 0:
+        reference_model = copy.deepcopy(model).to(device)
+        reference_model.requires_grad_(False)
     loss_function = DiceCELoss(to_onehot_y=True, softmax=True)
     proximal_loss = PTFedProxLoss(mu=fedprox_mu)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=2e-4, weight_decay=1e-5)
-    scaler = torch.amp.GradScaler("cuda", enabled=device.type == "cuda")
     running_loss = 0.0
     model.train()
     for _epoch in range(epochs):
         for batch in train_loader:
-            images = batch["image"].to(device)
-            labels = batch["label"].to(device)
+            images = _plain_tensor(batch["image"]).to(device)
+            labels = _plain_tensor(batch["label"]).to(device)
             optimizer.zero_grad(set_to_none=True)
-            with torch.autocast(device_type=device.type, enabled=device.type == "cuda"):
+            with torch.autocast(device_type=device.type, enabled=scaler.is_enabled()):
                 predictions = model(images)
                 loss = loss_function(predictions, labels)
                 if fedprox_mu > 0:
@@ -106,8 +124,8 @@ def evaluate(model, validation_loader, device):  # type: ignore[no-untyped-def]
     model.eval()
     with torch.inference_mode():
         for batch in validation_loader:
-            images = batch["image"].to(device)
-            labels = batch["label"].to(device)
+            images = _plain_tensor(batch["image"]).to(device)
+            labels = _plain_tensor(batch["label"]).to(device)
             prediction = sliding_window_inference(images, images.shape[2:], 1, model)
             discrete_predictions = [post_prediction(item) for item in decollate_batch(prediction)]
             discrete_labels = [post_label(item) for item in decollate_batch(labels)]
@@ -133,6 +151,10 @@ def main() -> None:
     parser.add_argument("--fedprox-mu", type=float, default=0.0)
     parser.add_argument("--metrics-dir", type=Path)
     parser.add_argument("--seed", type=int, default=2026)
+    parser.add_argument("--dp-sgd", action="store_true")
+    parser.add_argument("--dp-noise-multiplier", type=float, default=1.2)
+    parser.add_argument("--dp-max-grad-norm", type=float, default=1.0)
+    parser.add_argument("--dp-delta", type=float, default=1e-5)
     args = parser.parse_args()
 
     set_determinism(args.seed)
@@ -141,19 +163,80 @@ def main() -> None:
     train_loader, validation_loader = build_site_loaders(args.manifest, site_id)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = build_segmentation_model().to(device)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=2e-4, weight_decay=1e-5)
+    scaler = torch.amp.GradScaler(
+        "cuda", enabled=device.type == "cuda" and not args.dp_sgd
+    )
+    privacy_engine = None
+    sample_count = len(train_loader.dataset)
+    sample_rate = train_loader.batch_size / sample_count
+    if args.dp_sgd:
+        from opacus import PrivacyEngine
+        from opacus.validators import ModuleValidator
+
+        from rarelink.privacy import DPSGDConfig
+
+        privacy_config = DPSGDConfig(
+            noise_multiplier=args.dp_noise_multiplier,
+            max_grad_norm=args.dp_max_grad_norm,
+            delta=args.dp_delta,
+        )
+        privacy_config.validate()
+        ModuleValidator.validate(model, strict=True)
+        privacy_engine = PrivacyEngine(accountant=privacy_config.accountant, secure_mode=False)
+        model, optimizer, train_loader = privacy_engine.make_private(
+            module=model,
+            optimizer=optimizer,
+            data_loader=train_loader,
+            noise_multiplier=privacy_config.noise_multiplier,
+            max_grad_norm=privacy_config.max_grad_norm,
+            poisson_sampling=privacy_config.poisson_sampling,
+            grad_sample_mode=privacy_config.grad_sample_mode,
+        )
 
     round_index = 0
+    optimizer_steps = 0
     while flare.is_running():
         input_model = flare.receive()
         if input_model is None:
             break
-        model.load_state_dict(input_model.params)
+        _base_model(model).load_state_dict(input_model.params)
+        optimizer.state.clear()
         if device.type == "cuda":
             torch.cuda.reset_peak_memory_stats(device)
         started = time.perf_counter()
-        loss, steps = train_round(model, train_loader, device, args.epochs, args.fedprox_mu)
-        dice, hd95 = evaluate(model, validation_loader, device)
-        round_index += 1
+        loss, steps = train_round(
+            model,
+            train_loader,
+            device,
+            args.epochs,
+            args.fedprox_mu,
+            optimizer,
+            scaler,
+        )
+        optimizer_steps += steps
+        dice, hd95 = evaluate(_base_model(model), validation_loader, device)
+        round_index = (
+            int(input_model.current_round) + 1
+            if input_model.current_round is not None
+            else round_index + 1
+        )
+        privacy = None
+        if privacy_engine:
+            privacy = {
+                "mechanism": "opacus_sample_level_dp_sgd",
+                "accountant": "rdp",
+                "epsilon": round(float(privacy_engine.get_epsilon(args.dp_delta)), 6),
+                "delta": args.dp_delta,
+                "noise_multiplier": args.dp_noise_multiplier,
+                "max_grad_norm": args.dp_max_grad_norm,
+                "sample_count": sample_count,
+                "sample_rate": sample_rate,
+                "optimizer_steps": optimizer_steps,
+                "poisson_sampling": True,
+                "grad_sample_mode": "ew",
+                "secure_rng": False,
+            }
         if args.metrics_dir:
             args.metrics_dir.mkdir(parents=True, exist_ok=True)
             metrics_path = args.metrics_dir / f"{site_id}-round-{round_index:03d}.json"
@@ -172,13 +255,15 @@ def main() -> None:
                             if device.type == "cuda"
                             else None
                         ),
+                        "privacy": privacy,
                     },
                     indent=2,
                 ),
                 encoding="utf-8",
             )
         cpu_parameters = {
-            name: value.detach().cpu().clone() for name, value in model.state_dict().items()
+            name: value.detach().cpu().clone()
+            for name, value in _base_model(model).state_dict().items()
         }
         flare.send(
             flare.FLModel(
