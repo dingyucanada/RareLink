@@ -91,6 +91,49 @@ class TemplateResearchAgentTeam:
     def review_evidence(
         self, contract: dict[str, Any], experiments: list[dict[str, Any]]
     ) -> EvidenceReview:
+        repeated = contract.get("repeated_benchmark")
+        if repeated and repeated.get("complete"):
+            win_rate = repeated["worst_site_win_rate"]
+            best_strategy = max(win_rate, key=win_rate.get)
+            strategy = repeated["strategy_summaries"][best_strategy]
+            mean_metric = strategy["metrics"]["mean_dice"]
+            worst_metric = strategy["metrics"]["worst_site_dice"]
+            improvement = repeated.get("worst_site_improvement_vs_local", {}).get(best_strategy)
+            return EvidenceReview(
+                leading_strategy=best_strategy,
+                recommendation=(
+                    "Treat the leading strategy as a stability-tested engineering candidate only; "
+                    "external authorized data and independent sites are still required."
+                ),
+                evidence=[
+                    f"Repeated trials: {strategy['trial_count']}",
+                    f"Mean Dice across seeds: {mean_metric['mean']:.4f} "
+                    f"(95% t interval {mean_metric['ci95'][0]:.4f}–{mean_metric['ci95'][1]:.4f})",
+                    f"Worst-site Dice across seeds: {worst_metric['mean']:.4f}",
+                    f"Worst-site win rate: {win_rate[best_strategy] * 100:.1f}%",
+                ],
+                fairness_findings=[
+                    "Strategy ranking used worst-site Dice for every aligned random seed.",
+                    (
+                        f"Worst-site performance improved over Local in "
+                        f"{improvement['improved_seed_count']}/{strategy['trial_count']} seeds."
+                        if improvement
+                        else "The Local strategy is the stability reference."
+                    ),
+                ],
+                limitations=[
+                    repeated["interpretation_boundary"],
+                    (
+                        "Student-t intervals from three seeds are wide and descriptive, "
+                        "not clinical inference."
+                    ),
+                    (
+                        "SVT results report filter configuration parameters, not end-to-end "
+                        "sample-level DP."
+                    ),
+                ],
+                source="template",
+            )
         ranked = sorted(
             experiments,
             key=lambda item: item.get("metrics", {}).get("worst_site_dice", 0),

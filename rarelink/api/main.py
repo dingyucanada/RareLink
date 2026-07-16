@@ -218,6 +218,33 @@ def capabilities(config: SettingsDep) -> CapabilityRead:
     )
 
 
+def _read_json_if_present(path) -> dict[str, Any] | None:  # type: ignore[no-untyped-def]
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+@app.get("/api/system/evidence")
+def system_evidence(config: SettingsDep) -> dict[str, Any]:
+    repeated = _read_json_if_present(
+        config.artifact_root / "repeated-benchmark" / "repeated-summary.json"
+    )
+    provisioned = _read_json_if_present(
+        config.artifact_root / "nvflare-secure-provision" / "mtls-evidence.json"
+    )
+    runtime = _read_json_if_present(
+        config.artifact_root / "nvflare-secure-provision" / "mtls-runtime-evidence.json"
+    )
+    return {
+        "repeated_benchmark": repeated,
+        "mtls_provisioning": provisioned,
+        "mtls_runtime": runtime,
+        "privacy_comparison": repeated.get("privacy_comparison") if repeated else None,
+        "contains_patient_data": False,
+        "evidence_scope": "synthetic_competition_engineering",
+    }
+
+
 @app.post("/api/studies", status_code=201)
 def create_study(payload: StudyCreate, session: SessionDep) -> dict[str, Any]:
     study = Study(**payload.model_dump())
@@ -754,9 +781,13 @@ def generate_evidence_brief(
         }
         for item in experiments
     ]
-    review = build_research_agent(config).review_evidence(
-        as_json(study.contract_json, {}), evidence
+    contract = as_json(study.contract_json, {})
+    repeated = _read_json_if_present(
+        config.artifact_root / "repeated-benchmark" / "repeated-summary.json"
     )
+    if repeated:
+        contract["repeated_benchmark"] = repeated
+    review = build_research_agent(config).review_evidence(contract, evidence)
     artifact = store_agent_artifact(
         session,
         study.id,

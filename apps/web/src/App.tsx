@@ -28,6 +28,7 @@ import { stages, statusIndex } from "./workflow";
 const MetricChart = lazy(() => import("./components/MetricChart"));
 const MarkdownReport = lazy(() => import("./components/MarkdownReport"));
 const ImagingPreview = lazy(() => import("./components/ImagingPreview"));
+const SystemEvidence = lazy(() => import("./components/SystemEvidence"));
 
 function EmptyState({ create }: { create: () => void }) {
   return (
@@ -330,6 +331,10 @@ function App() {
           <div><Gauge size={18} /><span><small>实验合同</small><strong>{study.contract ? "LOCKED" : "OPEN"}</strong></span></div>
           <div><BookOpenCheck size={18} /><span><small>账本事件</small><strong>{events.data?.length ?? 0}</strong></span></div>
         </section>
+
+        <Suspense fallback={<div className="panel placeholder">正在读取 Spark 工程证据…</div>}>
+          <SystemEvidence />
+        </Suspense>
 
         <div className="content-grid">
           <section className="panel wide">

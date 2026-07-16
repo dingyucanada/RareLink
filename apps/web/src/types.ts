@@ -149,3 +149,45 @@ export interface ImagingPreview {
   label_pixels: number[][];
   modalities: ImagingModality[];
 }
+
+interface RepeatedMetricSummary {
+  n: number;
+  mean: number;
+  std: number;
+  ci95: [number, number];
+}
+
+export interface SystemEvidence {
+  repeated_benchmark: {
+    complete: boolean;
+    seeds: number[];
+    trial_count: number;
+    worst_site_win_rate: Record<string, number>;
+    strategy_summaries: Record<string, {
+      trial_count: number;
+      metrics: {
+        mean_dice: RepeatedMetricSummary;
+        worst_site_dice: RepeatedMetricSummary;
+      };
+    }>;
+    interpretation_boundary: string;
+  } | null;
+  mtls_provisioning: {
+    connection_security: string;
+    shared_root_ca: boolean;
+    participant_count: number;
+  } | null;
+  mtls_runtime: {
+    server_started: boolean;
+    registered_client_count: number;
+    connection_security: string;
+    sensitive_runtime_tokens_included: boolean;
+  } | null;
+  privacy_comparison: {
+    mechanism: string;
+    epsilon_parameter_per_call: number;
+    fraction_shared: number;
+    accounting_scope: string;
+    end_to_end_sample_dp_claimed: boolean;
+  } | null;
+}
