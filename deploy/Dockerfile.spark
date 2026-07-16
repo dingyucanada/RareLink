@@ -1,0 +1,24 @@
+ARG BASE_IMAGE=nvcr.io/nvidia/pytorch:25.11-py3
+FROM ${BASE_IMAGE}
+
+ARG PIP_INDEX_URL=https://pypi.org/simple
+
+WORKDIR /workspace
+
+COPY pyproject.toml README.md ./
+COPY rarelink ./rarelink
+COPY scripts ./scripts
+
+# Some DGX Spark base images contain an OS-managed blinker package that pip
+# cannot uninstall. Installing the wheel explicitly keeps NVFLARE reproducible.
+RUN python3 -m pip install --index-url "${PIP_INDEX_URL}" \
+      hatchling==1.31.0 editables==0.6 && \
+    python3 -m pip install --ignore-installed --index-url "${PIP_INDEX_URL}" \
+      blinker==1.9.0 && \
+    python3 -m pip install --index-url "${PIP_INDEX_URL}" \
+      openai==1.109.1 sqlmodel==0.0.39 monai==1.6.0 nibabel==5.4.2 scipy==1.18.0 && \
+    python3 -m pip install --index-url "${PIP_INDEX_URL}" nvflare==2.7.2 && \
+    python3 -m pip install --no-deps --no-build-isolation .
+
+ENTRYPOINT []
+CMD ["python3", "-m", "uvicorn", "rarelink.api.main:app", "--host", "0.0.0.0", "--port", "9000"]
