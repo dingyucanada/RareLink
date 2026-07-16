@@ -14,6 +14,9 @@ export default function SystemEvidence() {
   const privacy = evidence.data?.privacy_comparison;
   const redteam = evidence.data?.agent_redteam;
   const publicBenchmark = evidence.data?.public_benchmark;
+  const publicMriVerified = Boolean(
+    publicBenchmark?.public_mri_intake_verified ?? publicBenchmark?.public_benchmark_verified,
+  );
   const sampleDp = privacy?.mechanism === "opacus_sample_level_dp_sgd";
   const ranked = repeated
     ? Object.entries(repeated.worst_site_win_rate).sort((left, right) => right[1] - left[1])
@@ -35,7 +38,7 @@ export default function SystemEvidence() {
         <article className={`public-benchmark-status ${publicBenchmark ? "verified" : "pending"}`}>
           <FileSearch size={18} />
           <div><small>PUBLIC NIFTI INTAKE</small><strong>{publicBenchmark ? `${publicBenchmark.case_count} cases · ${publicBenchmark.site_count} sites` : "MSD Task01 pending"}</strong><p>{publicBenchmark ? `${publicBenchmark.source.name} · ${publicBenchmark.modalities.join(" / ")}` : "公开脑肿瘤数据仅允许由 Spark 直接下载；不会通过 SSH 传输。"}</p></div>
-          <span>{publicBenchmark?.public_benchmark_verified ? "VERIFIED" : "NOT CLAIMED"}</span>
+          <span>{publicMriVerified ? "VERIFIED" : "NOT CLAIMED"}</span>
         </article>
         <article className="evidence-boundary">
           <Database size={18} />

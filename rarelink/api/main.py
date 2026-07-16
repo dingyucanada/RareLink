@@ -244,6 +244,8 @@ def system_evidence(config: SettingsDep) -> dict[str, Any]:
         config.artifact_root / "agent-redteam" / "summary.json"
     )
     public_benchmark = _read_json_if_present(
+        config.artifact_root / "public-benchmark" / "latest-intake-validation.json"
+    ) or _read_json_if_present(
         config.artifact_root / "public-benchmark" / "msd-task01-validation.json"
     )
     return {

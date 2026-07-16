@@ -205,6 +205,7 @@ export interface SystemEvidence {
   public_benchmark: {
     dataset_id: string;
     public_benchmark_verified: boolean;
+    public_mri_intake_verified?: boolean;
     training_executed: boolean;
     case_count: number;
     site_count: number;
