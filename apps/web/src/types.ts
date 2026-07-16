@@ -131,3 +131,21 @@ export interface Capabilities {
   monai_available: boolean;
   nvflare_available: boolean;
 }
+
+export interface ImagingModality {
+  name: string;
+  pixels: number[][];
+}
+
+export interface ImagingPreview {
+  dataset_id: string;
+  site_id: string;
+  case_id: string;
+  synthetic: boolean;
+  sent_to_llm: boolean;
+  slice_index: number;
+  shape: [number, number];
+  spacing: number[] | null;
+  label_pixels: number[][];
+  modalities: ImagingModality[];
+}

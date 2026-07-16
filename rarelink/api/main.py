@@ -25,6 +25,7 @@ from rarelink.domain import (
     StudyStatus,
     utc_now,
 )
+from rarelink.imaging.preview import build_synthetic_imaging_preview
 from rarelink.models import AgentArtifact, AuditEvent, Experiment, Study, TrainingJob
 from rarelink.services.agents import build_research_agent
 from rarelink.services.federation import build_federation_runner
@@ -237,6 +238,27 @@ def get_studies(session: SessionDep) -> list[dict[str, Any]]:
 @app.get("/api/studies/{study_id}")
 def get_study(study_id: str, session: SessionDep) -> dict[str, Any]:
     return study_view(require_study(session, study_id))
+
+
+@app.get("/api/studies/{study_id}/imaging-preview")
+def get_imaging_preview(
+    study_id: str,
+    site_id: str,
+    session: SessionDep,
+    config: SettingsDep,
+) -> dict[str, Any]:
+    study = require_study(session, study_id)
+    contract = as_json(study.contract_json, {})
+    dataset_version = contract.get("dataset_version", "synthetic-demo-v1")
+    manifest = config.data_root / dataset_version / "manifest.json"
+    if not manifest.exists():
+        raise HTTPException(status_code=404, detail="Imaging preview manifest not found")
+    try:
+        return build_synthetic_imaging_preview(manifest, site_id)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.post("/api/studies/{study_id}/protocol:generate")

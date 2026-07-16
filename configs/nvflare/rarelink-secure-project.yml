@@ -1,0 +1,37 @@
+api_version: 3
+name: rarelink_secure_rehearsal
+description: RareLink single-Spark isolated-site mTLS deployment rehearsal
+connection_security: mtls
+
+participants:
+  - name: localhost
+    type: server
+    org: rarelink_coordinator
+    fed_learn_port: 8002
+    admin_port: 8003
+  - name: site-a
+    type: client
+    org: hospital_a
+  - name: site-b
+    type: client
+    org: hospital_b
+  - name: site-c
+    type: client
+    org: hospital_c
+  - name: competition-admin@rarelink.local
+    type: admin
+    org: rarelink_coordinator
+    role: project_admin
+
+builders:
+  - path: nvflare.lighter.impl.workspace.WorkspaceBuilder
+    args:
+      template_file:
+        - master_template.yml
+        - aws_template.yml
+        - azure_template.yml
+  - path: nvflare.lighter.impl.static_file.StaticFileBuilder
+    args:
+      config_folder: config
+  - path: nvflare.lighter.impl.cert.CertBuilder
+  - path: nvflare.lighter.impl.signature.SignatureBuilder

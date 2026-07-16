@@ -27,6 +27,7 @@ import { stages, statusIndex } from "./workflow";
 
 const MetricChart = lazy(() => import("./components/MetricChart"));
 const MarkdownReport = lazy(() => import("./components/MarkdownReport"));
+const ImagingPreview = lazy(() => import("./components/ImagingPreview"));
 
 function EmptyState({ create }: { create: () => void }) {
   return (
@@ -335,6 +336,10 @@ function App() {
             <div className="panel-title"><div><Network size={18} /><span><strong>站点可行性</strong><small>原始数据不离开逻辑站点</small></span></div>{study.feasibility && <em>{study.feasibility.finding}</em>}</div>
             <SiteCards study={study} />
           </section>
+
+          <Suspense fallback={<div className="panel placeholder">正在加载本地影像感知面板…</div>}>
+            <ImagingPreview studyId={study.id} />
+          </Suspense>
 
           <EvidenceBriefPanel study={study} experiments={experiments.data ?? []} artifacts={artifacts.data ?? []} />
 

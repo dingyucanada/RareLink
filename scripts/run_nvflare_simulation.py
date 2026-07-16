@@ -19,10 +19,16 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description="Run RareLink's three-site NVFLARE simulation")
     parser.add_argument("--manifest", type=Path, required=True)
-    parser.add_argument("--strategy", choices=["fedavg", "fedprox"], default="fedavg")
+    parser.add_argument(
+        "--strategy", choices=["fedavg", "fedprox", "fedavg_svt"], default="fedavg"
+    )
     parser.add_argument("--rounds", type=int, default=2)
     parser.add_argument("--local-epochs", type=int, default=1)
     parser.add_argument("--fedprox-mu", type=float, default=0.01)
+    parser.add_argument("--seed", type=int, default=2026)
+    parser.add_argument("--dp-epsilon", type=float, default=0.1)
+    parser.add_argument("--dp-fraction", type=float, default=0.01)
+    parser.add_argument("--dp-noise-var", type=float, default=0.1)
     parser.add_argument("--workspace", type=Path, default=Path("artifacts/nvflare-simulation"))
     parser.add_argument("--metrics-dir", type=Path)
     parser.add_argument("--export-dir", type=Path)
@@ -40,7 +46,8 @@ def main() -> None:
     client_script = Path(__file__).with_name("nvflare_monai_client.py").resolve()
     train_args = (
         f"--manifest {shlex.quote(str(manifest))} --epochs {args.local_epochs} "
-        f"--fedprox-mu {proximal_mu} --metrics-dir {shlex.quote(str(metrics_dir))}"
+        f"--fedprox-mu {proximal_mu} --metrics-dir {shlex.quote(str(metrics_dir))} "
+        f"--seed {args.seed}"
     )
     recipe = FedAvgRecipe(
         name=f"rarelink-{args.strategy}",
@@ -55,6 +62,31 @@ def main() -> None:
         client_memory_gc_rounds=1,
         cuda_empty_cache=True,
     )
+    privacy = None
+    if args.strategy == "fedavg_svt":
+        from nvflare.app_common.filters.svt_privacy import SVTPrivacy
+
+        if not 0 < args.dp_fraction <= 1:
+            raise ValueError("dp-fraction must be in (0, 1]")
+        if args.dp_epsilon <= 0 or args.dp_noise_var <= 0:
+            raise ValueError("DP epsilon and noise variance must be positive")
+        recipe.add_client_output_filter(
+            SVTPrivacy(
+                fraction=args.dp_fraction,
+                epsilon=args.dp_epsilon,
+                noise_var=args.dp_noise_var,
+            ),
+            tasks=["train"],
+        )
+        privacy = {
+            "mechanism": "nvflare_svt_model_update_filter",
+            "epsilon_parameter_per_call": args.dp_epsilon,
+            "fraction_shared": args.dp_fraction,
+            "noise_var_parameter": args.dp_noise_var,
+            "calls_per_client": args.rounds,
+            "accounting_scope": "filter_configuration_only",
+            "end_to_end_sample_dp_claimed": False,
+        }
     environment = SimEnv(
         clients=sites,
         num_threads=1,
@@ -120,6 +152,7 @@ def main() -> None:
         "sites": sites,
         "rounds": args.rounds,
         "local_epochs": args.local_epochs,
+        "seed": args.seed,
         "manifest": str(manifest),
         "metrics_dir": str(metrics_dir),
         "metrics": aggregate_metrics,
@@ -129,6 +162,7 @@ def main() -> None:
             (item["peak_gpu_memory_mb"] for item in site_metrics if item["peak_gpu_memory_mb"]),
             default=None,
         ),
+        "privacy": privacy,
     }
     args.workspace.mkdir(parents=True, exist_ok=True)
     summary_path = args.workspace / f"{args.strategy}-summary.json"

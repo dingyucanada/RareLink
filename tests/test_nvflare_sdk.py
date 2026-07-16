@@ -26,3 +26,12 @@ def test_serializable_monai_model_contract_has_three_output_classes() -> None:
 
     model = build_segmentation_model()
     assert model.state_dict()["conv_final.2.conv.weight"].shape[0] == 3
+
+
+def test_nvflare_svt_filter_is_available_for_client_update_privacy() -> None:
+    from nvflare.app_common.filters.svt_privacy import SVTPrivacy
+
+    privacy_filter = SVTPrivacy(fraction=0.01, epsilon=0.1, noise_var=0.1)
+    assert privacy_filter.fraction == 0.01
+    assert privacy_filter.epsilon == 0.1
+    assert privacy_filter.noise_var == 0.1
