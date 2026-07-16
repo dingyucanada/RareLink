@@ -44,6 +44,7 @@
 | 最终提交映射与待办 | [最终提交清单](outputs/RareLink-最终提交清单.md) |
 | NVIDIA / Step 技术栈说明 | [技术栈说明](outputs/RareLink-技术栈说明.md) |
 | 三分钟现场演示流程 | [演示视频脚本](outputs/RareLink-三分钟演示视频脚本.md) |
+| 路演 PPT 双语内容 | [Bilingual pitch deck](outputs/RareLink-路演PPT双语内容.md) |
 | 从比赛到企业的下一步 | [企业化一页路线图](outputs/RareLink-企业化一页路线图.md) |
 | DGX Spark 黑客松开发历程 | [黑客松十日谈](outputs/RareLink-DGX-Spark黑客松十日谈.md) |
 | 技术、术语与数据权威资料 | [参考资料](docs/references.md) |
