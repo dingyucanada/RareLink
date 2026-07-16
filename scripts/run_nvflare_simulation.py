@@ -2,6 +2,7 @@ import argparse
 import json
 import shlex
 import statistics
+import time
 from pathlib import Path
 
 
@@ -25,7 +26,10 @@ def main() -> None:
     manifest = args.manifest.resolve()
     if not manifest.exists():
         raise FileNotFoundError(manifest)
-    sites = ["site-a", "site-b", "site-c"]
+    manifest_payload = json.loads(manifest.read_text(encoding="utf-8"))
+    sites = list(manifest_payload.get("sites", []))
+    if len(sites) < 2:
+        raise ValueError("Manifest must declare at least two logical sites")
     metrics_dir = (args.metrics_dir or args.workspace / "site-metrics").resolve()
     proximal_mu = args.fedprox_mu if args.strategy == "fedprox" else 0.0
     client_script = Path(__file__).with_name("nvflare_monai_client.py").resolve()
@@ -56,6 +60,7 @@ def main() -> None:
         print(f"exported_job={args.export_dir.resolve()}")
         return
 
+    started = time.perf_counter()
     run = recipe.execute(environment)
     result_path = Path(run.get_result() or "")
     expected_models = list(result_path.rglob(f"rarelink-{args.strategy}-global.pt"))
@@ -82,6 +87,8 @@ def main() -> None:
                 "hd95": payload.get("hd95"),
                 "round": payload["round"],
                 "train_loss": round(float(payload["train_loss"]), 6),
+                "elapsed_seconds": payload.get("elapsed_seconds"),
+                "peak_gpu_memory_mb": payload.get("peak_gpu_memory_mb"),
             }
         )
     dice_values = [item["dice"] for item in site_metrics]
@@ -112,6 +119,11 @@ def main() -> None:
         "metrics_dir": str(metrics_dir),
         "metrics": aggregate_metrics,
         "simulated_sites": True,
+        "elapsed_seconds": round(time.perf_counter() - started, 4),
+        "peak_gpu_memory_mb": max(
+            (item["peak_gpu_memory_mb"] for item in site_metrics if item["peak_gpu_memory_mb"]),
+            default=None,
+        ),
     }
     args.workspace.mkdir(parents=True, exist_ok=True)
     summary_path = args.workspace / f"{args.strategy}-summary.json"

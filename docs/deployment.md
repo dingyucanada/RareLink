@@ -154,7 +154,53 @@ RARELINK_FL_MODE=nvflare
 成功标准不是终端中出现 “finished”，而是工作目录中存在聚合后的全局 `.pt` 模型。运行脚本
 已内置这一后置条件，缺失模型会直接报错并附带服务端日志尾部。
 
-## 7. 启动控制台
+## 7. 公开脑肿瘤基准：直连下载与可复现实验
+
+合成数据只证明系统链路可运行，不足以证明方案能处理真实的公开影像格式。比赛演示应增加
+Medical Segmentation Decathlon（MSD）Task01_BrainTumour 的工程基准。它是公开研究数据，
+仍然属于患者影像数据：仅作研究工程验证，不上传到仓库、不传给 Step API、不作诊断结论。
+
+**严禁通过 SSH/SCP 上传这个数据集或任何大模型。** 在 Spark 节点的仓库目录直接执行：
+
+```bash
+sudo docker exec -it rarelink-api python3 scripts/prepare_msd_brain_tumour.py \
+  --data-root data/raw/msd-task01 \
+  --output data/runtime/msd-brain-tumour-v1 \
+  --cases-per-site 8
+```
+
+脚本会在节点直接下载公开归档，校验发布的 MD5，再记录归档 SHA-256 和每个入选文件的 SHA-256。
+它按肿瘤体素量的低、中、高三分位创建 `site-a`、`site-b`、`site-c`，每站抽取固定数量病例；
+这是可重复的非 IID **模拟**，不代表真实医院人群分布。MSD 原始标签的 `4` 会映射为 `2`，形成
+背景、病灶区域、肿瘤核心三个工程类别；映射会写入 manifest。
+
+先做本地/集中式上界，再做两种联邦策略。下列每一条都会输出 Dice、HD95、运行时长、峰值显存；
+联邦汇总额外输出平均 Dice、最弱站点 Dice 和站点方差。
+
+```bash
+# 单站点基线（分别执行 site-a、site-b、site-c）
+sudo docker exec -it rarelink-api python3 scripts/train_monai_smoke.py \
+  --manifest data/runtime/msd-brain-tumour-v1/manifest.json --site site-a --epochs 2 \
+  --output artifacts/msd-local-site-a
+
+# 仅用于科研对照的集中式上界；不是实际跨院部署路径
+sudo docker exec -it rarelink-api python3 scripts/train_monai_smoke.py \
+  --manifest data/runtime/msd-brain-tumour-v1/manifest.json --site centralized --epochs 2 \
+  --output artifacts/msd-centralized
+
+sudo docker exec -it rarelink-api python3 scripts/run_nvflare_simulation.py \
+  --manifest data/runtime/msd-brain-tumour-v1/manifest.json --strategy fedavg --rounds 3 \
+  --local-epochs 1 --workspace artifacts/msd-fedavg
+
+sudo docker exec -it rarelink-api python3 scripts/run_nvflare_simulation.py \
+  --manifest data/runtime/msd-brain-tumour-v1/manifest.json --strategy fedprox --rounds 3 \
+  --local-epochs 1 --fedprox-mu 0.01 --workspace artifacts/msd-fedprox
+```
+
+录屏时展示 manifest 中的来源、许可证、分区规则和哈希即可；不要展示切片、患者影像内容、原始
+数据目录或任何可识别信息。MSD 的授权与引用要求应在最终提交材料中保留。
+
+## 8. 启动控制台
 
 容器模式下启动后端：
 
@@ -213,7 +259,7 @@ RARELINK_API_PROXY=http://localhost:9000 \
 如果前端运行在独立容器内，可使用 host network，或将 `RARELINK_API_PROXY` 指向容器可访问
 的后端地址。代理目标只用于 Vite 开发服务器，不会写入浏览器端 JavaScript。
 
-## 8. 演示证据
+## 9. 演示证据
 
 录屏时应同时展示：
 

@@ -2,7 +2,10 @@ import argparse
 import copy
 import json
 import math
+import time
 from pathlib import Path
+
+from rarelink.imaging.monai_runner import _remap_brats_label, _resolve_image
 
 
 def build_site_loaders(manifest_path: Path, site_id: str):  # type: ignore[no-untyped-def]
@@ -11,6 +14,7 @@ def build_site_loaders(manifest_path: Path, site_id: str):  # type: ignore[no-un
         Compose,
         EnsureChannelFirstd,
         EnsureTyped,
+        Lambdad,
         LoadImaged,
         ScaleIntensityd,
     )
@@ -22,8 +26,8 @@ def build_site_loaders(manifest_path: Path, site_id: str):  # type: ignore[no-un
         raise ValueError(f"Site {site_id!r} requires at least two cases")
     items = [
         {
-            "image": [str(dataset_root / path) for path in case["images"]],
-            "label": str(dataset_root / case["label"]),
+            "image": _resolve_image(dataset_root, case["images"]),
+            "label": str((dataset_root / case["label"]).resolve()),
         }
         for case in site_cases
     ]
@@ -32,6 +36,11 @@ def build_site_loaders(manifest_path: Path, site_id: str):  # type: ignore[no-un
             LoadImaged(keys=["image", "label"]),
             EnsureChannelFirstd(keys=["image", "label"]),
             ScaleIntensityd(keys=["image"]),
+            *(
+                [Lambdad(keys=["label"], func=_remap_brats_label)]
+                if manifest.get("label_mapping")
+                else []
+            ),
             EnsureTyped(keys=["image", "label"]),
         ]
     )
@@ -134,6 +143,9 @@ def main() -> None:
         if input_model is None:
             break
         model.load_state_dict(input_model.params)
+        if device.type == "cuda":
+            torch.cuda.reset_peak_memory_stats(device)
+        started = time.perf_counter()
         loss, steps = train_round(model, train_loader, device, args.epochs, args.fedprox_mu)
         dice, hd95 = evaluate(model, validation_loader, device)
         round_index += 1
@@ -149,6 +161,12 @@ def main() -> None:
                         "hd95": hd95,
                         "train_loss": loss,
                         "steps": steps,
+                        "elapsed_seconds": round(time.perf_counter() - started, 4),
+                        "peak_gpu_memory_mb": (
+                            round(torch.cuda.max_memory_allocated(device) / (1024 * 1024), 3)
+                            if device.type == "cuda"
+                            else None
+                        ),
                     },
                     indent=2,
                 ),
