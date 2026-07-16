@@ -55,6 +55,8 @@
 - [x] Reviewer one-click compose stack, token-free evidence snapshot, and four-gate verifier
 - [x] Evidence cockpit reading path with source/boundary and public-NIfTI intake status
 - [x] Resumable direct MSD download and aggregate-only public NIfTI geometry-validation receipt
+- [x] Spark public MNI152 structural-MRI/label intake validation: 91×109×91, 2 mm isotropic,
+  SHA-256 recorded and no pixels/paths/case IDs exported in the receipt
 
 ## Next Spark milestone
 
@@ -82,3 +84,7 @@
   resumable node-direct downloader, manifest checks and aggregate-only geometry receipt are complete.
   Resume the transfer only when the competition network window permits it; no data are transferred
   through SSH.
+- A separate, small Project MONAI MNI152 public structural-MRI asset was validated on Spark as an
+  external NIfTI I/O check. The Spark release host could not be reached directly, so the 1.4 MiB
+  official asset pair was transparently transferred through encrypted SSH after source verification.
+  This is not claimed as an MSD benchmark, federated training result, tumour result, or clinical evidence.
