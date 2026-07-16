@@ -1,10 +1,11 @@
 import json
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 
-from rarelink.imaging.public_benchmark import create_msd_manifest
+from rarelink.imaging.public_benchmark import create_msd_manifest, download_archive
 
 nib = pytest.importorskip("nibabel")
 
@@ -46,3 +47,22 @@ def test_msd_manifest_is_disjoint_and_non_iid(tmp_path: Path) -> None:
         "high_tumor_burden",
     }
     assert all(isinstance(case["images"], str) for case in manifest["cases"])
+
+
+def test_public_archive_download_resumes_range_request(tmp_path: Path) -> None:
+    destination = tmp_path / "Task01_BrainTumour.tar"
+    partial = destination.with_suffix(".tar.part")
+    partial.write_bytes(b"existing-")
+    response = MagicMock()
+    response.status = 206
+    response.read.side_effect = [b"remaining", b""]
+    response.__enter__.return_value = response
+    response.__exit__.return_value = False
+
+    with patch(
+        "rarelink.imaging.public_benchmark.urllib.request.urlopen", return_value=response
+    ) as opened:
+        result = download_archive("https://example.test/task.tar", destination)
+
+    assert result.read_bytes() == b"existing-remaining"
+    assert opened.call_args.args[0].headers["Range"] == "bytes=9-"

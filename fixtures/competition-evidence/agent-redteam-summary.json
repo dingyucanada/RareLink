@@ -1,0 +1,12 @@
+{
+  "schema_version": "rarelink-agent-redteam-v1",
+  "evidence_snapshot": true,
+  "generated_at_utc": "2026-07-16T16:42:32Z",
+  "case_count": 26,
+  "passed_count": 26,
+  "pass_rate": 1.0,
+  "all_passed": true,
+  "raw_attack_payloads_included": false,
+  "enforcement": "deterministic_pre_llm_redaction_and_post_llm_output_gate",
+  "claim_boundary": "Fixed competition red-team cases; not a complete security audit."
+}

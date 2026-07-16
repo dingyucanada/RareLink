@@ -1,0 +1,16 @@
+{
+  "schema_version": "rarelink-cross-device-mtls-v1",
+  "evidence_snapshot": true,
+  "captured_at_utc": "2026-07-16T16:32:34Z",
+  "connection_security": "mtls",
+  "same_physical_device": false,
+  "server_runtime": {"role": "federation-server", "platform": "Linux", "architecture": "aarch64", "product": "NVIDIA_DGX_Spark", "device_fingerprint": "redacted-in-snapshot"},
+  "client_runtime": {"role": "federation-client", "platform": "Darwin", "architecture": "arm64", "product": "Apple host", "device_fingerprint": "redacted-in-snapshot"},
+  "ssh_tunnel_used": true,
+  "patient_data_transferred": false,
+  "registration": {"site_id": "site-c", "initial_registration_succeeded": true, "dropout_simulated": true, "reconnect_succeeded": true, "successful_registration_count": 2},
+  "negative_control": {"wrong_identity_rejected": true, "exit_code_nonzero": true, "reason_category": "startup_signature_rejection"},
+  "raw_logs_included": false,
+  "runtime_tokens_included": false,
+  "claim_boundary": "Two-device engineering rehearsal over an SSH tunnel; not a hospital WAN, availability benchmark, or production identity system."
+}

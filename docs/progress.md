@@ -52,6 +52,9 @@
 - [x] Opacus DP-SGD with sample clipping and three-round RDP accounting
 - [x] Spark–Mac mTLS registration, dropout/reconnect, and wrong-identity negative control
 - [x] Deterministic 26-case Agent input/output red team enforced around Step 3.7
+- [x] Reviewer one-click compose stack, token-free evidence snapshot, and four-gate verifier
+- [x] Evidence cockpit reading path with source/boundary and public-NIfTI intake status
+- [x] Resumable direct MSD download and aggregate-only public NIfTI geometry-validation receipt
 
 ## Next Spark milestone
 
@@ -74,6 +77,8 @@
   performance claim is made from the tiny synthetic cohort.
 - NVFLARE `SimEnv` can emit a harmless Python multiprocessing semaphore warning during interpreter
   shutdown; success is determined by the persisted global-model postcondition, not process text alone.
-- The allocated node's direct connection to the official MSD archive was measured at roughly 20–30 KiB/s
-  on 2026-07-16. The public benchmark tooling is complete, but a full 7.1 GiB download should be resumed
-  only when the competition network window permits it; no data are transferred through SSH.
+- The allocated node's direct connection to the official MSD archive was measured at roughly 23 KiB/s
+  on 2026-07-17. The full 7.1 GiB archive is therefore not yet an executed benchmark result; the
+  resumable node-direct downloader, manifest checks and aggregate-only geometry receipt are complete.
+  Resume the transfer only when the competition network window permits it; no data are transferred
+  through SSH.

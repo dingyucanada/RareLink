@@ -42,20 +42,36 @@ def _md5_file(path: Path) -> str:
 
 
 def download_archive(url: str, destination: Path, expected_md5: str | None = None) -> Path:
-    """Download a public archive directly on the compute node and verify it."""
+    """Download a public archive directly on the compute node and verify it.
+
+    Public research hosts can be slow on shared competition nodes. A retained
+    ``.part`` file is resumed with an HTTP Range request when supported; data
+    never crosses the operator's SSH connection.
+    """
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = destination.with_suffix(destination.suffix + ".part")
     if destination.exists() and (not expected_md5 or _md5_file(destination) == expected_md5):
         return destination
-    temporary.unlink(missing_ok=True)
-    downloaded = 0
-    request = urllib.request.Request(url, headers={"User-Agent": "RareLink/0.1 benchmark-preparer"})
-    with urllib.request.urlopen(request, timeout=30) as response, temporary.open("wb") as output:
-        while chunk := response.read(1024 * 1024):
-            output.write(chunk)
-            downloaded += len(chunk)
-            if downloaded % (256 * 1024 * 1024) < len(chunk):
-                print(f"downloaded_mb={downloaded // (1024 * 1024)}", flush=True)
+
+    resumed_bytes = temporary.stat().st_size if temporary.exists() else 0
+    headers = {"User-Agent": "RareLink/0.1 benchmark-preparer"}
+    if resumed_bytes:
+        headers["Range"] = f"bytes={resumed_bytes}-"
+    request = urllib.request.Request(url, headers=headers)
+    with urllib.request.urlopen(request, timeout=30) as response:
+        supports_resume = resumed_bytes > 0 and getattr(response, "status", None) == 206
+        if resumed_bytes and not supports_resume:
+            resumed_bytes = 0
+        mode = "ab" if supports_resume else "wb"
+        downloaded = resumed_bytes
+        with temporary.open(mode) as output:
+            if resumed_bytes:
+                print(f"resuming_from_mb={resumed_bytes // (1024 * 1024)}", flush=True)
+            while chunk := response.read(1024 * 1024):
+                output.write(chunk)
+                downloaded += len(chunk)
+                if downloaded % (256 * 1024 * 1024) < len(chunk):
+                    print(f"downloaded_mb={downloaded // (1024 * 1024)}", flush=True)
     temporary.replace(destination)
     if expected_md5 and _md5_file(destination) != expected_md5:
         destination.unlink(missing_ok=True)

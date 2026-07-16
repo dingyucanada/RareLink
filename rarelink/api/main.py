@@ -243,12 +243,16 @@ def system_evidence(config: SettingsDep) -> dict[str, Any]:
     agent_redteam = _read_json_if_present(
         config.artifact_root / "agent-redteam" / "summary.json"
     )
+    public_benchmark = _read_json_if_present(
+        config.artifact_root / "public-benchmark" / "msd-task01-validation.json"
+    )
     return {
         "repeated_benchmark": repeated,
         "mtls_provisioning": provisioned,
         "mtls_runtime": runtime,
         "cross_device_mtls": cross_device,
         "agent_redteam": agent_redteam,
+        "public_benchmark": public_benchmark,
         "privacy_comparison": repeated.get("privacy_comparison") if repeated else None,
         "contains_patient_data": False,
         "evidence_scope": "synthetic_competition_engineering",

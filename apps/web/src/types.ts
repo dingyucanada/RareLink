@@ -202,6 +202,21 @@ export interface SystemEvidence {
     all_passed: boolean;
     enforcement: string;
   } | null;
+  public_benchmark: {
+    dataset_id: string;
+    public_benchmark_verified: boolean;
+    training_executed: boolean;
+    case_count: number;
+    site_count: number;
+    modalities: string[];
+    source: {
+      name: string;
+      url: string;
+      archive_md5_verified: boolean;
+      archive_sha256_recorded: boolean;
+    };
+    claim_boundary: string;
+  } | null;
   privacy_comparison: {
     mechanism: string;
     epsilon?: number;

@@ -1,0 +1,36 @@
+{
+  "schema_version": "rarelink-repeated-benchmark-v1",
+  "evidence_snapshot": true,
+  "captured_on": "2026-07-16",
+  "complete": true,
+  "seeds": [2026, 2027, 2028, 2029, 2030],
+  "strategies": ["local", "fedavg", "fedprox", "fedavg_svt", "fedavg_dpsgd"],
+  "trial_count": 25,
+  "strategy_summaries": {
+    "local": {"trial_count": 5, "metrics": {"mean_dice": {"n": 5, "mean": 0.049025, "std": 0.013654, "ci95": [0.032068, 0.065982]}, "worst_site_dice": {"n": 5, "mean": 0.023893, "std": 0.011558, "ci95": [0.009545, 0.038242]}}},
+    "fedavg": {"trial_count": 5, "metrics": {"mean_dice": {"n": 5, "mean": 0.080087, "std": 0.080502, "ci95": [0.0, 0.180028]}, "worst_site_dice": {"n": 5, "mean": 0.072276, "std": 0.075325, "ci95": [0.0, 0.165789]}}},
+    "fedprox": {"trial_count": 5, "metrics": {"mean_dice": {"n": 5, "mean": 0.073442, "std": 0.03538, "ci95": [0.029506, 0.117378]}, "worst_site_dice": {"n": 5, "mean": 0.051055, "std": 0.030026, "ci95": [0.01377, 0.08834]}}},
+    "fedavg_svt": {"trial_count": 5, "metrics": {"mean_dice": {"n": 5, "mean": 0.0, "std": 0.0, "ci95": [0.0, 0.0]}, "worst_site_dice": {"n": 5, "mean": 0.0, "std": 0.0, "ci95": [0.0, 0.0]}}},
+    "fedavg_dpsgd": {"trial_count": 5, "metrics": {"mean_dice": {"n": 5, "mean": 0.041315, "std": 0.05211, "ci95": [0.0, 0.106008]}, "worst_site_dice": {"n": 5, "mean": 0.037724, "std": 0.04862, "ci95": [0.0, 0.098084]}}}
+  },
+  "worst_site_win_rate": {"local": 0.2, "fedavg": 0.4, "fedprox": 0.2, "fedavg_svt": 0.0, "fedavg_dpsgd": 0.2},
+  "worst_site_improvement_vs_local": {"fedavg": {"improved_seed_count": 3}, "fedprox": {"improved_seed_count": 4}, "fedavg_svt": {"improved_seed_count": 0}, "fedavg_dpsgd": {"improved_seed_count": 2}},
+  "rounds": 3,
+  "local_epochs": 1,
+  "local_baseline_epochs": 3,
+  "compute_alignment": "equal_local_epoch_opportunities",
+  "privacy_comparison": {
+    "mechanism": "opacus_sample_level_dp_sgd",
+    "accountant": "rdp",
+    "accounting_scope": "sample_level_local_training",
+    "epsilon": 6.076881,
+    "delta": 0.00001,
+    "noise_multiplier": 1.2,
+    "max_grad_norm": 1.0,
+    "rounds_accounted": 3,
+    "sample_level_dp_accounted": true,
+    "end_to_end_sample_dp_claimed": false,
+    "claim_boundary": "Sample-level DP covers each site's local optimizer steps. It does not by itself provide user-level, institution-level, transport, or clinical privacy guarantees."
+  },
+  "interpretation_boundary": "Engineering stability evidence from simulated sites and synthetic data; not clinical validation."
+}
