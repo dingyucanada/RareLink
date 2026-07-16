@@ -1,6 +1,10 @@
 # RareLink 稀联
 
 <p align="center">
+  <strong>中文</strong> · <a href="README.en.md">English</a>
+</p>
+
+<p align="center">
   <img src="assets/rarelink-overview.svg" alt="RareLink architecture and evidence overview" width="100%" />
 </p>
 
@@ -27,7 +31,7 @@
 | Agent 不越权 | 输入脱敏、输出门控、人工审批、锁定实验合同和 26 项安全红队 |
 | 结果可以复现 | 5 种子 × 5 策略 × 3 轮、mTLS 收据、DP 会计和一键证据校验 |
 
-## 评审导航
+## 文档与研究入口
 
 | 想了解什么 | 直接查看 |
 | --- | --- |
@@ -42,6 +46,7 @@
 | 三分钟现场演示流程 | [演示视频脚本](outputs/RareLink-三分钟演示视频脚本.md) |
 | 从比赛到企业的下一步 | [企业化一页路线图](outputs/RareLink-企业化一页路线图.md) |
 | DGX Spark 黑客松开发历程 | [黑客松十日谈](outputs/RareLink-DGX-Spark黑客松十日谈.md) |
+| 技术、术语与数据权威资料 | [参考资料](docs/references.md) |
 
 ### 实机证据摘要
 
@@ -73,6 +78,9 @@ flowchart LR
 3. 运行 [评审一键复现包](DEMO.md)：不下载影像即可核验四个证据门。
 4. 最后看 [正式实机报告](outputs/RareLink-2026-07-17-DGX-Spark系统移植与实机实验正式报告.md)：查看过程、结果、推理和限制。
 
+<details>
+<summary>比赛评审标准映射（展开查看）</summary>
+
 ### 100 分评审映射
 
 | 权重 | 首页上的答案 | 证据入口 |
@@ -83,6 +91,23 @@ flowchart LR
 | 15% 平台适配 | DGX Spark GB10、CUDA、MONAI、NVIDIA FLARE | [部署手册](docs/deployment.md) |
 | 10% 演示 | 3 分钟脚本 + 两段短证据素材 | [视频脚本](outputs/RareLink-三分钟演示视频脚本.md) |
 | 5% 十日谈 | 开发历程已成稿，待发布外链 | [黑客松十日谈](outputs/RareLink-DGX-Spark黑客松十日谈.md) |
+
+</details>
+
+## 技术生态与数据来源
+
+| 类别 | 采用 / 来源 | 说明 |
+| --- | --- | --- |
+| 本地算力 | [NVIDIA DGX Spark](https://www.nvidia.com/en-us/products/workstations/dgx-spark/) · [User Guide](https://docs.nvidia.com/dgx/dgx-spark/index.html) | GB10 / ARM64 节点承载本地影像训练、FLARE Client 和服务。 |
+| GPU 软件 | [CUDA](https://developer.nvidia.com/cuda) · [PyTorch](https://pytorch.org/) | CUDA 张量计算、AMP、AdamW 与模型运行时。 |
+| 联邦学习 | [NVIDIA FLARE](https://nvidia.github.io/NVFlare/) · [GitHub](https://github.com/NVIDIA/NVFlare) | FedAvg/FedProx、Client API、mTLS 和联邦模拟/演练。 |
+| 医学影像 | [Project MONAI](https://project-monai.github.io/) · [MONAI Docs](https://docs.monai.io/) | NIfTI、三维 SegResNet、影像变换和评估。 |
+| 隐私训练 | [Opacus](https://opacus.ai/) | 样本级 DP-SGD、逐样本裁剪、噪声与 RDP 会计。 |
+| 联邦学习术语 | [NIST Glossary](https://csrc.nist.gov/glossary/term/federated_learning) | 联邦学习的权威定义与边界；联邦学习不自动等于合规。 |
+| 罕见病术语 | [NIH GARD](https://rarediseases.info.nih.gov/diseases/pages/31/faqs-about-rare-diseases) | 美国语境下的罕见病定义；本项目不据此宣称诊断或流行病学结论。 |
+| 公开研究基准 | [MSD](https://medicaldecathlon.com/) · [TCIA BraTS-PEDs](https://www.cancerimagingarchive.net/collection/brats-peds/) | MSD 下载器已实现；BraTS-PEDs 是计划中的合规外部验证来源，不包装为当前已完成训练结果。 |
+
+完整版本、DOI、许可证、数据使用政策和当前验证状态见[参考资料](docs/references.md)。
 
 ## Current milestone
 
