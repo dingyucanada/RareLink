@@ -235,10 +235,20 @@ def system_evidence(config: SettingsDep) -> dict[str, Any]:
     runtime = _read_json_if_present(
         config.artifact_root / "nvflare-secure-provision" / "mtls-runtime-evidence.json"
     )
+    cross_device = _read_json_if_present(
+        config.artifact_root
+        / "nvflare-secure-provision"
+        / "cross-device-mtls-evidence.json"
+    )
+    agent_redteam = _read_json_if_present(
+        config.artifact_root / "agent-redteam" / "summary.json"
+    )
     return {
         "repeated_benchmark": repeated,
         "mtls_provisioning": provisioned,
         "mtls_runtime": runtime,
+        "cross_device_mtls": cross_device,
+        "agent_redteam": agent_redteam,
         "privacy_comparison": repeated.get("privacy_comparison") if repeated else None,
         "contains_patient_data": False,
         "evidence_scope": "synthetic_competition_engineering",

@@ -63,7 +63,11 @@ export const api = {
       body: JSON.stringify({
         strategy,
         hypothesis: `${strategy} is evaluated under the locked benchmark contract`,
-        parameters: strategy === "fedprox" ? { mu: 0.01 } : {},
+        parameters: strategy === "fedprox"
+          ? { mu: 0.01 }
+          : strategy === "fedavg_dpsgd"
+            ? { noise_multiplier: 1.2, max_grad_norm: 1.0, delta: 0.00001 }
+            : {},
       }),
     }),
   runExperiment: (id: string) =>

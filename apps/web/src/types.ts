@@ -183,6 +183,25 @@ export interface SystemEvidence {
     connection_security: string;
     sensitive_runtime_tokens_included: boolean;
   } | null;
+  cross_device_mtls: {
+    same_physical_device: boolean;
+    connection_security: string;
+    registration: {
+      reconnect_succeeded: boolean;
+      successful_registration_count: number;
+    };
+    negative_control: {
+      wrong_identity_rejected: boolean;
+      reason_category: string;
+    };
+  } | null;
+  agent_redteam: {
+    case_count: number;
+    passed_count: number;
+    pass_rate: number;
+    all_passed: boolean;
+    enforcement: string;
+  } | null;
   privacy_comparison: {
     mechanism: string;
     epsilon?: number;

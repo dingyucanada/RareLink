@@ -183,7 +183,10 @@ function ActionPanel({ study, experiments, artifacts }: { study: Study; experime
         case "CONTRACT_LOCKED":
         case "TRAINING_RUNNING": {
           const existing = new Map(experiments.map((item) => [item.strategy, item]));
-          for (const strategy of ["local", "fedavg", "fedprox"]) {
+          const contractedStrategies = Array.isArray(study.contract?.strategies)
+            ? study.contract.strategies.filter((item): item is string => typeof item === "string")
+            : ["local", "fedavg", "fedprox"];
+          for (const strategy of contractedStrategies) {
             let experiment = existing.get(strategy);
             if (!experiment) experiment = await api.createExperiment(study.id, strategy);
             if (experiment.status === "PENDING") await api.runExperiment(experiment.id);

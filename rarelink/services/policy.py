@@ -1,3 +1,4 @@
+import re
 from collections.abc import Mapping
 from typing import Any
 
@@ -23,6 +24,20 @@ BLOCKED_KEY_FRAGMENTS = {
     "address",
     "file_path",
     "dicom_uid",
+    "pixel",
+    "voxel",
+    "nifti",
+    "raw_image",
+    "api_key",
+    "secret",
+}
+
+SENSITIVE_VALUE_PATTERNS = {
+    "api_credential_value": re.compile(r"\b(?:sk|key)-[A-Za-z0-9_-]{16,}\b"),
+    "email_value": re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE),
+    "phone_value": re.compile(r"(?<!\d)(?:\+?\d[\d -]{8,}\d)(?!\d)"),
+    "medical_file_path": re.compile(r"(?:/|[A-Z]:\\)[^\s]+\.(?:nii(?:\.gz)?|dcm)\b", re.I),
+    "dicom_uid_value": re.compile(r"\b\d+(?:\.\d+){4,}\b"),
 }
 
 
@@ -71,7 +86,7 @@ def sanitize_site_aggregate(
     )
 
 
-def sanitize_llm_payload(payload: Mapping[str, Any]) -> PolicyDecision:
+def sanitize_llm_payload(payload: Mapping[str, Any], min_group_size: int = 5) -> PolicyDecision:
     blocked: list[str] = []
 
     def walk(value: Any, path: str = "") -> Any:
@@ -81,11 +96,23 @@ def sanitize_llm_payload(payload: Mapping[str, Any]) -> PolicyDecision:
                 child_path = f"{path}.{key}" if path else str(key)
                 if _contains_identifier(str(key)):
                     blocked.append(child_path)
+                elif (
+                    str(key) in {"sample_count", "usable_count"}
+                    and isinstance(child, int)
+                    and child < min_group_size
+                ):
+                    blocked.append(child_path)
+                    result[str(key)] = f"<{min_group_size}"
                 else:
                     result[str(key)] = walk(child, child_path)
             return result
         if isinstance(value, list):
             return [walk(item, f"{path}[]") for item in value]
+        if isinstance(value, str):
+            for category, pattern in SENSITIVE_VALUE_PATTERNS.items():
+                if pattern.search(value):
+                    blocked.append(f"{path}:{category}")
+                    return "[REDACTED]"
         return value
 
     clean = walk(payload)

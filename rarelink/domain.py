@@ -56,7 +56,9 @@ class Protocol(BaseModel):
     guardrail_metrics: list[str] = Field(
         default_factory=lambda: ["worst_site_dice", "site_dice_std", "hd95"]
     )
-    allowed_strategies: list[str] = Field(default_factory=lambda: ["local", "fedavg", "fedprox"])
+    allowed_strategies: list[str] = Field(
+        default_factory=lambda: ["local", "fedavg", "fedprox", "fedavg_dpsgd"]
+    )
     limitations: list[str]
     source: str = "template"
 
@@ -68,10 +70,12 @@ class ExperimentContract(BaseModel):
     sites: list[str] = Field(default_factory=lambda: ["site-a", "site-b", "site-c"])
     task: str = "3d_tumor_segmentation"
     model: str = "segresnet-small"
-    strategies: list[str] = Field(default_factory=lambda: ["local", "fedavg", "fedprox"])
+    strategies: list[str] = Field(
+        default_factory=lambda: ["local", "fedavg", "fedprox", "fedavg_dpsgd"]
+    )
     rounds: int = Field(default=5, ge=1, le=50)
     local_epochs: int = Field(default=1, ge=1, le=10)
-    max_trials: int = Field(default=3, ge=1, le=10)
+    max_trials: int = Field(default=4, ge=1, le=10)
     primary_metric: str = "mean_dice"
     guardrail_metrics: list[str] = Field(
         default_factory=lambda: ["worst_site_dice", "site_dice_std", "hd95"]
@@ -88,10 +92,12 @@ class ExperimentProposal(BaseModel):
     sites: list[str] = Field(default_factory=lambda: ["site-a", "site-b", "site-c"])
     task: str = "3d_tumor_segmentation"
     model: str = "segresnet-small"
-    strategies: list[str] = Field(default_factory=lambda: ["local", "fedavg", "fedprox"])
+    strategies: list[str] = Field(
+        default_factory=lambda: ["local", "fedavg", "fedprox", "fedavg_dpsgd"]
+    )
     rounds: int = Field(default=5, ge=1, le=50)
     local_epochs: int = Field(default=1, ge=1, le=10)
-    max_trials: int = Field(default=3, ge=1, le=10)
+    max_trials: int = Field(default=4, ge=1, le=10)
     primary_metric: str = "mean_dice"
     guardrail_metrics: list[str] = Field(
         default_factory=lambda: ["worst_site_dice", "site_dice_std", "hd95"]

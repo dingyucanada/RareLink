@@ -56,7 +56,7 @@ def test_complete_mock_research_workflow(client: TestClient) -> None:
     assert proposal_response.status_code == 200
     proposal = proposal_response.json()["content"]
     assert proposal_response.json()["role"] == "experiment-designer-agent"
-    assert proposal["strategies"] == ["local", "fedavg", "fedprox"]
+    assert proposal["strategies"] == ["local", "fedavg", "fedprox", "fedavg_dpsgd"]
 
     contract = client.post(
         f"/api/studies/{study_id}/contract:lock",
@@ -69,13 +69,19 @@ def test_complete_mock_research_workflow(client: TestClient) -> None:
     assert contract.status_code == 200
     assert contract.json()["status"] == "CONTRACT_LOCKED"
 
-    for strategy in ["local", "fedavg", "fedprox"]:
+    for strategy in ["local", "fedavg", "fedprox", "fedavg_dpsgd"]:
         experiment = client.post(
             f"/api/studies/{study_id}/experiments",
             json={
                 "strategy": strategy,
                 "hypothesis": f"Evaluate {strategy} under the locked benchmark",
-                "parameters": {"mu": 0.01} if strategy == "fedprox" else {},
+                "parameters": (
+                    {"mu": 0.01}
+                    if strategy == "fedprox"
+                    else {"noise_multiplier": 1.2, "max_grad_norm": 1.0, "delta": 1e-5}
+                    if strategy == "fedavg_dpsgd"
+                    else {}
+                ),
             },
         )
         assert experiment.status_code == 201

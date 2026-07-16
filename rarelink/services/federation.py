@@ -39,6 +39,7 @@ class MockFederationRunner:
         "local": [0.61, 0.55, 0.49],
         "fedavg": [0.72, 0.66, 0.58],
         "fedprox": [0.73, 0.68, 0.63],
+        "fedavg_dpsgd": [0.69, 0.63, 0.56],
     }
 
     def run(
@@ -107,7 +108,7 @@ class MonaiNvflareRunner:
         normalized = strategy.lower()
         if normalized == "local":
             return self._run_local(contract)
-        if normalized in {"fedavg", "fedprox"}:
+        if normalized in {"fedavg", "fedprox", "fedavg_dpsgd"}:
             return self._run_nvflare(normalized, parameters, contract)
         raise ValueError(f"Real runner does not support strategy {normalized!r}")
 
@@ -185,6 +186,17 @@ class MonaiNvflareRunner:
         ]
         if strategy == "fedprox":
             command.extend(["--fedprox-mu", str(parameters.get("mu", 0.01))])
+        if strategy == "fedavg_dpsgd":
+            command.extend(
+                [
+                    "--dp-noise-multiplier",
+                    str(parameters.get("noise_multiplier", 1.2)),
+                    "--dp-max-grad-norm",
+                    str(parameters.get("max_grad_norm", 1.0)),
+                    "--dp-delta",
+                    str(parameters.get("delta", 1e-5)),
+                ]
+            )
 
         self.progress(5, f"Starting NVIDIA FLARE {strategy.upper()} recipe")
         with log_path.open("w", encoding="utf-8") as log_stream:

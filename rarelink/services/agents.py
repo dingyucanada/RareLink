@@ -12,6 +12,7 @@ from rarelink.domain import (
     Protocol,
     ResearchNarrative,
 )
+from rarelink.security.agent_guard import guard_agent_output
 from rarelink.services.policy import sanitize_llm_payload
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
@@ -79,10 +80,13 @@ class TemplateResearchAgentTeam:
                 "local": "Establish the isolated-site performance floor.",
                 "fedavg": "Test whether shared representation improves mean performance.",
                 "fedprox": "Test robustness to the observed site distribution shift.",
+                "fedavg_dpsgd": (
+                    "Measure the utility cost of accounted sample-level DP-SGD local updates."
+                ),
             },
             rationale=[
                 f"Use the protocol endpoint {protocol.get('primary_endpoint', 'mean_dice')}.",
-                f"Compare three strategies over {len(feasibility.get('sites', []))} sites.",
+                f"Compare four strategies over {len(feasibility.get('sites', []))} sites.",
                 "Select by worst-site performance as well as the mean.",
             ],
             source="template",
@@ -200,7 +204,7 @@ class TemplateResearchAgentTeam:
             ),
             methods=[
                 "Three logical sites retained patient-level data locally.",
-                "Local, FedAvg, and FedProx used the same locked comparison contract.",
+                "Local, FedAvg, FedProx, and DP-SGD used one locked comparison contract.",
                 "Selection considered mean and worst-site performance.",
             ],
             findings=review["evidence"] + review["fairness_findings"],
@@ -255,6 +259,10 @@ class StepResearchAgentTeam:
         if not content:
             raise ValueError(f"Step 3.7 returned an empty result for {role}")
         result = response_model.model_validate_json(content)
+        output_guard = guard_agent_output(result.model_dump())
+        if not output_guard.allowed:
+            categories = ", ".join(output_guard.categories)
+            raise ValueError(f"Step 3.7 output blocked by Agent safety gate: {categories}")
         if hasattr(result, "source"):
             result.source = "step-3.7"
         return result
