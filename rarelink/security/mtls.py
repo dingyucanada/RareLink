@@ -7,7 +7,8 @@ from typing import Any
 REGISTRATION_PATTERN = re.compile(r"Successfully registered client:(?P<site>[^ ]+)")
 REJECTION_PATTERNS = {
     "startup_signature_rejection": re.compile(
-        r"signature.*(not|fail|invalid|verify|verification)", re.IGNORECASE
+        r"(signature.*(not|fail|invalid|verify|verification)|not secure content)",
+        re.IGNORECASE,
     ),
     "certificate_identity_mismatch": re.compile(
         r"(identity|certificate|participant).*(mismatch|not match|invalid)", re.IGNORECASE

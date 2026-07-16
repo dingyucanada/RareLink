@@ -305,6 +305,9 @@ sudo docker exec -it rarelink-api python3 scripts/run_repeated_benchmark.py \
   --workspace artifacts/repeated-benchmark
 ```
 
+Local 基线会自动使用 `rounds × local_epochs`，与联邦客户端获得相同的本地 epoch 机会。若旧工作区
+已经保存了预算未对齐的 Local 记录，追加 `--rerun-strategies local`，只替换 Local，不重跑联邦策略。
+
 ## 9. 演示证据
 
 录屏时应同时展示：

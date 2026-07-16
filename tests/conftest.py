@@ -1,4 +1,5 @@
 from collections.abc import Generator
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -12,7 +13,7 @@ from rarelink.database import get_session
 
 
 @pytest.fixture
-def client() -> Generator[TestClient, None, None]:
+def client(tmp_path: Path) -> Generator[TestClient, None, None]:
     engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},
@@ -37,6 +38,7 @@ def client() -> Generator[TestClient, None, None]:
         step_api_key="",
         rarelink_allow_llm=False,
         rarelink_fl_mode="mock",
+        artifact_root=tmp_path / "artifacts",
     )
     with TestClient(app) as test_client:
         yield test_client

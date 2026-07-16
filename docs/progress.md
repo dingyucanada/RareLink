@@ -42,21 +42,24 @@
 - [x] MONAI Dice and official HD95 metric integration through SciPy
 - [x] Public MSD Task01 direct-download script, archive/file hashes and deterministic non-IID split
 - [x] Optional public-demo access gate and injected pre-training failure/retry demo
-- [x] Three-seed, four-strategy repeated benchmark with Student-t intervals and win rates
+- [x] Five-seed, five-strategy, three-round benchmark with aligned Local compute budget
 - [x] FLARE mTLS startup-kit provisioning and three-client secure registration on Spark
 - [x] SVTPrivacy model-update filter and privacy-utility comparison with claim boundaries
 - [x] Four-modal synthetic MRI Canvas preview with local segmentation overlays
 - [x] Evidence cockpit cards for robustness, mTLS runtime and privacy configuration
+- [x] Opacus DP-SGD with sample clipping and three-round RDP accounting
+- [x] Spark–Mac mTLS registration, dropout/reconnect, and wrong-identity negative control
+- [x] Deterministic 26-case Agent input/output red team enforced around Step 3.7
 
 ## Next Spark milestone
 
-- [ ] Inspect the allocated DGX Spark runtime without changing it
-- [ ] Pin an ARM64-compatible PyTorch/MONAI environment after a GPU smoke test
+- [x] Inspect the allocated DGX Spark runtime without changing it
+- [x] Pin an ARM64-compatible PyTorch/MONAI environment after a GPU smoke test
 - [x] Add synthetic NIfTI generation with MONAI transforms
 - [x] Implement the single-site SegResNet training runner
 - [x] Implement a three-site NVFLARE Recipe/Client simulation entry point
-- [ ] Run the MONAI and NVFLARE jobs on the allocated Spark GPU
-- [ ] Capture real Spark runtime and memory evidence in the capabilities endpoint
+- [x] Run the MONAI and NVFLARE jobs on the allocated Spark GPU
+- [x] Capture real Spark runtime and memory evidence in the evidence endpoint and reports
 
 ## Known boundaries
 
@@ -65,8 +68,8 @@
   competition configuration now uses this mode.
 - The command-line MONAI/NVFLARE runners perform real training, but the checked-in synthetic cohort is
   only an engineering fixture, not a clinical benchmark.
-- Spark GPU performance and unified-memory evidence must be measured on the allocated node before any
-  throughput or speedup claim is made.
+- Spark measurements are engineering observations only; no throughput superiority or clinical
+  performance claim is made from the tiny synthetic cohort.
 - NVFLARE `SimEnv` can emit a harmless Python multiprocessing semaphore warning during interpreter
   shutdown; success is determined by the persisted global-model postcondition, not process text alone.
 - The allocated node's direct connection to the official MSD archive was measured at roughly 20–30 KiB/s

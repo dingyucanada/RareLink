@@ -55,6 +55,7 @@ def _run_local(
     return {
         "seed": seed,
         "strategy": "local",
+        "effective_local_epochs": epochs,
         "metrics": _aggregate_sites(site_results),
         "elapsed_seconds": round(time.perf_counter() - started, 4),
         "peak_gpu_memory_mb": max(
@@ -216,6 +217,13 @@ def main() -> None:
         help="Reuse completed seed/strategy records from the same workspace",
     )
     parser.add_argument(
+        "--rerun-strategies",
+        nargs="*",
+        choices=["local", "fedavg", "fedprox", "fedavg_svt", "fedavg_dpsgd"],
+        default=[],
+        help="Replace completed records for selected strategies while reusing the rest",
+    )
+    parser.add_argument(
         "--workspace", type=Path, default=Path("artifacts/repeated-benchmark")
     )
     args = parser.parse_args()
@@ -235,6 +243,11 @@ def main() -> None:
         if args.resume and records_path.exists()
         else []
     )
+    if args.rerun_strategies:
+        records = [item for item in records if item["strategy"] not in args.rerun_strategies]
+        records_path.write_text(
+            json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
     completed_pairs = {(int(item["seed"]), str(item["strategy"])) for item in records}
     for seed in args.seeds:
         for strategy in args.strategies:
@@ -245,7 +258,11 @@ def main() -> None:
             print(f"running seed={seed} strategy={strategy}", flush=True)
             if strategy == "local":
                 record = _run_local(
-                    manifest, sites, seed, args.local_epochs, trial_workspace
+                    manifest,
+                    sites,
+                    seed,
+                    args.rounds * args.local_epochs,
+                    trial_workspace,
                 )
             else:
                 record = _run_federated(
@@ -276,6 +293,8 @@ def main() -> None:
             "sites": sites,
             "rounds": args.rounds,
             "local_epochs": args.local_epochs,
+            "local_baseline_epochs": args.rounds * args.local_epochs,
+            "compute_alignment": "equal_local_epoch_opportunities",
             "fedprox_mu": args.fedprox_mu,
             "privacy_comparison": _summarize_privacy_comparison(
                 records,

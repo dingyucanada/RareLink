@@ -55,3 +55,17 @@ def test_cross_device_evidence_classifies_startup_signature_rejection() -> None:
     )
 
     assert report["negative_control"]["reason_category"] == "startup_signature_rejection"
+
+
+def test_cross_device_evidence_classifies_unsigned_startup_content() -> None:
+    report = build_cross_device_mtls_evidence(
+        runtime("federation-server", "spark"),
+        runtime("federation-client", "mac"),
+        "Successfully registered client:site-c",
+        "Successfully registered client:site-c",
+        "The following files are not secure content: client.crt client.key",
+        "site-c",
+        1,
+    )
+
+    assert report["negative_control"]["reason_category"] == "startup_signature_rejection"

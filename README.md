@@ -117,6 +117,10 @@ python3 scripts/run_repeated_benchmark.py \
   --resume --workspace artifacts/repeated-benchmark
 ```
 
+The Local baseline automatically trains for `rounds × local_epochs` so every strategy receives the
+same number of local epoch opportunities. If an older workspace contains under-trained Local records,
+replace only those records with `--resume --rerun-strategies local`.
+
 ## Agent safety evidence
 
 The deterministic gateway redacts patient identifiers, raw-image fields, DICOM UIDs, medical file

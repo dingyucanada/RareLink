@@ -1,4 +1,4 @@
-# RareLink 四项获奖升级：DGX Spark 实机报告
+# RareLink 获奖证据升级：DGX Spark 实机报告
 
 验证日期：2026-07-16  
 数据边界：全部训练和预览数据均为程序生成的非临床合成 NIfTI；不包含患者数据。  
@@ -6,29 +6,32 @@
 
 ## 1. 结论
 
-六天冲刺计划中的四项高价值升级已经形成可运行闭环：
+六天冲刺计划中的高价值升级已经形成可运行闭环：
 
-1. 三个随机种子的 Local、FedAvg、FedProx、FedAvg+SVT 共 12 个对齐试验全部完成；
-2. NVIDIA FLARE Server 与 Site A/B/C 使用独立证书启动，三个客户端完成 mTLS 注册；
-3. NVIDIA FLARE `SVTPrivacy` 模型更新过滤器完成实际训练与隐私—效用对照；
-4. T1、T1CE、T2、FLAIR 四模态合成 MRI 与标签叠加由 Spark 本地 API 生成并在浏览器 Canvas 展示；像素数据不进入 Step 3.7。
+1. 五个随机种子的 Local、FedAvg、FedProx、FedAvg+SVT、FedAvg+DP-SGD 共 25 个三轮对齐试验全部完成；
+2. Local 使用 3 epochs，与联邦客户端的 3 轮 × 1 epoch 对齐本地训练机会；
+3. NVIDIA FLARE Server 与 Site A/B/C 使用独立证书启动，并完成 Spark–Mac 双物理设备 mTLS、掉线重连和错误身份拒绝；
+4. Opacus DP-SGD 完成逐样本裁剪、加噪以及跨轮 RDP `(epsilon, delta)` 会计；
+5. 26 条 Agent 输入/输出红队用例在 Spark 上全部通过；
+6. T1、T1CE、T2、FLAIR 四模态合成 MRI 与标签叠加由 Spark 本地 API 生成并在浏览器 Canvas 展示，像素数据不进入 Step 3.7。
 
-标准演示研究还通过控制平面完成了 Local、FedAvg、FedProx 三项真实任务，全局模型、指标和日志均回写数据库，研究状态进入 `RESULTS_REVIEW`。证据叙事 Agent 使用 12 次重复实验的聚合摘要生成稳定性结论。
+标准演示研究还通过控制平面完成了真实任务，全局模型、指标和日志均回写数据库，研究状态进入 `RESULTS_REVIEW`。证据叙事 Agent 使用 25 次重复实验的聚合摘要生成稳定性结论。
 
 ## 2. 多随机种子稳定性实验
 
-合同配置：随机种子 `2026/2027/2028`、三个逻辑站点、每种策略 1 个联邦轮次、每站点 1 个本地 epoch、相同 SegResNet 和数据清单。共完成 12 个策略—种子组合。
+合同配置：随机种子 `2026/2027/2028/2029/2030`、三个逻辑站点、每种联邦策略 3 轮、每轮每站点 1 个本地 epoch、Local 3 epochs、相同 SegResNet 和数据清单。共完成 25 个策略—种子组合。
 
 | 策略 | Mean Dice，均值±标准差 | Worst-site Dice，均值±标准差 | HD95 均值 | 最弱站点胜率 | 平均耗时 | 峰值 GPU 内存 |
 |---|---:|---:|---:|---:|---:|---:|
-| Local | 0.034033 ± 0.003490 | 0.010714 ± 0.002490 | 16.623686 | 0% | 1.58 s | 25.81 MB |
-| FedAvg | 0.018193 ± 0.006839 | 0.015082 ± 0.005266 | 15.859248 | 0% | 33.57 s | 22.59 MB |
-| FedProx | 0.067265 ± 0.050893 | 0.061712 ± 0.046029 | 17.016439 | 66.7% | 33.87 s | 23.01 MB |
-| FedAvg + SVT | 0.058791 ± 0.069742 | 0.056088 ± 0.069499 | 15.157358 | 33.3% | 33.85 s | 22.59 MB |
+| Local | 0.049025 ± 0.013654 | 0.023893 ± 0.011558 | 14.514729 | 20% | 1.52 s | 24.38 MB |
+| FedAvg | 0.080087 ± 0.080502 | 0.072276 ± 0.075325 | 14.390605 | 40% | 73.05 s | 20.73 MB |
+| FedProx | 0.073442 ± 0.035380 | 0.051055 ± 0.030026 | 13.879725 | 20% | 72.68 s | 21.59 MB |
+| FedAvg + SVT | 0.000000 ± 0.000000 | 0.000000 ± 0.000000 | 0.000000 | 0% | 73.21 s | 20.73 MB |
+| FedAvg + DP-SGD | 0.041315 ± 0.052110 | 0.037724 ± 0.048620 | 18.970487 | 20% | 73.59 s | 55.78 MB |
 
-FedAvg、FedProx 和 FedAvg+SVT 相比 Local 分别在 3/3、3/3、2/3 个种子上改善最弱站点 Dice。但由于数据极小、只有单轮训练，区间很宽，不能据此宣称 FedProx 或隐私策略具有医学优越性。这个实验的价值是证明：RareLink 能执行对齐重复试验、暴露不稳定性，并阻止 Agent 用单次最好结果下结论。
+FedAvg、FedProx、DP-SGD 和 SVT 相比 Local 分别在 3/5、4/5、2/5、0/5 个种子上改善最弱站点 Dice。FedAvg 最弱站点胜率为 40%，但其 95% t 区间仍很宽；不能据此宣称任何医学优越性。SVT 在“仅共享 1% 更新”的严格配置下五次均退化为 0，清楚展示了隐私过滤强度与可用性的冲突，而不是被隐藏的失败结果。
 
-证据叙事 Agent 给出的当前工程候选为 FedProx，依据为 3 次重复、Mean Dice 0.0673、Worst-site Dice 0.0617、最弱站点胜率 66.7%；同时明确输出“非临床验证”“三种子区间较宽”“SVT 不等于端到端样本级 DP”。
+证据叙事 Agent 给出的当前工程候选为 FedAvg，依据为 5 次重复、Mean Dice 0.0801、Worst-site Dice 0.0723、最弱站点胜率 40%；同时明确输出“合成工程证据”“五种子区间仍宽”“DP-SGD 只覆盖本地训练步骤”。
 
 ## 3. FLARE mTLS 安全通信演练
 
@@ -40,9 +43,11 @@ FedAvg、FedProx 和 FedAvg+SVT 相比 Local 分别在 3/3、3/3、2/3 个种子
 - 每个 startup kit 的签名文件；
 - 独立组织标识 `hospital_a`、`hospital_b`、`hospital_c`。
 
-Spark 运行态启动一个 Server 和三个 Client 进程，三个站点均记录 `Successfully registered client`。脱敏证据文件只保存站点 ID、注册时间和 mTLS 状态，不保存运行令牌、会话 ID 或私钥。证书私钥仅保留在 Spark 的忽略目录中，不进入 Git，也不经 SSH 导出。
+第一阶段在 Spark 运行一个 Server 和三个 Client，三个站点均完成安全注册。第二阶段在 Spark 运行 Server，在 Mac 运行 Site C，通过 SSH 隧道承载 FLARE mTLS 控制流量：首次注册成功、主动结束客户端后再次注册成功；将 Site B 证书替换进声明为 Site C 的临时启动包时，FLARE 启动签名校验以非零状态拒绝。
 
-准确表述：**已在单台 DGX Spark 上完成三个隔离站点的 mTLS 安全注册演练；尚未完成真实医院网络部署。**
+脱敏证据只保存设备平台、哈希化设备指纹、注册/重连布尔值和拒绝类别，不保存运行令牌、会话 ID、私钥或原始日志。临时启动包只通过加密 SSH 进入 Mac 的 `/private/tmp`，不进入 Git，证据固化后删除。
+
+准确表述：**已完成 DGX Spark–Mac 两物理设备的 mTLS 注册、掉线重连与错误身份负面对照；尚未完成医院 WAN、可用性压力或生产身份系统验证。**
 
 复现：
 
@@ -65,11 +70,11 @@ python3 scripts/capture_mtls_runtime_evidence.py \
 | `epsilon` 参数/调用 | 0.1 |
 | 共享更新比例 | 1% |
 | `noise_var` 参数 | 0.1 |
-| 每客户端调用次数 | 1 |
+| 每客户端调用次数 | 3 |
 
-该策略确实运行了 FLARE 客户端输出过滤器，而不是只在报告中模拟噪声。当前安装的 NVIDIA FLARE 2.7.2 过滤器暴露 SVT 参数，但本项目没有把它包装成完整的样本级 DP-SGD 会计。因此界面和 JSON 均写明：`accounting_scope=filter_configuration_only`、`end_to_end_sample_dp_claimed=false`。
+该策略确实运行了 FLARE 客户端输出过滤器，而不是只在报告中模拟噪声。FLARE 2.7.2 的 SVT 结果仍只作过滤器配置级证据，不能冒充样本级 DP 会计。本次五种子实验的 Dice 全部为 0，说明该配置不可作为当前工程候选。
 
-下一阶段若要形成患者级 `(epsilon, delta)` 保证，应接入基于 Opacus 的 DP-SGD、逐样本梯度裁剪、采样率和跨轮次隐私会计。
+第五种策略使用 Opacus 1.6.0 DP-SGD：`noise_multiplier=1.2`、`max_grad_norm=1.0`、Poisson 采样率 `1/3`、每站点 3 轮共保守计入 9 个计划优化步。在 `delta=1e-5` 下，三站点和五次重复的累计 `epsilon` 均为 `6.076881`。准确边界是样本级本地训练会计，不是端到端系统、用户级、医院级或临床隐私保证。
 
 ## 5. 四模态 MRI 本地感知
 
@@ -93,16 +98,16 @@ DRAFT → PROTOCOL_REVIEW → FEASIBILITY_RUNNING → FEASIBILITY_REVIEW
 → CONTRACT_LOCKED → TRAINING_RUNNING → RESULTS_REVIEW
 ```
 
-Local、FedAvg、FedProx 三个后台任务均为 `COMPLETED`；FedAvg 与 FedProx 均生成 `FL_global_model.pt`。Agent 稳定性解读、三随机种子证据、mTLS 注册和隐私配置均可由 `/api/system/evidence` 返回。
+Local、FedAvg、FedProx 和 DP-SGD 均已接入控制面；联邦策略生成 `FL_global_model.pt`。五随机种子稳定性、跨设备 mTLS、DP 会计和 Agent 红队证据均可由 `/api/system/evidence` 返回。
 
-本轮回归结果：18 项 Python 测试通过，前端测试通过，TypeScript 与 Vite 生产构建通过。
+本轮回归结果：30 项 Python 测试通过，Ruff 通过，TypeScript 与 Vite 生产构建通过；Agent 红队 26/26 通过。
 
 ## 7. 仍然保留的限制
 
-- 三个站点仍在同一台 Spark 上，不是三家真实医院；
+- 训练实验仍是在单台 Spark 上模拟三个逻辑站点，不是三家真实医院；跨设备 mTLS 只验证通信身份链路；
 - 使用合成数据，不是儿童胶质瘤临床效果验证；
-- SVT 是更新过滤器配置级证据，不是完整患者级 DP-SGD 会计；
-- 三个随机种子和单轮训练只能说明工程稳定性，不能支撑医学统计推断；
+- SVT 是更新过滤器配置级证据；DP-SGD 是样本级本地训练会计，二者都不是完整临床隐私证明；
+- 五个随机种子和三轮训练仍只能说明合成工程稳定性，不能支撑医学统计推断；
 - 当前 PyTorch 对 GB10 compute capability 12.1 仍给出正式支持上限 12.0 的警告，尽管所有 CUDA 任务实际成功。
 
 这些限制将在比赛界面、报告和视频中继续明确展示。
@@ -120,4 +125,4 @@ Local、FedAvg、FedProx 三个后台任务均为 `COMPLETED`；FedAvg 与 FedPr
 
 样本级 DP 的准确声明是：**已对每家站点的本地训练步骤进行可复算的样本级 DP-SGD 会计；未宣称端到端系统、用户级、医院级或临床隐私保证。**
 
-正式稳定性矩阵配置已升级为 5 个随机种子、5 种策略、3 个联邦轮次，共 25 项。当前 Spark 已持久化前 9 项；第 10 项暴露并促成了 Poisson 空批次修复。完整矩阵必须在断点续跑结束并生成 `complete=true` 的汇总后，才能替换本报告第 2 节的旧三种子数据。
+正式稳定性矩阵已经完成 5 个随机种子、5 种策略、3 个联邦轮次，共 25 项，并生成 `complete=true` 汇总。运行中暴露的两个 Opacus 边界——普通空 Poisson 批次与第一批即为空时的 MONAI 字典 dtype 推导——均已修复、增加回归测试并在原失败种子上复验通过。
