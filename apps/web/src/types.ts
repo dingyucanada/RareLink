@@ -287,3 +287,38 @@ export interface GpuSnapshot {
     temperature_c: number;
   }>;
 }
+
+export interface MsdRunReceipt {
+  available: boolean;
+  dataset?: string;
+  execution?: {
+    status: string;
+    strategy: string;
+    rounds: number;
+    local_epochs: number;
+    elapsed_seconds: number;
+    peak_gpu_memory_mb: number;
+    simulated_sites: boolean;
+  };
+  aggregate_metrics?: {
+    mean_dice: number;
+    worst_site_dice: number;
+    site_dice_std: number;
+    hd95: number;
+    sites: SiteMetric[];
+  };
+  files?: Array<{ name: string; sha256: string }>;
+  site_receipts?: Array<SiteMetric & {
+    round: number;
+    elapsed_seconds: number;
+    peak_gpu_memory_mb: number;
+  }>;
+  boundary?: string;
+}
+
+export interface MsdRunVerification {
+  passed: boolean;
+  checks: Record<string, boolean>;
+  verified_at: string;
+  receipt: MsdRunReceipt;
+}

@@ -29,6 +29,7 @@ const MetricChart = lazy(() => import("./components/MetricChart"));
 const MarkdownReport = lazy(() => import("./components/MarkdownReport"));
 const ImagingPreview = lazy(() => import("./components/ImagingPreview"));
 const SystemEvidence = lazy(() => import("./components/SystemEvidence"));
+const VerifiedRunConsole = lazy(() => import("./components/VerifiedRunConsole"));
 
 function EmptyState({ create }: { create: () => void }) {
   return (
@@ -73,7 +74,7 @@ function SiteCards({ study }: { study: Study }) {
           <div className="site-head">
             <span className={`site-dot site-${index + 1}`} />
             <strong>{site.site_id.toUpperCase()}</strong>
-            <span className="simulation-tag">模拟站点</span>
+            <span className="simulation-tag">WORKFLOW SANDBOX</span>
           </div>
           <div className="site-number">{site.usable_count}<small> / {site.sample_count} 可用</small></div>
           <div className="meter"><i style={{ width: `${site.label_completeness * 100}%` }} /></div>
@@ -93,14 +94,14 @@ function JudgeJourney({ study, experiments }: { study: Study; experiments: Exper
   return (
     <section className="judge-journey">
       <div className="journey-intro">
-        <span><Eye size={17} /> JUDGE PATH · 90 SECONDS</span>
-        <strong>不是“训练一个模型”，而是让多中心科研形成可审计证据。</strong>
+        <span><Eye size={17} /> INTERACTIVE WORKFLOW · 90 SECONDS</span>
+        <strong>这是可操作的科研流程沙盘；实机结论以已核验的 Spark 收据为准。</strong>
       </div>
       <div className="journey-steps">
         <div><span>01</span><strong>数据留在科室</strong><small>原始 MRI 与标签不离站</small></div>
-        <div><span>02</span><strong>DGX Spark 本地训练</strong><small>统一内存保护串行真实任务</small></div>
+        <div><span>02</span><strong>DGX Spark 本地训练</strong><small>真实任务采用统一内存保护串行调度</small></div>
         <div><span>03</span><strong>FLARE 聚合更新</strong><small>Local / FedAvg / FedProx 对照</small></div>
-        <div><span>04</span><strong>Agent 解释证据</strong><small>{completed ? `${completed} 项完成实验 · 仅聚合指标` : "等待首项实验完成"}</small></div>
+        <div><span>04</span><strong>Agent 解释证据</strong><small>{completed ? `${completed} 项沙盘实验 · 仅聚合指标` : "等待首项沙盘实验完成"}</small></div>
       </div>
     </section>
   );
@@ -330,7 +331,7 @@ function App() {
     <div className="app-shell">
       <header>
         <div className="brand"><div className="brand-mark"><Network size={21} /></div><div><strong>RareLink</strong><small>稀联 · 联邦科研智能体</small></div></div>
-        <div className="header-boundary"><ShieldCheck size={16} /> RESEARCH USE ONLY · 三站点模拟</div>
+        <div className="header-boundary"><ShieldCheck size={16} /> RESEARCH USE ONLY · VERIFIED RECEIPTS + WORKFLOW SANDBOX</div>
         <div className="system-pills">
           <span className={capabilities.data?.gpu_available ? "ok" : "muted"}><Server size={14} /> {capabilities.data?.gpu_available ? "GPU READY" : "LOCAL DEV"}</span>
           <span className={capabilities.data?.local_inference_available ? "ok" : "muted"}><BrainCircuit size={14} /> {capabilities.data?.local_inference_available ? "SPARK LLM READY" : "SPARK LLM STANDBY"}</span>
@@ -346,6 +347,10 @@ function App() {
           </div>
           <div className="status-badge"><i /> {study.status.replaceAll("_", " ")}</div>
         </section>
+
+        <Suspense fallback={<div className="run-console loading-console">正在读取 DGX Spark 实机收据…</div>}>
+          <VerifiedRunConsole />
+        </Suspense>
 
         <StatusRail study={study} />
         <JudgeJourney study={study} experiments={experiments.data ?? []} />

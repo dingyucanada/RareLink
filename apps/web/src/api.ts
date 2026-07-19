@@ -1,4 +1,4 @@
-import type { AgentArtifact, AuditEvent, Capabilities, Experiment, ImagingPreview, Study, SystemEvidence, TrainingJob } from "./types";
+import type { AgentArtifact, AuditEvent, Capabilities, Experiment, ImagingPreview, MsdRunReceipt, MsdRunVerification, Study, SystemEvidence, TrainingJob } from "./types";
 
 const DEMO_TOKEN = import.meta.env.VITE_RARELINK_DEMO_TOKEN as string | undefined;
 const JSON_HEADERS = { "Content-Type": "application/json" };
@@ -17,6 +17,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   capabilities: () => request<Capabilities>("/api/system/capabilities"),
   systemEvidence: () => request<SystemEvidence>("/api/system/evidence"),
+  msdRun: () => request<MsdRunReceipt>("/api/system/msd-run"),
+  verifyMsdRun: () => request<MsdRunVerification>("/api/system/msd-run:verify", { method: "POST" }),
   listStudies: () => request<Study[]>("/api/studies"),
   getStudy: (id: string) => request<Study>(`/api/studies/${id}`),
   imagingPreview: (studyId: string, siteId: string) =>

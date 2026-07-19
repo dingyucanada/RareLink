@@ -3,6 +3,7 @@ import io
 import json
 import secrets
 import zipfile
+from hashlib import sha256
 from contextlib import asynccontextmanager
 from typing import Annotated, Any
 
@@ -230,6 +231,99 @@ def _read_json_if_present(path) -> dict[str, Any] | None:  # type: ignore[no-unt
     if not path.exists():
         return None
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _sha256_file(path) -> str:  # type: ignore[no-untyped-def]
+    """Return a file digest without exposing the file's contents to the API."""
+    digest = sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def msd_run_receipt(config: Settings) -> dict[str, Any] | None:
+    """Load aggregate-only evidence from the completed DGX Spark MSD run.
+
+    This is intentionally separate from the interactive workflow sandbox: the
+    endpoint only reads the committed run receipt and never returns images,
+    labels, case IDs, credentials, or model weights.
+    """
+    root = config.artifact_root / "spark-msd-real-20260720"
+    summary_path = root / "fedavg-summary.json"
+    if not summary_path.exists():
+        return None
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    metric_paths = sorted((root / "metrics").glob("site-*-round-*.json"))
+    metrics = [json.loads(path.read_text(encoding="utf-8")) for path in metric_paths]
+    return {
+        "available": True,
+        "dataset": "MSD Task01 · public four-modal brain tumour MRI",
+        "execution": {
+            "status": summary.get("status"),
+            "strategy": summary.get("strategy"),
+            "rounds": summary.get("rounds"),
+            "local_epochs": summary.get("local_epochs"),
+            "elapsed_seconds": summary.get("elapsed_seconds"),
+            "peak_gpu_memory_mb": summary.get("peak_gpu_memory_mb"),
+            "simulated_sites": summary.get("simulated_sites"),
+        },
+        "aggregate_metrics": summary.get("metrics"),
+        "files": [
+            {"name": "fedavg-summary.json", "sha256": _sha256_file(summary_path)},
+            *[
+                {"name": path.name, "sha256": _sha256_file(path)}
+                for path in metric_paths
+            ],
+        ],
+        "site_receipts": [
+            {
+                "site_id": metric.get("site_id"),
+                "round": metric.get("round"),
+                "dice": metric.get("mean_dice"),
+                "hd95": metric.get("hd95"),
+                "elapsed_seconds": metric.get("elapsed_seconds"),
+                "peak_gpu_memory_mb": metric.get("peak_gpu_memory_mb"),
+            }
+            for metric in metrics
+        ],
+        "boundary": (
+            "24-case public MSD Task01 engineering smoke test on one Spark with three logical "
+            "sites; not paediatric, clinical-performance, or real cross-hospital evidence."
+        ),
+    }
+
+
+@app.get("/api/system/msd-run")
+def get_msd_run(config: SettingsDep) -> dict[str, Any]:
+    return msd_run_receipt(config) or {"available": False}
+
+
+@app.post("/api/system/msd-run:verify")
+def verify_msd_run(config: SettingsDep) -> dict[str, Any]:
+    receipt = msd_run_receipt(config)
+    if not receipt:
+        raise HTTPException(status_code=404, detail="No committed MSD Spark receipt is available")
+    metrics = receipt["aggregate_metrics"] or {}
+    site_receipts = receipt["site_receipts"]
+    expected_sites = {"site-a", "site-b", "site-c"}
+    checks = {
+        "three_logical_sites": {item["site_id"] for item in site_receipts} == expected_sites,
+        "all_three_updates_aggregated": len(metrics.get("sites", [])) == 3,
+        "global_model_persisted": receipt["execution"]["status"] == "completed_with_global_model",
+        "aggregate_only_receipt": all(
+            "case" not in json.dumps(item).lower() and "patient" not in json.dumps(item).lower()
+            for item in site_receipts
+        ),
+        "integrity_hashes_present": len(receipt["files"]) == 4
+        and all(len(item["sha256"]) == 64 for item in receipt["files"]),
+    }
+    return {
+        "passed": all(checks.values()),
+        "checks": checks,
+        "verified_at": utc_now(),
+        "receipt": receipt,
+    }
 
 
 @app.get("/api/system/evidence")

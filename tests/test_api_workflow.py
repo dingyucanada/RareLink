@@ -1,11 +1,12 @@
 import io
 import json
 import zipfile
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
 from rarelink.api import main as api_main
-from rarelink.config import Settings
+from rarelink.config import Settings, get_settings
 
 
 def test_optional_demo_access_gate(client: TestClient, monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -29,6 +30,51 @@ def test_capabilities_show_local_inference_as_not_claimed(client: TestClient) ->
     assert payload["local_inference_configured"] is True
     assert payload["local_inference_available"] is False
     assert "raw images" in payload["local_inference_boundary"]
+
+
+def test_msd_run_receipt_can_be_integrity_verified(client: TestClient, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+    root = tmp_path / "msd-artifacts" / "spark-msd-real-20260720"
+    metrics = root / "metrics"
+    metrics.mkdir(parents=True)
+    summary = {
+        "status": "completed_with_global_model",
+        "strategy": "fedavg",
+        "rounds": 1,
+        "local_epochs": 1,
+        "elapsed_seconds": 69.0,
+        "peak_gpu_memory_mb": 5240.349,
+        "simulated_sites": True,
+        "metrics": {"sites": [{"site_id": item} for item in ("site-a", "site-b", "site-c")]},
+    }
+    (root / "fedavg-summary.json").write_text(json.dumps(summary), encoding="utf-8")
+    for index, site in enumerate(("site-a", "site-b", "site-c")):
+        (metrics / f"site-{site[-1]}-round-001.json").write_text(
+            json.dumps(
+                {
+                    "site_id": site,
+                    "round": 1,
+                    "mean_dice": 0.01 + index,
+                    "hd95": 100.0 - index,
+                    "elapsed_seconds": 6.5,
+                    "peak_gpu_memory_mb": 5240.349,
+                }
+            ),
+            encoding="utf-8",
+        )
+    api_main.app.dependency_overrides[get_settings] = lambda: Settings(
+        _env_file=None, artifact_root=tmp_path / "msd-artifacts"
+    )
+
+    receipt = client.get("/api/system/msd-run")
+    assert receipt.status_code == 200
+    assert receipt.json()["execution"]["elapsed_seconds"] == 69.0
+    assert "site-a" in json.dumps(receipt.json())
+    assert "case_id" not in json.dumps(receipt.json())
+
+    verification = client.post("/api/system/msd-run:verify")
+    assert verification.status_code == 200
+    assert verification.json()["passed"] is True
+    assert verification.json()["checks"]["integrity_hashes_present"] is True
 
 
 def test_complete_mock_research_workflow(client: TestClient) -> None:
