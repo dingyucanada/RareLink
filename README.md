@@ -5,6 +5,11 @@
 </p>
 
 <p align="center">
+  <strong>把稀缺病例，变成可协作、可复核的研究证据。</strong><br/>
+  DGX Spark × NVIDIA FLARE × MONAI × Step 3.7
+</p>
+
+<p align="center">
   <img src="assets/rarelink-overview.svg" alt="RareLink architecture and evidence overview" width="100%" />
 </p>
 
@@ -19,6 +24,21 @@
 > **一句话**：RareLink 把“数据不能集中”的多中心 MRI 研究，变成一条“数据留在科室、模型本地训练、证据跨站点协作、结果可审计”的科研工作流。
 
 > 研究用途工程原型，不提供诊断或治疗建议。比赛验证在一台真实 DGX Spark 上完成三个逻辑站点；另有 Spark–Mac 两物理设备 mTLS 演练，但不等同于真实多医院生产部署。
+
+## 30 秒看懂：我们交付的是证据闭环，不是一次性 Demo
+
+<p align="center">
+  <img src="assets/rarelink-evidence-scorecard.svg" alt="RareLink 工程证据总览：25/25 重复实验、26/26 Agent 红队、样本级 DP-SGD、Spark-Mac mTLS，以及五种策略最弱站点 Dice 对比" width="100%" />
+</p>
+
+这张图复用路演 PPT 的实验叙事，直接呈现当前能够证明和不能证明的内容：FedAvg 是当前工程演示候选，因为它在本轮合成数据实验中具有最高的平均最弱站点 Dice（`0.072276`）；FedProx、严格 SVT 与 DP-SGD 的结果也完整保留，避免只展示“最好看”的曲线。它们是**合成数据、三逻辑站点、三轮训练**下的工程比较，不是临床性能或方法优越性结论。
+
+| PPT 中的关键信息 | 首页可复核的答案 |
+| --- | --- |
+| 数据能否离开医院？ | 原始 MRI、标签和患者字段保持在站点；对外仅允许策略批准的模型更新与聚合统计。 |
+| Spark 是否真的发挥本地算力？ | 已在 GB10 / ARM64 / CUDA 13 上完成 CUDA、MONAI 3D 训练、FLARE 聚合与 API/Web 服务。 |
+| Agent 是否只是“聊天包装”？ | 五角色 Agent 只读取脱敏协议和聚合指标，受实验合同、输入/输出网关与人工审批约束。 |
+| 结果是否可审计？ | 25/25 重复组合、26/26 红队、DP 会计、mTLS 收据与一键核验脚本均有对应入口。 |
 
 ## 为什么这个项目值得看
 

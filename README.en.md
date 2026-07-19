@@ -5,6 +5,11 @@
 </p>
 
 <p align="center">
+  <strong>Turn scarce cases into collaborative, reviewable research evidence.</strong><br/>
+  DGX Spark × NVIDIA FLARE × MONAI × Step 3.7
+</p>
+
+<p align="center">
   <img src="assets/rarelink-overview.svg" alt="RareLink architecture and evidence overview" width="100%" />
 </p>
 
@@ -19,6 +24,21 @@
 RareLink is a data-local, evidence-traceable federated research platform for rare-disease and multi-center medical-imaging studies. Each participating department can keep patient-level MRI data locally while DGX Spark runs the local imaging workload, NVIDIA FLARE coordinates federated training, and a Step 3.7 Agent Team works only with policy-filtered protocols and aggregate evidence.
 
 > Research-use engineering prototype. It is not a diagnostic or treatment system. The competition validation uses three logical sites on one physical DGX Spark; a separate Spark–Mac mTLS rehearsal does not represent production multi-hospital deployment.
+
+## The 30-second proof: an evidence loop, not a one-off demo
+
+<p align="center">
+  <img src="assets/rarelink-evidence-scorecard.svg" alt="RareLink engineering evidence scorecard: 25 of 25 repeated runs, 26 of 26 Agent safety cases, sample-level DP-SGD, Spark–Mac mTLS and worst-site Dice across five strategies" width="100%" />
+</p>
+
+This scorecard brings the pitch-deck evidence into the repository itself. It states both what the prototype can prove and what it cannot: in the current synthetic experiment, FedAvg is the engineering demo candidate because it has the highest mean worst-site Dice (`0.072276`). FedProx, strict SVT, and DP-SGD outcomes are retained rather than hiding negative or costly results. These are **synthetic-data, three-logical-site, three-round engineering comparisons** — not clinical performance or claims of method superiority.
+
+| Pitch-deck question | Verifiable answer in this repository |
+| --- | --- |
+| Can patient data leave a department? | Raw MRI, labels and patient-level fields stay local; only policy-approved model updates and aggregate statistics may leave. |
+| Does Spark do real local work? | CUDA, MONAI 3D training, FLARE aggregation, and API/Web services ran on a GB10 / ARM64 / CUDA 13 node. |
+| Are Agents merely a chat wrapper? | Five roles receive only redacted protocols and aggregate metrics, bounded by an experiment contract, input/output gates, and human approval. |
+| Can results be audited? | 25/25 repeated combinations, 26/26 red-team cases, DP accounting, mTLS receipts, and a one-command verifier each have an evidence path. |
 
 ## What the system does
 
