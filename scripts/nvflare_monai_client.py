@@ -10,13 +10,18 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from rarelink.imaging.monai_runner import _remap_brats_label, _resolve_image  # noqa: E402
+from rarelink.imaging.monai_runner import (  # noqa: E402
+    SEGRESNET_SPATIAL_DIVISOR,
+    _remap_brats_label,
+    _resolve_image,
+)
 
 
 def build_site_loaders(manifest_path: Path, site_id: str):  # type: ignore[no-untyped-def]
     from monai.data import CacheDataset, DataLoader
     from monai.transforms import (
         Compose,
+        DivisiblePadd,
         EnsureChannelFirstd,
         EnsureTyped,
         Lambdad,
@@ -45,6 +50,11 @@ def build_site_loaders(manifest_path: Path, site_id: str):  # type: ignore[no-un
                 [Lambdad(keys=["label"], func=_remap_brats_label)]
                 if manifest.get("label_mapping")
                 else []
+            ),
+            DivisiblePadd(
+                keys=["image", "label"],
+                k=SEGRESNET_SPATIAL_DIVISOR,
+                mode="constant",
             ),
             EnsureTyped(keys=["image", "label"]),
         ]
@@ -291,6 +301,7 @@ def main() -> None:
                             if device.type == "cuda"
                             else None
                         ),
+                        "spatial_padding_multiple": SEGRESNET_SPATIAL_DIVISOR,
                         "privacy": privacy,
                     },
                     indent=2,

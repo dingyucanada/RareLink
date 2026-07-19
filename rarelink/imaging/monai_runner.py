@@ -5,6 +5,13 @@ from pathlib import Path
 from typing import Any
 
 
+# The lightweight three-level SegResNet downsamples twice, so every spatial
+# dimension must be divisible by four for encoder/decoder skip connections to
+# align. MSD Task01 volumes are 240×240×155; padding the final axis to 156 keeps
+# every observed voxel and avoids resampling public benchmark data.
+SEGRESNET_SPATIAL_DIVISOR = 4
+
+
 def _resolve_image(dataset_root: Path, value: str | list[str]) -> str | list[str]:
     if isinstance(value, str):
         return str((dataset_root / value).resolve())
@@ -36,6 +43,7 @@ def run_monai_smoke(
         from monai.transforms import (
             AsDiscrete,
             Compose,
+            DivisiblePadd,
             EnsureChannelFirstd,
             EnsureTyped,
             Lambdad,
@@ -86,6 +94,11 @@ def run_monai_smoke(
             EnsureChannelFirstd(keys=["image", "label"]),
             ScaleIntensityd(keys=["image"]),
             *([Lambdad(keys=["label"], func=_remap_brats_label)] if label_mapping else []),
+            DivisiblePadd(
+                keys=["image", "label"],
+                k=SEGRESNET_SPATIAL_DIVISOR,
+                mode="constant",
+            ),
             EnsureTyped(keys=["image", "label"]),
         ]
     )
@@ -175,6 +188,7 @@ def run_monai_smoke(
             if device.type == "cuda"
             else None
         ),
+        "spatial_padding_multiple": SEGRESNET_SPATIAL_DIVISOR,
         "model_path": str(model_path),
         "synthetic_data": bool(manifest.get("contains_patient_data") is False),
     }
