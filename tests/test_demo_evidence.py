@@ -13,6 +13,7 @@ def test_seeded_competition_evidence_verifies_without_runtime_tokens(tmp_path: P
 
     assert report["passed"] is True
     assert all(report["checks"].values())
+    assert report["optional_checks"]["spark_local_inference_verified"] is False
     serialized = json.dumps(report)
     assert "token" not in serialized.lower()
 

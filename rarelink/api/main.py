@@ -30,6 +30,7 @@ from rarelink.models import AgentArtifact, AuditEvent, Experiment, Study, Traini
 from rarelink.services.agents import build_research_agent
 from rarelink.services.federation import build_federation_runner
 from rarelink.services.ledger import append_event, list_events
+from rarelink.services.local_inference import probe_spark_inference
 from rarelink.services.policy import sanitize_site_aggregate
 from rarelink.services.training_jobs import execute_training_job, recover_interrupted_jobs
 from rarelink.services.workflow import InvalidTransition, transition
@@ -207,6 +208,7 @@ def capabilities(config: SettingsDep) -> CapabilityRead:
         import torch
 
         gpu_available = bool(torch.cuda.is_available())
+    local_inference = probe_spark_inference(config, timeout_seconds=0.35)
     return CapabilityRead(
         app_version=__version__,
         environment=config.app_env,
@@ -215,6 +217,12 @@ def capabilities(config: SettingsDep) -> CapabilityRead:
         gpu_available=gpu_available,
         monai_available=importlib.util.find_spec("monai") is not None,
         nvflare_available=importlib.util.find_spec("nvflare") is not None,
+        agent_backend=config.rarelink_agent_backend,
+        local_inference_configured=bool(local_inference["configured"]),
+        local_inference_available=bool(local_inference["available"]),
+        local_inference_model=local_inference["model"],
+        local_inference_endpoint=local_inference["endpoint"],
+        local_inference_boundary=local_inference["data_boundary"],
     )
 
 
@@ -248,6 +256,18 @@ def system_evidence(config: SettingsDep) -> dict[str, Any]:
     ) or _read_json_if_present(
         config.artifact_root / "public-benchmark" / "msd-task01-validation.json"
     )
+    local_inference = _read_json_if_present(
+        config.artifact_root / "spark-local-inference" / "last-inference.json"
+    )
+    local_inference_redteam = _read_json_if_present(
+        config.artifact_root / "spark-local-inference" / "redteam-summary.json"
+    )
+    local_inference_verification = _read_json_if_present(
+        config.artifact_root / "spark-local-inference" / "verification.json"
+    )
+    local_inference_benchmark = _read_json_if_present(
+        config.artifact_root / "spark-local-inference" / "concurrency-benchmark.json"
+    )
     return {
         "repeated_benchmark": repeated,
         "mtls_provisioning": provisioned,
@@ -255,6 +275,10 @@ def system_evidence(config: SettingsDep) -> dict[str, Any]:
         "cross_device_mtls": cross_device,
         "agent_redteam": agent_redteam,
         "public_benchmark": public_benchmark,
+        "local_inference": local_inference,
+        "local_inference_redteam": local_inference_redteam,
+        "local_inference_verification": local_inference_verification,
+        "local_inference_benchmark": local_inference_benchmark,
         "privacy_comparison": repeated.get("privacy_comparison") if repeated else None,
         "contains_patient_data": False,
         "evidence_scope": "synthetic_competition_engineering",

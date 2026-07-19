@@ -130,6 +130,12 @@ export interface Capabilities {
   gpu_available: boolean;
   monai_available: boolean;
   nvflare_available: boolean;
+  agent_backend: string;
+  local_inference_configured: boolean;
+  local_inference_available: boolean;
+  local_inference_model: string | null;
+  local_inference_endpoint: string | null;
+  local_inference_boundary: string;
 }
 
 export interface ImagingModality {
@@ -231,4 +237,53 @@ export interface SystemEvidence {
     accounting_scope: string;
     end_to_end_sample_dp_claimed: boolean;
   } | null;
+  local_inference: {
+    backend: string;
+    model: string;
+    endpoint_scope: string;
+    remote_step_api_called: boolean;
+    raw_patient_data_transmitted: boolean;
+    role: string;
+    latency_ms: number;
+    usage: Record<string, unknown>;
+    prompt_or_response_content_persisted: boolean;
+    gpu_snapshot_before: GpuSnapshot;
+    gpu_snapshot_after: GpuSnapshot;
+    claim_boundary: string;
+  } | null;
+  local_inference_redteam: {
+    case_count: number;
+    passed_count: number;
+    all_passed: boolean;
+    local_model_request_count: number;
+    deterministic_output_gate_count: number;
+    prompts_or_model_responses_included: boolean;
+    remote_step_api_called: boolean;
+    claim_boundary: string;
+  } | null;
+  local_inference_verification: {
+    evidence_present: boolean;
+    checks: Record<string, boolean>;
+    passed: boolean;
+    claim_boundary: string;
+  } | null;
+  local_inference_benchmark: {
+    safe_fixed_workload: boolean;
+    peak_safe_throughput: {
+      concurrency: number;
+      accepted_requests_per_second: number;
+    } | null;
+    claim_boundary: string;
+  } | null;
+}
+
+export interface GpuSnapshot {
+  available: boolean;
+  gpus: Array<{
+    name: string;
+    memory_total_mib: number;
+    memory_used_mib: number;
+    gpu_utilization_percent: number;
+    temperature_c: number;
+  }>;
 }

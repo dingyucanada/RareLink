@@ -176,3 +176,9 @@ class CapabilityRead(BaseModel):
     gpu_available: bool
     monai_available: bool
     nvflare_available: bool
+    agent_backend: str
+    local_inference_configured: bool
+    local_inference_available: bool
+    local_inference_model: str | None = None
+    local_inference_endpoint: str | None = None
+    local_inference_boundary: str

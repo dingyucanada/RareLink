@@ -17,6 +17,14 @@ class Settings(BaseSettings):
     step_model: str = "step-3.7-flash"
     step_timeout_seconds: float = 60
 
+    # Agent routing. Step 3.7 stays available for the competition integration,
+    # while a TensorRT-LLM endpoint on the DGX Spark can process approved
+    # aggregate research context without leaving the local network.
+    rarelink_agent_backend: str = "hybrid"
+    rarelink_spark_llm_base: str = "http://127.0.0.1:8355/v1"
+    spark_llm_model: str = "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4"
+    spark_llm_timeout_seconds: float = 180
+
     rarelink_min_group_size: int = 5
     rarelink_allow_llm: bool = True
     rarelink_demo_cache: bool = False

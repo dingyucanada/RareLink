@@ -1,7 +1,7 @@
 # RareLink 稀联：路演 PPT 双语内容
 
-> 用途：3–5 分钟项目路演、NVIDIA Inception 介绍、黑客松答辩。  
-> 建议：中文或英文单语演示，另一种语言作为备份页；不要在同一页堆叠大段双语文字。  
+> 用途：3–5 分钟项目路演、NVIDIA Inception 介绍、黑客松答辩。
+> 建议：中文或英文单语演示，另一种语言作为备份页；不要在同一页堆叠大段双语文字。
 > 统一边界：这是研究用途工程原型，不提供诊断或治疗建议；当前结果来自一台 DGX Spark 上的三个逻辑站点与合成数据工程验证。
 
 ## Deck 总览
@@ -199,6 +199,24 @@ Research question → structured protocol → site feasibility → locked contra
 
 **Verified fact**: CUDA matrix operations, MONAI 3D training, FLARE aggregation and API/Web services ran on an NVIDIA DGX Spark GB10 with ARM64 and CUDA 13.
 
+### 本地 Agent 推理补充页（可替换技术附录 A6） / Local-Agent evidence appendix
+
+**中文标题**：本地 LLM 不是口号，而是一条待实机采证的证据链
+
+- 路由：`spark_local` 本地优先，`hybrid` 可回退至 Step 3.7 或确定性模板；所有路径共享输入脱敏、输出门控和人工审批。
+- 部署：TensorRT-LLM 仅绑定 Spark 的私有 `127.0.0.1` 端点；模型由 Spark 直连下载，不经 SSH 上传大权重。
+- 回执：不保存提示词、回答、影像、标签或患者字段；只写模型名、延迟、GPU 快照、用量、策略类别和输出哈希。
+- 核验：真实本地服务完成固定探针与 `26/26` 网关红队后，独立核验器才显示 `VERIFIED`；没有回执时必须展示 `NOT CLAIMED`。
+- 并发：提供 `1 / 2 / 4` 固定安全请求的吞吐/延迟采集工具；它不是 200B、生产压测或医学性能声明。
+
+**English title**: Local LLM evidence is a chain to verify — not a slogan
+
+- Routing: `spark_local` first, with `hybrid` fallback to Step 3.7 or deterministic templates; every route shares input redaction, output gating and human approval.
+- Deployment: TensorRT-LLM is loopback/private on Spark; model weights are downloaded by Spark, never uploaded over SSH.
+- Receipt: no prompts, responses, images, labels or patient fields are persisted; only model, latency, GPU snapshot, usage, policy category and output hash are recorded.
+- Verification: `VERIFIED` requires a real local probe, GPU snapshot and the `26/26` gateway red team; otherwise the UI must remain `NOT CLAIMED`.
+- Concurrency: the `1 / 2 / 4` fixed safe workload captures latency and throughput only; it is not a 200B, production-load or medical-performance claim.
+
 ## 7. 证据：交付的是闭环 / Evidence: we deliver the loop
 
 ### 中文页面
@@ -216,6 +234,18 @@ Research question → structured protocol → site feasibility → locked contra
 
 **必须同时显示**：证据驾驶舱、实验报告、`bash scripts/review_demo.sh` 输出。
 
+**实验设计小卡片（可放在页面右侧）**：
+
+```text
+5 seeds: 2026 / 2027 / 2028 / 2029 / 2030
+5 strategies: Local / FedAvg / FedProx / FedAvg+SVT / FedAvg+DP-SGD
+3 rounds × 1 local epoch per site
+Local baseline: 3 local epochs（对齐计算机会）
+Metrics: mean Dice / worst-site Dice / HD95 / win rate / runtime / peak GPU memory
+```
+
+**结果解读**：FedAvg 是当前工程候选，原因是最弱站点 Dice 均值 `0.072276`、最弱站点胜率 `40%`；FedProx 在 `4/5` 个种子上改善最弱站点，但不能据此宣称医学优越性；严格 SVT 配置五次均为零效用，保留为重要负结果；DP-SGD 显示隐私开销与效用之间的真实张力。
+
 ### English slide
 
 **Title**: Not a one-off run — repeatable, explainable and auditable
@@ -228,6 +258,18 @@ Research question → structured protocol → site feasibility → locked contra
 | Private training | **ε=6.076881** | Conservative three-round sample-level DP-SGD accounting, δ=1e-5 |
 
 **Show together**: evidence cockpit, formal report and the output of `bash scripts/review_demo.sh`.
+
+**Experiment card**:
+
+```text
+Seeds: 2026 / 2027 / 2028 / 2029 / 2030
+Strategies: Local / FedAvg / FedProx / FedAvg+SVT / FedAvg+DP-SGD
+3 rounds × 1 local epoch per site
+Local baseline: 3 local epochs for a matched local budget
+Metrics: mean Dice / worst-site Dice / HD95 / win rate / runtime / peak GPU memory
+```
+
+**Interpretation**: FedAvg is the current engineering candidate because its mean worst-site Dice is `0.072276` with a `40%` worst-site win rate. FedProx improved the worst site on `4/5` seeds but cannot be called medically superior. Strict SVT produced zero utility in all five runs and is retained as a meaningful negative result. DP-SGD exposes a real privacy–utility trade-off.
 
 ## 8. 隐私与安全：准确说清楚 / Privacy and security: say exactly what is proven
 
@@ -351,7 +393,7 @@ Research question → structured protocol → site feasibility → locked contra
 
 **落版**：
 
-`RareLink 稀联`  
+`RareLink 稀联`
 `Data-local · Evidence-traceable · Research-use prototype`
 
 ### English slide
@@ -364,7 +406,7 @@ Research question → structured protocol → site feasibility → locked contra
 
 **End card**:
 
-`RareLink`  
+`RareLink`
 `Data-local · Evidence-traceable · Research-use prototype`
 
 ---
@@ -387,3 +429,330 @@ Research question → structured protocol → site feasibility → locked contra
 - Never show passwords, API keys, SSH addresses, ports, patient images, DICOM UIDs or raw data paths.
 - Use a real team photo; do not replace it with an AI-generated image. Label AI-assisted content on social platforms when required.
 
+---
+
+# 技术附录：实验、开发与复现 / Technical appendix: experiments, development and reproduction
+
+> 这部分可以作为答辩附录，也可以拆成主 PPT 的“点击展开”页面。它回答评委或投资人最常追问的四个问题：怎么设计、怎么跑、结果是什么、下一步怎么变成产品。
+
+## A1. 可复现实验合同 / Reproducible experiment contract
+
+### 中文
+
+**页面标题**：先锁定合同，再比较策略
+
+**固定配置**：
+
+| 参数 | 固定值 |
+| --- | --- |
+| 逻辑站点 | 3：site-a / site-b / site-c |
+| 随机种子 | 2026、2027、2028、2029、2030 |
+| 策略 | Local、FedAvg、FedProx、FedAvg+SVT、FedAvg+DP-SGD |
+| 联邦轮数 | 3 |
+| 每轮本地训练 | 每站点 1 epoch |
+| Local 对照 | 3 epochs，匹配联邦总本地训练机会 |
+| 统一模型 | 小型 MONAI 3D SegResNet |
+| 指标 | Mean Dice、worst-site Dice、HD95、最弱站点胜率、运行时间、峰值 GPU 内存 |
+
+**执行步骤**：
+
+1. 从同一个合成四模态 MRI manifest 生成三个站点。
+2. 对每个 seed 建立独立 workspace，避免产物互相覆盖。
+3. 运行五种策略，单个组合完成后才写入结果文件。
+4. 中断时使用 `--resume`，只复用完整写入的组合。
+5. 汇总均值、标准差、t 区间和最弱站点胜率。
+6. 将 aggregate-only 结果写入 API、报告和证据驾驶舱。
+
+**结果**：25 个策略—种子组合全部完成（25/25）；不是挑一条最好的训练曲线，而是用同一合同比较稳定性、站点公平性和成本。
+
+### English
+
+**Slide title**: Lock the contract before comparing strategies
+
+**Fixed configuration**:
+
+| Parameter | Value |
+| --- | --- |
+| Logical sites | 3: site-a / site-b / site-c |
+| Seeds | 2026, 2027, 2028, 2029, 2030 |
+| Strategies | Local, FedAvg, FedProx, FedAvg+SVT, FedAvg+DP-SGD |
+| Federated rounds | 3 |
+| Local training | 1 epoch per site per round |
+| Local baseline | 3 epochs, matching the federated local budget |
+| Model | Small MONAI 3D SegResNet |
+| Metrics | Mean Dice, worst-site Dice, HD95, worst-site win rate, runtime, peak GPU memory |
+
+**Run protocol**:
+
+1. Generate three sites from the same synthetic four-modal MRI manifest.
+2. Create an isolated workspace for each seed.
+3. Persist a strategy result only after the full combination completes.
+4. Resume interrupted runs without reusing partial artifacts.
+5. Aggregate mean, standard deviation, t intervals and worst-site win rate.
+6. Publish aggregate-only evidence to the API, report and cockpit.
+
+**Result**: all 25 strategy–seed combinations completed. The comparison measures stability, site fairness and cost instead of selecting a favorable training curve.
+
+## A2. 五种策略的真实结果 / Results across five strategies
+
+### 中文
+
+**页面标题**：负结果也进入证据链
+
+| 策略 | Mean Dice | Worst-site Dice | HD95 | Worst-site win | 时间 | 峰值 GPU 内存 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Local | 0.049025 ± 0.013654 | 0.023893 ± 0.011558 | 14.514729 | 20% | 1.52 s | 24.38 MB |
+| FedAvg | **0.080087 ± 0.080502** | **0.072276 ± 0.075325** | 14.390605 | **40%** | 73.05 s | 20.73 MB |
+| FedProx | 0.073442 ± 0.035380 | 0.051055 ± 0.030026 | **13.879725** | 20% | 72.68 s | 21.59 MB |
+| FedAvg + SVT | 0.000000 ± 0.000000 | 0.000000 | 0.000000 | 0% | 73.21 s | 20.73 MB |
+| FedAvg + DP-SGD | 0.041315 ± 0.052110 | 0.037724 ± 0.048620 | 18.970487 | 20% | 73.59 s | **55.78 MB** |
+
+**讲解顺序**：
+
+- FedAvg：当前演示候选，依据是最弱站点指标而不是单纯平均值。
+- FedProx：最弱站点改善次数更多，但本轮样本与轮数不足以给出优越性结论。
+- SVT：严格的 1% 更新过滤配置导致五次零效用；保留它，说明隐私强度会影响可用性。
+- DP-SGD：内存从约 20–24 MB 增至 55.78 MB，Mean Dice 低于 FedAvg，展示真实隐私—效用—成本权衡。
+
+**一句边界**：这些是合成数据上的工程行为，不是临床性能统计。
+
+### English
+
+**Slide title**: Negative results stay in the evidence chain
+
+| Strategy | Mean Dice | Worst-site Dice | HD95 | Worst-site win | Time | Peak GPU memory |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Local | 0.049025 ± 0.013654 | 0.023893 ± 0.011558 | 14.514729 | 20% | 1.52 s | 24.38 MB |
+| FedAvg | **0.080087 ± 0.080502** | **0.072276 ± 0.075325** | 14.390605 | **40%** | 73.05 s | 20.73 MB |
+| FedProx | 0.073442 ± 0.035380 | 0.051055 ± 0.030026 | **13.879725** | 20% | 72.68 s | 21.59 MB |
+| FedAvg + SVT | 0.000000 ± 0.000000 | 0.000000 | 0.000000 | 0% | 73.21 s | 20.73 MB |
+| FedAvg + DP-SGD | 0.041315 ± 0.052110 | 0.037724 ± 0.048620 | 18.970487 | 20% | 73.59 s | **55.78 MB** |
+
+**How to explain it**:
+
+- FedAvg is the current demo candidate because of the worst-site evidence, not just the mean.
+- FedProx improved the worst site more often, but this small synthetic setting cannot establish superiority.
+- SVT’s strict 1% update filter produced zero utility in all five runs; the negative result is retained.
+- DP-SGD increased peak memory from roughly 20–24 MB to 55.78 MB and reduced mean Dice, showing a real privacy–utility–cost trade-off.
+
+**Boundary**: these are engineering behaviors on synthetic data, not clinical performance statistics.
+
+## A3. 样本级 DP-SGD 实现 / Sample-level DP-SGD implementation
+
+### 中文
+
+**页面标题**：隐私预算从代码路径中产生
+
+**实现步骤**：
+
+1. 在站点本地加载 SegResNet 与 DataLoader。
+2. 通过 Opacus expanded-weights 路径计算逐样本梯度。
+3. 对每个样本的梯度执行 `max_grad_norm=1.0` 裁剪。
+4. 注入 `noise_multiplier=1.2` 的高斯噪声。
+5. 使用 Poisson sampling，采样率为 `1/3`。
+6. 每站点每轮 1 个 epoch，3 轮保守计入 9 个计划优化步。
+7. 使用 RDP 组合，在 `delta=1e-5` 下得到 `epsilon=6.076881`。
+8. 只把预算摘要和策略标签写入证据；不上传梯度或患者样本。
+
+**代码入口**：`rarelink/privacy/dpsgd.py`
+**准确结论**：这是样本级本地训练步骤的会计，不覆盖传输、聚合、用户级/机构级邻接关系或临床合规。
+
+### English
+
+**Slide title**: The privacy budget comes from an executable path
+
+**Implementation**:
+
+1. Load SegResNet and the local DataLoader at each site.
+2. Compute per-sample gradients using the Opacus expanded-weights path.
+3. Clip each sample gradient at `max_grad_norm=1.0`.
+4. Add Gaussian noise with `noise_multiplier=1.2`.
+5. Use Poisson sampling with rate `1/3`.
+6. Run one local epoch for three federated rounds; conservatively count nine planned optimizer steps.
+7. Compose RDP and obtain `epsilon=6.076881` at `delta=1e-5`.
+8. Publish only the budget summary and strategy label, never gradients or patient samples.
+
+**Code**: `rarelink/privacy/dpsgd.py`
+**Exact claim**: accounting for sample-level local training steps only, not transport, aggregation, user/institution adjacency or clinical compliance.
+
+## A4. 两物理设备 mTLS 演练 / Two-device mTLS rehearsal
+
+### 中文
+
+**页面标题**：身份链路经过负面测试
+
+**演练步骤**：
+
+1. 在 Spark 使用 FLARE Provision 生成 Root CA、Server 和 Site A/B/C 证书。
+2. 第一阶段：Spark 上 Server + 三 Client 完成证书注册。
+3. 第二阶段：Server 留在 Spark，Site C 运行在 Mac，通过加密隧道连接。
+4. 主动结束 Site C，模拟掉线。
+5. Site C 重新注册，验证重连恢复。
+6. 将 Site B 证书替换到声明为 Site C 的启动包中。
+7. FLARE 启动签名校验拒绝错误身份，产生负面证据。
+
+**结果**：注册成功、掉线重连成功、错误身份拒绝成功。
+**未覆盖**：医院 WAN 压力、证书轮换、撤销列表、生产 SSO、多 Spark 横向压力。
+
+### English
+
+**Slide title**: The identity chain is tested with a negative control
+
+**Procedure**:
+
+1. Provision Root CA and independent Server/Site A/B/C certificates on Spark.
+2. Register Server and three clients on Spark.
+3. Keep the Server on Spark and run Site C on a Mac through an encrypted tunnel.
+4. Stop Site C to simulate a dropout.
+5. Re-register Site C and verify recovery.
+6. Replace the declared Site C certificate with Site B’s certificate.
+7. Verify that FLARE rejects the wrong identity during startup/signature validation.
+
+**Result**: registration, reconnect and wrong-identity rejection passed.
+**Not covered**: hospital-WAN stress, certificate rotation/revocation, production SSO or multi-Spark horizontal load.
+
+## A5. Agent 安全红队 / Agent safety red team
+
+### 中文
+
+**页面标题**：Agent 的能力边界可以被测试
+
+**26 个用例覆盖**：
+
+- 患者姓名、身份证、联系方式、DICOM UID、原始影像路径
+- 小样本明细、站点可识别统计、凭据与 API Key
+- “请给出诊断/治疗建议”等临床越权请求
+- 要求绕过人工审批、修改锁定合同、伪造临床效果
+- 正常的安全控制和合规研究请求，避免只测攻击不测可用性
+
+**执行路径**：请求分类 → 敏感字段脱敏 → Step 3.7 调用（如启用）→ 结构化输出校验 → 高风险响应阻断 → 审计记录。
+
+**结果**：Spark 实跑 `26/26` 通过；这是确定性工程评估，不是完整渗透测试或医疗安全认证。
+
+### English
+
+**Slide title**: Agent boundaries are testable
+
+**The 26 cases cover**:
+
+- Names, IDs, contact details, DICOM UIDs and raw-image paths
+- Small-group details, site-identifying aggregates, credentials and API keys
+- Clinical overreach such as diagnosis or treatment requests
+- Attempts to bypass approval, alter locked contracts or fabricate clinical claims
+- Safe controls and compliant research requests, so usability is tested alongside attacks
+
+**Execution path**: classify → redact → call Step 3.7 when enabled → validate structured output → block high-risk response → audit.
+
+**Result**: `26/26` passed on Spark. This is a deterministic engineering evaluation, not a complete penetration test or medical-safety certification.
+
+## A6. 公开 MRI 接入与数据边界 / Public MRI intake and data boundaries
+
+### 中文
+
+**页面标题**：先证明数据链路，再谈基准结果
+
+**MNI152 已完成的步骤**：
+
+1. 从 Project MONAI 官方测试资产获取公开 image/structural-label pair。
+2. 在 Spark 本地读取 NIfTI，不经过 SSH 上传大文件。
+3. 校验 image/label shape 一致。
+4. 记录空间尺寸 `91×109×91` 与 `2 mm` spacing。
+5. 写入图像与标签 SHA-256，但 evidence 只保留聚合收据，不保留原始像素。
+
+**结论**：已证明外部公开 NIfTI 的本地接入与几何检查；不等于 MSD Task01、肿瘤分割、联邦训练或临床验证。
+
+**MSD / BraTS-PEDs**：仓库提供 MSD 直连下载和校验脚本；BraTS-PEDs 作为后续合规外部研究来源，必须完成访问政策、引用和授权检查。
+
+### English
+
+**Slide title**: Prove the data path before claiming benchmark performance
+
+**Completed for MNI152**:
+
+1. Obtain a public image/structural-label pair from the Project MONAI test asset.
+2. Read NIfTI locally on Spark; do not upload large files over SSH.
+3. Verify image/label shape alignment.
+4. Record `91×109×91` geometry and `2 mm` spacing.
+5. Record SHA-256 values while publishing aggregate-only evidence without raw pixels.
+
+**Conclusion**: external NIfTI intake and geometry checks passed; this is not MSD Task01, tumor segmentation, federated training or clinical validation.
+
+**MSD / BraTS-PEDs**: the repository provides the MSD direct-download and verification path; BraTS-PEDs remains a governed future external-validation source subject to access and citation policy.
+
+## A7. 开发过程：从 API 到实机 / Development path: from API to hardware
+
+### 中文
+
+**页面标题**：今天完成的不只是一个界面
+
+**开发阶段**：
+
+| 阶段 | 交付内容 | 验证方式 |
+| --- | --- | --- |
+| 领域建模 | Study、Protocol、Contract、Run、Evidence 状态机 | API 工作流测试、审计账本 |
+| Agent 层 | 五角色协作、模板回退、输入/输出网关 | Step 3.7 JSON 冒烟、26 项红队 |
+| 影像层 | NIfTI、四模态合成数据、SegResNet、Dice/HD95 | MONAI 单站点训练、叠加预览 |
+| 联邦层 | FLARE Recipe/Client、FedAvg/FedProx、SVT | 三站点聚合、全局模型持久化 |
+| 隐私层 | Opacus DP-SGD 与 RDP 会计 | 预算收据、效用对照 |
+| 安全层 | Provision、证书、双设备演练 | mTLS 注册/重连/拒绝 |
+| 交付层 | React 驾驶舱、FastAPI、Docker、Release | 36 tests、Ruff、Vite build、review script |
+
+**开发原则**：优先复用 NVIDIA FLARE、MONAI、PyTorch、Opacus 的现成能力，把时间投入到医院研究流程、证据治理和边界控制，而不是重复造轮子。
+
+### English
+
+**Slide title**: More than a front-end demo
+
+| Stage | Delivery | Verification |
+| --- | --- | --- |
+| Domain model | Study, Protocol, Contract, Run and Evidence state machine | API workflow tests and audit ledger |
+| Agent layer | Five roles, deterministic fallback, input/output gates | Step 3.7 JSON smoke test and 26 red-team cases |
+| Imaging | NIfTI, synthetic four-modal data, SegResNet, Dice/HD95 | MONAI single-site training and overlays |
+| Federation | FLARE Recipe/Client, FedAvg/FedProx, SVT | Three-site aggregation and global checkpoint |
+| Privacy | Opacus DP-SGD and RDP accounting | Budget receipt and utility comparison |
+| Security | Provisioning, certificates and two-device rehearsal | mTLS registration/reconnect/rejection |
+| Delivery | React cockpit, FastAPI, Docker and Release | 36 tests, Ruff, Vite build and review script |
+
+**Development principle**: reuse NVIDIA FLARE, MONAI, PyTorch and Opacus instead of rebuilding infrastructure; invest engineering time in research workflow, evidence governance and safe boundaries.
+
+## A8. 评委一键复现路径 / One-click reviewer path
+
+### 中文
+
+**页面标题**：不下载大数据，也能先验证系统完整性
+
+**命令**：
+
+```bash
+bash scripts/review_demo.sh
+```
+
+**脚本执行**：
+
+1. 只在缺少运行证据时写入明确标记为 snapshot 的 compact fixtures。
+2. 检查五种子多轮结果是否为 `25/25`。
+3. 检查 DP 是否标注为 sample-level，并拒绝端到端夸大。
+4. 检查 mTLS 是否包含注册、重连、错误身份拒绝且不含 token。
+5. 检查 Agent 红队是否 `26/26`，攻击 payload 不进入发布 evidence。
+6. 将四个 gate 的结果写入证据驾驶舱。
+
+**演示画面**：终端 20 秒 → 四张证据卡 20 秒 → 运行报告和边界声明 20 秒。
+
+### English
+
+**Slide title**: Verify system completeness before downloading large data
+
+```bash
+bash scripts/review_demo.sh
+```
+
+**What it does**:
+
+1. Seeds clearly labelled compact snapshots only when runtime evidence is absent.
+2. Verifies the 5-seed multi-round matrix is `25/25`.
+3. Verifies that DP is labelled sample-level and rejects end-to-end overclaiming.
+4. Verifies mTLS registration, reconnect, wrong-identity rejection and token absence.
+5. Verifies `26/26` Agent red-team coverage without publishing attack payloads.
+6. Writes the four gates to the evidence cockpit.
+
+**Demo timing**: terminal 20 seconds → four evidence cards 20 seconds → report and boundaries 20 seconds.

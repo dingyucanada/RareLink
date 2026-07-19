@@ -38,8 +38,9 @@ The local compute boundary and the language-model boundary are intentionally sep
 1. **Hospital / department site** — MRI, labels and patient-level fields remain local.
 2. **DGX Spark** — CUDA, PyTorch, MONAI and the local FLARE Client run the imaging workload.
 3. **NVIDIA FLARE** — coordinates FedAvg/FedProx jobs, client identity and secure communication.
-4. **Step 3.7 Agent Team** — receives only policy-approved text such as research protocols and aggregate metrics.
-5. **Evidence cockpit** — exposes provenance, boundaries, metrics, failures and reproducibility receipts.
+4. **Spark-local TensorRT-LLM (optional)** — serves approved aggregate research context through a private OpenAI-compatible endpoint; it never receives MRI, labels, identifiers or credentials.
+5. **Step 3.7 Agent Team** — receives only policy-approved text when the selected routing mode permits remote collaboration.
+6. **Evidence cockpit** — exposes provenance, boundaries, metrics, failures and reproducibility receipts.
 
 ## Verified engineering evidence
 
@@ -84,6 +85,10 @@ bash scripts/review_demo.sh
 
 For the full local stack, see [DEMO.md](DEMO.md) and [the deployment guide](docs/deployment.md). If `STEP_API_KEY` is absent, RareLink uses a deterministic local template agent so the workflow remains runnable without external inference.
 
+### Optional Spark-local LLM path
+
+RareLink can route its structured Research Agent calls through a TensorRT-LLM endpoint on Spark using `spark_local`, `step_remote`, or `hybrid` routing. The default deployment target is NVIDIA Nemotron 120B NVFP4, downloaded directly by the Spark node. The local path includes a metadata-only receipt, an independent verifier, a 26-case local gateway red-team runner, and a fixed safe `1 / 2 / 4` concurrency profiler. The UI distinguishes a running endpoint from captured and verified evidence; until a real local run is captured it explicitly says **NOT CLAIMED**. See [the deployment guide](docs/deployment.md#43-spark-本地大模型推理tensorrt-llm).
+
 ## Safety and responsible use
 
 RareLink does not provide diagnosis or treatment advice. Do not commit API keys, passwords, patient images, DICOM identifiers, raw manifests or identifiable clinical fields. Public data must be used under the source dataset's license, attribution and access policy. Any future clinical or multi-hospital deployment requires institutional approvals, security review, data-use agreements and independent validation.
@@ -91,4 +96,3 @@ RareLink does not provide diagnosis or treatment advice. Do not commit API keys,
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE).
-

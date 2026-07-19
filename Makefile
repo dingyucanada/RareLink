@@ -1,7 +1,7 @@
 PYTHON ?= python3
 PROJECT_PYTHON = $(if $(wildcard .venv/bin/python),.venv/bin/python,$(PYTHON))
 
-.PHONY: install install-web dev-api dev-web test lint smoke step-models step-smoke step-team-smoke synthetic-data monai-smoke nvflare-smoke nvflare-fedprox training-job-smoke demo-seed demo-evidence
+.PHONY: install install-web dev-api dev-web test lint smoke step-models step-smoke step-team-smoke synthetic-data monai-smoke nvflare-smoke nvflare-fedprox training-job-smoke demo-seed demo-evidence spark-local-verify spark-local-benchmark
 
 install:
 	$(PROJECT_PYTHON) -m pip install -e ".[dev]"
@@ -53,3 +53,9 @@ demo-seed:
 
 demo-evidence: demo-seed
 	$(PROJECT_PYTHON) scripts/verify_demo_evidence.py --artifact-root artifacts --write
+
+spark-local-verify:
+	$(PROJECT_PYTHON) scripts/verify_spark_local_inference_evidence.py --artifact-root artifacts --write
+
+spark-local-benchmark:
+	$(PROJECT_PYTHON) scripts/benchmark_spark_local_llm.py

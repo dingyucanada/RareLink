@@ -19,6 +19,9 @@ def evaluate_evidence(root: Path) -> dict[str, Any]:
     repeated = read_json(root / "repeated-benchmark" / "repeated-summary.json")
     mtls = read_json(root / "nvflare-secure-provision" / "cross-device-mtls-evidence.json")
     redteam = read_json(root / "agent-redteam" / "summary.json")
+    local_verification = read_json(
+        root / "spark-local-inference" / "verification.json"
+    )
     checks = {
         "repeated_benchmark_complete": bool(
             repeated
@@ -49,15 +52,25 @@ def evaluate_evidence(root: Path) -> dict[str, Any]:
             and redteam.get("raw_attack_payloads_included") is False
         ),
     }
+    optional_checks = {
+        "spark_local_inference_verified": bool(
+            local_verification
+            and local_verification.get("evidence_present") is True
+            and local_verification.get("passed") is True
+        ),
+    }
     return {
         "schema_version": "rarelink-demo-evidence-verification-v1",
         "verified_at_utc": datetime.now(UTC).isoformat(),
         "artifact_root": str(root),
         "checks": checks,
+        "optional_checks": optional_checks,
         "passed": all(checks.values()),
         "claim_boundary": (
-            "Checks engineering evidence artifacts only. It does not establish clinical validity, "
-            "production deployment, or end-to-end privacy guarantees."
+            "Checks four mandatory engineering evidence artifacts only. "
+            "Spark-local LLM verification is optional and never seeded. "
+            "It does not establish clinical validity, production deployment, "
+            "or end-to-end privacy guarantees."
         ),
     }
 

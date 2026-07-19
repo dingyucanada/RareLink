@@ -87,7 +87,7 @@ flowchart LR
 | 权重 | 首页上的答案 | 证据入口 |
 | ---: | --- | --- |
 | 25% 实用性 / 创新性 | 面向小样本、多中心 MRI 的数据本地化科研闭环 | [项目说明](outputs/RareLink-比赛项目说明.md) |
-| 25% Agent / 模型深度 | 五角色 Agent、DP-SGD、FedProx、红队与人工审批 | [技术栈说明](outputs/RareLink-技术栈说明.md) |
+| 25% Agent / 模型深度 | 五角色 Agent、Local/Step/Template 路由、DP-SGD、红队与人工审批 | [技术栈说明](outputs/RareLink-技术栈说明.md) |
 | 20% 完整性 | 前端、API、账本、训练、复现脚本、Release | [DEMO.md](DEMO.md) |
 | 15% 平台适配 | DGX Spark GB10、CUDA、MONAI、NVIDIA FLARE | [部署手册](docs/deployment.md) |
 | 10% 演示 | 3 分钟脚本 + 两段短证据素材 | [视频脚本](outputs/RareLink-三分钟演示视频脚本.md) |
@@ -101,6 +101,7 @@ flowchart LR
 | --- | --- | --- |
 | 本地算力 | [NVIDIA DGX Spark](https://www.nvidia.com/en-us/products/workstations/dgx-spark/) · [User Guide](https://docs.nvidia.com/dgx/dgx-spark/index.html) | GB10 / ARM64 节点承载本地影像训练、FLARE Client 和服务。 |
 | GPU 软件 | [CUDA](https://developer.nvidia.com/cuda) · [PyTorch](https://pytorch.org/) | CUDA 张量计算、AMP、AdamW 与模型运行时。 |
+| 本地 Agent 推理 | [NVIDIA TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM) · [DGX Spark 实操](https://build.nvidia.com/spark/trt-llm) | 可选 Spark 本地 OpenAI 兼容端点；默认面向 Nemotron 120B NVFP4。含元数据回执、独立核验、26 条本地网关红队与 `1/2/4` 安全并发基准；未有真实回执时明确 `NOT CLAIMED`。 |
 | 联邦学习 | [NVIDIA FLARE](https://nvidia.github.io/NVFlare/) · [GitHub](https://github.com/NVIDIA/NVFlare) | FedAvg/FedProx、Client API、mTLS 和联邦模拟/演练。 |
 | 医学影像 | [Project MONAI](https://project-monai.github.io/) · [MONAI Docs](https://docs.monai.io/) | NIfTI、三维 SegResNet、影像变换和评估。 |
 | 隐私训练 | [Opacus](https://opacus.ai/) | 样本级 DP-SGD、逐样本裁剪、噪声与 RDP 会计。 |
@@ -135,6 +136,9 @@ flowchart LR
 - a deterministic 26-case Agent red team enforced before and after Step 3.7;
 - two-device mTLS evidence tooling for registration, dropout/reconnect, and wrong-identity rejection;
 - local-only four-modal synthetic MRI and segmentation overlays that reject patient-data manifests.
+- a Spark-local TensorRT-LLM adapter with `spark_local` / `step_remote` / `hybrid` routing, metadata-only
+  inference receipts, independent verifier, 26-case local gateway red-team tooling, and a fixed safe
+  `1 / 2 / 4` concurrency profiler; the UI remains `NOT CLAIMED` until real local-model evidence is captured.
 
 真实训练链路已在本地 CPU 完成工程冒烟验证：三逻辑院区均参与聚合并生成全局模型。控制台
 支持 `mock` 与 `nvflare` 两种显式模式；比赛配置已切换到真实任务模式，开源默认仍为 mock，

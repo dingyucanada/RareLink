@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Activity, Database, FileSearch, KeyRound, Repeat2, ShieldAlert, ShieldCheck } from "lucide-react";
+import { Activity, Database, FileSearch, KeyRound, Repeat2, Server, ShieldAlert, ShieldCheck } from "lucide-react";
 import { api } from "../api";
 
 export default function SystemEvidence() {
@@ -14,6 +14,12 @@ export default function SystemEvidence() {
   const privacy = evidence.data?.privacy_comparison;
   const redteam = evidence.data?.agent_redteam;
   const publicBenchmark = evidence.data?.public_benchmark;
+  const localInference = evidence.data?.local_inference;
+  const localInferenceRedteam = evidence.data?.local_inference_redteam;
+  const localInferenceVerification = evidence.data?.local_inference_verification;
+  const localInferenceBenchmark = evidence.data?.local_inference_benchmark;
+  const localGpu = localInference?.gpu_snapshot_after.gpus[0];
+  const localInferenceVerified = localInferenceVerification?.passed === true;
   const publicMriVerified = Boolean(
     publicBenchmark?.public_mri_intake_verified ?? publicBenchmark?.public_benchmark_verified,
   );
@@ -43,6 +49,11 @@ export default function SystemEvidence() {
         <article className="evidence-boundary">
           <Database size={18} />
           <div><small>SOURCE & BOUNDARY</small><strong>可复现实验，不替代临床验证</strong><p>{publicBenchmark?.claim_boundary ?? "当前稳定性结果来自三逻辑站点的合成数据；公开基准完成后将单独标注其数据来源与工程边界。"}</p></div>
+        </article>
+        <article className={`local-inference-evidence ${localInferenceVerified ? "verified" : "pending"}`}>
+          <Server size={18} />
+          <div><small>SPARK LOCAL LLM</small><strong>{localInference ? `${localInference.model.split("/").at(-1)} · ${localInference.latency_ms} ms` : "本地推理证据待采集"}</strong><p>{localInference ? `本地端点 · Step API 调用：${localInference.remote_step_api_called ? "是" : "否"} · 原始患者数据传输：${localInference.raw_patient_data_transmitted ? "是" : "否"}` : "启动 TensorRT-LLM 后，由 Agent 调用自动记录模型、延迟、用量与输出哈希，不存储提示词正文。"}</p>{localGpu && <p>GPU：{localGpu.name} · 显存 {localGpu.memory_used_mib}/{localGpu.memory_total_mib} MiB · 利用率 {localGpu.gpu_utilization_percent}%</p>}{localInferenceRedteam && <p>本地网关红队：{localInferenceRedteam.passed_count}/{localInferenceRedteam.case_count} · 实测本地请求 {localInferenceRedteam.local_model_request_count} 次</p>}{localInferenceBenchmark?.peak_safe_throughput && <p>固定安全负载峰值：并发 {localInferenceBenchmark.peak_safe_throughput.concurrency} · {localInferenceBenchmark.peak_safe_throughput.accepted_requests_per_second.toFixed(2)} 请求/秒</p>}</div>
+          <span>{localInferenceVerified ? "VERIFIED" : localInferenceRedteam?.all_passed ? "RED TEAM PASS" : localInference ? "CAPTURED" : "NOT CLAIMED"}</span>
         </article>
       </div>
       {repeated && <div className="stability-grid" aria-label="五种子最弱站点 Dice 对比">{ranked.map(([strategy, winRate], index) => {

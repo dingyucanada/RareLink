@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api";
-import type { AgentArtifact, EvidenceBrief, Experiment, Study, StudyStatus, TrainingJob } from "./types";
+import type { AgentArtifact, Capabilities, EvidenceBrief, Experiment, Study, StudyStatus, TrainingJob } from "./types";
 import { stages, statusIndex } from "./workflow";
 
 const MetricChart = lazy(() => import("./components/MetricChart"));
@@ -101,6 +101,29 @@ function JudgeJourney({ study, experiments }: { study: Study; experiments: Exper
         <div><span>02</span><strong>DGX Spark 本地训练</strong><small>统一内存保护串行真实任务</small></div>
         <div><span>03</span><strong>FLARE 聚合更新</strong><small>Local / FedAvg / FedProx 对照</small></div>
         <div><span>04</span><strong>Agent 解释证据</strong><small>{completed ? `${completed} 项完成实验 · 仅聚合指标` : "等待首项实验完成"}</small></div>
+      </div>
+    </section>
+  );
+}
+
+function LocalInferencePanel({ capabilities }: { capabilities: Capabilities | undefined }) {
+  const ready = Boolean(capabilities?.local_inference_available);
+  const configured = Boolean(capabilities?.local_inference_configured);
+  const model = capabilities?.local_inference_model?.split("/").at(-1) ?? "未配置模型";
+  return (
+    <section className={`local-inference-panel ${ready ? "ready" : "standby"}`}>
+      <div className="local-inference-title">
+        <span className="local-pulse" />
+        <div><small>SOVEREIGN RESEARCH AGENT · DGX SPARK</small><strong>本地大模型推理边界</strong></div>
+      </div>
+      <div className="local-inference-flow">
+        <div><span>01</span><strong>本地门控</strong><small>影像、标签、标识符与密钥不进入模型上下文</small></div>
+        <div><span>02</span><strong>{ready ? "TensorRT-LLM 在线" : configured ? "TensorRT-LLM 待启动" : "本地模型未配置"}</strong><small>{model}</small></div>
+        <div><span>03</span><strong>结构化研究产物</strong><small>仅保存模型、耗时、用量与输出哈希，不保存提示词</small></div>
+      </div>
+      <div className="local-inference-status">
+        <span className={ready ? "status-ready" : "status-pending"}>{ready ? "LOCAL INFERENCE READY" : "LOCAL INFERENCE NOT CLAIMED"}</span>
+        <p>{capabilities?.local_inference_boundary ?? "仅允许经策略批准的聚合科研上下文进入本地模型。"}</p>
       </div>
     </section>
   );
@@ -310,7 +333,7 @@ function App() {
         <div className="header-boundary"><ShieldCheck size={16} /> RESEARCH USE ONLY · 三站点模拟</div>
         <div className="system-pills">
           <span className={capabilities.data?.gpu_available ? "ok" : "muted"}><Server size={14} /> {capabilities.data?.gpu_available ? "GPU READY" : "LOCAL DEV"}</span>
-          <span><BrainCircuit size={14} /> {capabilities.data?.step_mode?.toUpperCase() ?? "…"}</span>
+          <span className={capabilities.data?.local_inference_available ? "ok" : "muted"}><BrainCircuit size={14} /> {capabilities.data?.local_inference_available ? "SPARK LLM READY" : "SPARK LLM STANDBY"}</span>
         </div>
       </header>
 
@@ -326,6 +349,7 @@ function App() {
 
         <StatusRail study={study} />
         <JudgeJourney study={study} experiments={experiments.data ?? []} />
+        <LocalInferencePanel capabilities={capabilities.data} />
         <ActionPanel study={study} experiments={experiments.data ?? []} artifacts={artifacts.data ?? []} />
 
         <section className="metrics-strip">

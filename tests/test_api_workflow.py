@@ -20,6 +20,17 @@ def test_optional_demo_access_gate(client: TestClient, monkeypatch) -> None:  # 
     ).status_code == 200
 
 
+def test_capabilities_show_local_inference_as_not_claimed(client: TestClient) -> None:  # type: ignore[no-untyped-def]
+    response = client.get("/api/system/capabilities")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["agent_backend"] == "hybrid"
+    assert payload["local_inference_configured"] is True
+    assert payload["local_inference_available"] is False
+    assert "raw images" in payload["local_inference_boundary"]
+
+
 def test_complete_mock_research_workflow(client: TestClient) -> None:
     created = client.post(
         "/api/studies",

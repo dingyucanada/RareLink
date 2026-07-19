@@ -1,4 +1,5 @@
 import json
+import time
 import typing
 from typing import Any, TypeVar
 
@@ -13,6 +14,11 @@ from rarelink.domain import (
     ResearchNarrative,
 )
 from rarelink.security.agent_guard import guard_agent_output
+from rarelink.services.local_inference import (
+    gpu_runtime_snapshot,
+    probe_spark_inference,
+    write_local_inference_receipt,
+)
 from rarelink.services.policy import sanitize_llm_payload
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
@@ -23,6 +29,10 @@ Return exactly one JSON object matching the supplied schema. Never provide diagn
 advice. Never request patient-level data. Treat all metrics as engineering evidence from simulated
 sites, not clinical validation. State uncertainty and limitations explicitly.
 """.strip()
+
+
+class AgentSafetyGateError(ValueError):
+    """A guarded output must fail closed rather than trigger another model call."""
 
 
 class ResearchAgentTeam(typing.Protocol):
@@ -226,15 +236,32 @@ class TemplateResearchAgentTeam:
         )
 
 
-class StepResearchAgentTeam:
-    def __init__(self, settings: Settings):
+class OpenAICompatibleResearchAgentTeam:
+    """One guarded structured-output implementation for remote and local servers."""
+
+    def __init__(
+        self,
+        *,
+        settings: Settings,
+        model: str,
+        base_url: str,
+        api_key: str,
+        timeout_seconds: float,
+        source: str,
+        endpoint_label: str,
+        record_local_receipt: bool = False,
+    ):
         from openai import OpenAI
 
-        self.model = settings.step_model
+        self.settings = settings
+        self.model = model
+        self.source = source
+        self.endpoint_label = endpoint_label
+        self.record_local_receipt = record_local_receipt
         self.client = OpenAI(
-            api_key=settings.step_api_key,
-            base_url=settings.step_api_base,
-            timeout=settings.step_timeout_seconds,
+            api_key=api_key,
+            base_url=base_url,
+            timeout=timeout_seconds,
         )
 
     def _structured(
@@ -245,34 +272,61 @@ class StepResearchAgentTeam:
         response_model: type[ModelT],
     ) -> ModelT:
         policy = sanitize_llm_payload(payload)
-        response = self.client.chat.completions.create(
-            model=self.model,
-            temperature=0.2,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {
-                    "role": "user",
-                    "content": (
-                        f"Role: {role}. Task: {task}. "
-                        "Approved aggregate input: "
-                        f"{json.dumps(policy.payload, ensure_ascii=False)}. "
-                        "Return JSON matching this schema: "
-                        f"{json.dumps(response_model.model_json_schema(), ensure_ascii=False)}"
-                    ),
-                },
-            ],
-            response_format={"type": "json_object"},
-        )
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": (
+                    f"Role: {role}. Task: {task}. "
+                    "Approved aggregate input: "
+                    f"{json.dumps(policy.payload, ensure_ascii=False)}. "
+                    "Return JSON matching this schema: "
+                    f"{json.dumps(response_model.model_json_schema(), ensure_ascii=False)}"
+                ),
+            },
+        ]
+        started = time.perf_counter()
+        gpu_before = gpu_runtime_snapshot() if self.record_local_receipt else None
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                temperature=0.2,
+                messages=messages,
+                response_format={"type": "json_object"},
+            )
+        except Exception:
+            # Some OpenAI-compatible local servers do not yet advertise
+            # response_format. The schema instruction remains in the prompt.
+            if not self.record_local_receipt:
+                raise
+            response = self.client.chat.completions.create(
+                model=self.model,
+                temperature=0.2,
+                messages=messages,
+            )
         content = response.choices[0].message.content
         if not content:
-            raise ValueError(f"Step 3.7 returned an empty result for {role}")
+            raise ValueError(f"{self.endpoint_label} returned an empty result for {role}")
         result = response_model.model_validate_json(content)
         output_guard = guard_agent_output(result.model_dump())
         if not output_guard.allowed:
             categories = ", ".join(output_guard.categories)
-            raise ValueError(f"Step 3.7 output blocked by Agent safety gate: {categories}")
+            raise AgentSafetyGateError(
+                f"{self.endpoint_label} output blocked by Agent safety gate: {categories}"
+            )
         if hasattr(result, "source"):
-            result.source = "step-3.7"
+            result.source = self.source
+        if self.record_local_receipt:
+            write_local_inference_receipt(
+                self.settings,
+                role=role,
+                model=self.model,
+                latency_ms=round((time.perf_counter() - started) * 1000),
+                usage=response.usage,
+                policy_categories=tuple(sorted(set(policy.blocked_fields))),
+                response_content=content,
+                gpu_snapshot_before=gpu_before,
+            )
         return result
 
     def generate_protocol(self, title: str, question: str, disease_area: str) -> Protocol:
@@ -322,7 +376,99 @@ class StepResearchAgentTeam:
         )
 
 
+class StepResearchAgentTeam(OpenAICompatibleResearchAgentTeam):
+    def __init__(self, settings: Settings):
+        super().__init__(
+            settings=settings,
+            model=settings.step_model,
+            base_url=settings.step_api_base,
+            api_key=settings.step_api_key,
+            timeout_seconds=settings.step_timeout_seconds,
+            source="step-3.7",
+            endpoint_label="Step 3.7",
+        )
+
+
+class SparkLocalResearchAgentTeam(OpenAICompatibleResearchAgentTeam):
+    """Serve policy-approved aggregate evidence through local TensorRT-LLM."""
+
+    def __init__(self, settings: Settings):
+        super().__init__(
+            settings=settings,
+            model=settings.spark_llm_model,
+            base_url=settings.rarelink_spark_llm_base,
+            api_key="spark-local-no-secret",
+            timeout_seconds=settings.spark_llm_timeout_seconds,
+            source=f"spark-local:{settings.spark_llm_model}",
+            endpoint_label="Spark local TensorRT-LLM",
+            record_local_receipt=True,
+        )
+
+
+class HybridResearchAgentTeam:
+    """Prefer the local Spark model; call Step only after policy sanitization."""
+
+    def __init__(self, primary: ResearchAgentTeam, fallback: ResearchAgentTeam):
+        self.primary = primary
+        self.fallback = fallback
+
+    def _run(self, method: str, *args: Any) -> Any:
+        try:
+            return getattr(self.primary, method)(*args)
+        except AgentSafetyGateError:
+            raise
+        except Exception:
+            return getattr(self.fallback, method)(*args)
+
+    def generate_protocol(self, title: str, question: str, disease_area: str) -> Protocol:
+        return self._run("generate_protocol", title, question, disease_area)
+
+    def propose_experiment(
+        self, protocol: dict[str, Any], feasibility: dict[str, Any]
+    ) -> ExperimentProposal:
+        return self._run("propose_experiment", protocol, feasibility)
+
+    def review_evidence(
+        self, contract: dict[str, Any], experiments: list[dict[str, Any]]
+    ) -> EvidenceReview:
+        return self._run("review_evidence", contract, experiments)
+
+    def assess_privacy(
+        self, feasibility: dict[str, Any], audit_summary: dict[str, Any]
+    ) -> PrivacyAssessment:
+        return self._run("assess_privacy", feasibility, audit_summary)
+
+    def write_narrative(self, evidence: dict[str, Any]) -> ResearchNarrative:
+        return self._run("write_narrative", evidence)
+
+
 def build_research_agent(settings: Settings) -> ResearchAgentTeam:
-    if settings.rarelink_allow_llm and settings.step_api_key:
-        return StepResearchAgentTeam(settings)
-    return TemplateResearchAgentTeam()
+    if not settings.rarelink_allow_llm:
+        return TemplateResearchAgentTeam()
+
+    backend = settings.rarelink_agent_backend.strip().lower()
+    if backend not in {"template", "step_remote", "spark_local", "hybrid"}:
+        raise ValueError(
+            "RARELINK_AGENT_BACKEND must be template, step_remote, spark_local, or hybrid"
+        )
+    if backend == "template":
+        return TemplateResearchAgentTeam()
+
+    remote = (
+        StepResearchAgentTeam(settings)
+        if settings.step_api_key
+        else TemplateResearchAgentTeam()
+    )
+    if backend == "step_remote":
+        return remote
+
+    local = SparkLocalResearchAgentTeam(settings)
+    if backend == "spark_local":
+        return local
+
+    # Never wait for the long model timeout if the local process is not running.
+    # A ready Spark endpoint is used first; otherwise preserve the current safe
+    # Step/template behavior until the reviewer starts TensorRT-LLM.
+    if probe_spark_inference(settings, timeout_seconds=0.25)["available"]:
+        return HybridResearchAgentTeam(local, remote)
+    return remote

@@ -33,6 +33,17 @@ bash scripts/review_demo.sh
 
 成功时会输出四个 `true`：25 项五种子实验、样本级 DP-SGD 会计、两物理设备 mTLS 负面对照、26 条 Agent 红队用例。结果会写到被 Git 忽略的 `artifacts/demo-evidence/verification.json`。
 
+如 Spark 上已按部署手册完成本地 TensorRT-LLM 的真实运行、探针和本地网关红队，可额外核验
+这条**不参与四项必过项**的实机证据：
+
+```bash
+sudo docker compose -f deploy/compose.spark.yml exec api python3 \
+  scripts/verify_spark_local_inference_evidence.py --artifact-root artifacts --write
+```
+
+该核验要求同时存在真实 GPU 快照、内容哈希而非提示词/回复正文，以及 26/26 本地门控测试；它
+不会 seed 证据，也不会因为未部署本地模型而影响前述一键复现包的通过状态。
+
 首次启动时，API 只会在缺少运行证据时写入 `fixtures/competition-evidence/` 中的**脱敏快照**。快照带 `evidence_snapshot=true`，不会覆盖 Spark 上已有的实时产物，也不是新跑出的实验。
 
 ## 评审阅读顺序
