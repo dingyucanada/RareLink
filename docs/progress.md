@@ -79,11 +79,11 @@
   performance claim is made from the tiny synthetic cohort.
 - NVFLARE `SimEnv` can emit a harmless Python multiprocessing semaphore warning during interpreter
   shutdown; success is determined by the persisted global-model postcondition, not process text alone.
-- The allocated node's direct connection to the official MSD archive was measured at roughly 23 KiB/s
-  on 2026-07-17. The full 7.1 GiB archive is therefore not yet an executed benchmark result; the
-  resumable node-direct downloader, manifest checks and aggregate-only geometry receipt are complete.
-  Resume the transfer only when the competition network window permits it; no data are transferred
-  through SSH.
+- The official MSD Task01 archive remains a pending public-benchmark result until its archive checksum,
+  extraction, selected-case hashes and benchmark execution all complete. As of 2026-07-19, the Spark
+  node is using a resumable, multi-connection, MD5-gated direct transfer followed by automatic safe
+  extraction and manifest preparation; no data are transferred through SSH and no incomplete archive is
+  presented as an experiment result.
 - A separate, small Project MONAI MNI152 public structural-MRI asset was validated on Spark as an
   external NIfTI I/O check. The Spark release host could not be reached directly, so the 1.4 MiB
   official asset pair was transparently transferred through encrypted SSH after source verification.

@@ -8,7 +8,7 @@
 
 | 组委会要求 | 最终提交内容 | 当前状态 | 提交时填写 |
 | --- | --- | --- | --- |
-| 项目开源提交 | GitHub 仓库与 Release | 已完成 | [GitHub 仓库](https://github.com/dingyucanada/RareLink)；[v0.2.2 Release](https://github.com/dingyucanada/RareLink/releases/tag/v0.2.2) |
+| 项目开源提交 | GitHub 仓库与 Release 基线 | 已完成 | [GitHub `main`（最新可复现版本）](https://github.com/dingyucanada/RareLink)；[v0.2.2 Release（已发布基线）](https://github.com/dingyucanada/RareLink/releases/tag/v0.2.2) |
 | 项目说明文档（600 字以上） | 作品特点、亮点、架构、优化与边界 | 已完成，2,519 字符 | [项目说明](RareLink-比赛项目说明.md) |
 | 部署说明 | Spark 本地部署、模型优化、运行与复现 | 已完成 | [部署手册](../docs/deployment.md) |
 | 技术栈说明 | NVIDIA、Stepfun 与应用技术栈 | 已完成 | [技术栈说明](RareLink-技术栈说明.md) |
@@ -22,7 +22,7 @@
 | --- | ---: | --- | --- |
 | 项目实用性、行业落地价值与技术创新性 | 25 | 以儿童高级别胶质瘤等小样本多中心 MRI 科研为具体场景；原始影像留在站点、协调方只见聚合指标；研究协议、实验合同、失败重试与报告均进入账本。 | “数据不出科室”架构、协议到证据的闭环、最弱站点风险指标。 |
 | 智能体融合与模型优化技术深度 | 25 | 五角色 Agent Team；Spark Local / Step / Template 三路由；输入脱敏、输出门控、26/26 红队；本地 TensorRT-LLM 元数据回执、独立核验与 `1/2/4` 安全并发基准工具；5 种子 × 5 策略 × 3 轮实验与样本级 DP-SGD。 | Agent 生成受控协议、红队拦截、策略/隐私对照；若完成实机采证，展示 `VERIFIED`，否则明确 `NOT CLAIMED`。 |
-| 项目完整性 | 20 | React 证据驾驶舱、FastAPI 控制面、SQLite 审计账本、MONAI 训练、FLARE 编排、Docker Compose、测试与一键核验脚本齐全；GitHub Release 已发布。 | 前端从研究发起到证据导出的一条完整路径；运行中的 API/服务。 |
+| 项目完整性 | 20 | React 证据驾驶舱、FastAPI 控制面、SQLite 审计账本、MONAI 训练、FLARE 编排、Docker Compose、43 项 Python 测试与一键核验脚本齐全；GitHub `main` 为最新版本，Release `v0.2.2` 已发布为基线。 | 前端从研究发起到证据导出的一条完整路径；运行中的 API/服务。 |
 | 平台适配性 | 15 | DGX Spark GB10 / CUDA 13 实机完成 CUDA、MONAI 3D SegResNet、NVIDIA FLARE 聚合、前后端服务；Docker NVIDIA runtime 与 ARM64 部署说明完备。 | Spark 实机终端、GPU 烟测输出、MONAI / FLARE 日志、服务访问页面。 |
 | 演示效果 | 10 | 已提供逐秒脚本与两段短证据素材建议。 | 严格按 3 分钟脚本录制，先结论后证据，最后清楚说明边界。 |
 | 赛事征文 | 5 | 十日谈文稿已完成。 | 不必占用主视频时间；发布后在最终提交表填入 CSDN / 知乎 URL。 |
@@ -46,4 +46,4 @@ bash scripts/review_demo.sh
 - [ ] 团队提交真实合影；不以 AI 生成图替代真实团队资料。
 - [ ] 将 `RareLink-DGX-Spark黑客松十日谈.md` 发布到 CSDN 或知乎，按平台规则标注 AI 协助内容（如有），并填写外链。
 - [ ] 在组委会的链接提交表中依次粘贴：仓库、说明文档、部署文档、视频、征文、团队合影。
-- [ ] 以无痕窗口打开所有外链；确认 GitHub 主页显示项目描述、技术标签、README 与 Release。
+- [ ] 以无痕窗口打开所有外链；确认 GitHub 主页显示项目描述、技术标签、最新 README、当前 `main` 提交与 Release 基线。

@@ -17,7 +17,7 @@ RareLink 将重计算、患者影像与联邦训练留在医院/科室侧的 DGX
 | Agent 可靠性 | 确定性模板 Agent、输入脱敏、输出门控、26 项红队 | 无 Key 或 API 不可用时保持演示可运行；阻断原始数据、凭据、诊疗建议与不安全合同修改 | FastAPI 控制面；红队结果 `26/26` 通过。 |
 | 应用控制面 | FastAPI、SQLModel / SQLite、Pydantic | 协议状态机、实验合同、审计账本、任务与指标 API | Spark 容器服务。 |
 | 证据驾驶舱 | React、TypeScript、Vite | 展示策略对照、DP 边界、mTLS、安全红队和公开 MRI 接入收据 | Spark Web 容器；公网演示页面仅展示聚合证据。 |
-| 交付与复现 | Docker、Docker Compose、pytest、Ruff、GitHub Release | ARM64/NVIDIA runtime 部署；一键校验证据门 | `deploy/compose.spark.yml`、`scripts/review_demo.sh`、Release `v0.2.2`。 |
+| 交付与复现 | Docker、Docker Compose、pytest、Ruff、GitHub `main` 与 Release 基线 | ARM64/NVIDIA runtime 部署；一键校验证据门 | `deploy/compose.spark.yml`、`scripts/review_demo.sh`；最新内容以 GitHub `main` 为准，Release `v0.2.2` 为已发布基线。 |
 
 ## 本地部署与模型优化说明
 

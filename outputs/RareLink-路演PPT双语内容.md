@@ -695,7 +695,7 @@ Metrics: mean Dice / worst-site Dice / HD95 / win rate / runtime / peak GPU memo
 | 联邦层 | FLARE Recipe/Client、FedAvg/FedProx、SVT | 三站点聚合、全局模型持久化 |
 | 隐私层 | Opacus DP-SGD 与 RDP 会计 | 预算收据、效用对照 |
 | 安全层 | Provision、证书、双设备演练 | mTLS 注册/重连/拒绝 |
-| 交付层 | React 驾驶舱、FastAPI、Docker、Release | 36 tests、Ruff、Vite build、review script |
+| 交付层 | React 驾驶舱、FastAPI、Docker、评审一键包与 GitHub 发布基线 | 43 项 Python 测试、Ruff、Vite build、review script |
 
 **开发原则**：优先复用 NVIDIA FLARE、MONAI、PyTorch、Opacus 的现成能力，把时间投入到医院研究流程、证据治理和边界控制，而不是重复造轮子。
 
@@ -711,7 +711,7 @@ Metrics: mean Dice / worst-site Dice / HD95 / win rate / runtime / peak GPU memo
 | Federation | FLARE Recipe/Client, FedAvg/FedProx, SVT | Three-site aggregation and global checkpoint |
 | Privacy | Opacus DP-SGD and RDP accounting | Budget receipt and utility comparison |
 | Security | Provisioning, certificates and two-device rehearsal | mTLS registration/reconnect/rejection |
-| Delivery | React cockpit, FastAPI, Docker and Release | 36 tests, Ruff, Vite build and review script |
+| Delivery | React cockpit, FastAPI, Docker, reviewer one-command package and a GitHub release baseline | 43 Python tests, Ruff, Vite build and review script |
 
 **Development principle**: reuse NVIDIA FLARE, MONAI, PyTorch and Opacus instead of rebuilding infrastructure; invest engineering time in research workflow, evidence governance and safe boundaries.
 
