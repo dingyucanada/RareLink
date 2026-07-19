@@ -12,7 +12,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from rarelink.imaging.monai_runner import (  # noqa: E402
     SEGRESNET_SPATIAL_DIVISOR,
-    _remap_brats_label,
+    _remap_label,
     _resolve_image,
 )
 
@@ -47,7 +47,12 @@ def build_site_loaders(manifest_path: Path, site_id: str):  # type: ignore[no-un
             EnsureChannelFirstd(keys=["image", "label"]),
             ScaleIntensityd(keys=["image"]),
             *(
-                [Lambdad(keys=["label"], func=_remap_brats_label)]
+                [
+                    Lambdad(
+                        keys=["label"],
+                        func=lambda value: _remap_label(value, manifest["label_mapping"]),
+                    )
+                ]
                 if manifest.get("label_mapping")
                 else []
             ),

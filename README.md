@@ -298,8 +298,8 @@ python scripts/run_nvflare_simulation.py --manifest data/runtime/msd-brain-tumou
 python scripts/run_nvflare_simulation.py --manifest data/runtime/msd-brain-tumour-v1/manifest.json --strategy fedprox --fedprox-mu 0.01 --rounds 3 --workspace artifacts/msd-fedprox
 ```
 
-The MSD label value `4` is explicitly remapped to value `2` so the shared three-class segmentation
-contract remains stable. Read the operational and data-handling constraints in
+The MSD Task01 label value `3` (enhancing tumour) is explicitly merged into value `2` so the shared
+three-class background/edema/tumour contract remains stable. Read the operational and data-handling constraints in
 [the deployment guide](docs/deployment.md#7-公开脑肿瘤基准直连下载与可复现实验).
 
 ## Spark deployment

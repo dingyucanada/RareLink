@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
+from rarelink.imaging.monai_runner import _remap_label
 from rarelink.imaging.public_benchmark import create_msd_manifest, download_archive
 
 nib = pytest.importorskip("nibabel")
@@ -23,7 +24,7 @@ def test_msd_manifest_is_disjoint_and_non_iid(tmp_path: Path) -> None:
         label_path = labels / f"{case_id}.nii.gz"
         image = np.zeros((16, 16, 16, 4), dtype=np.float32)
         label = np.zeros((16, 16, 16), dtype=np.uint8)
-        label.flat[: index + 1] = 4 if index == 5 else 1
+        label.flat[: index + 1] = 3 if index == 5 else 1
         nib.save(nib.Nifti1Image(image, np.eye(4)), image_path)
         nib.save(nib.Nifti1Image(label, np.eye(4)), label_path)
         training.append(
@@ -39,7 +40,7 @@ def test_msd_manifest_is_disjoint_and_non_iid(tmp_path: Path) -> None:
     )
 
     assert manifest["contains_patient_data"] is True
-    assert manifest["label_mapping"] == {"0": 0, "1": 1, "2": 2, "4": 2}
+    assert manifest["label_mapping"] == {"0": 0, "1": 1, "2": 2, "3": 2}
     assert {case["site_id"] for case in manifest["cases"]} == {"site-a", "site-b", "site-c"}
     assert {case["partition_cohort"] for case in manifest["cases"]} == {
         "low_tumor_burden",
@@ -47,6 +48,15 @@ def test_msd_manifest_is_disjoint_and_non_iid(tmp_path: Path) -> None:
         "high_tumor_burden",
     }
     assert all(isinstance(case["images"], str) for case in manifest["cases"])
+
+
+def test_msd_label_mapping_collapses_enhancing_tumour_without_cascading() -> None:
+    labels = np.array([0, 1, 2, 3], dtype=np.uint8)
+
+    remapped = _remap_label(labels, {"0": 0, "1": 1, "2": 2, "3": 2})
+
+    assert remapped.tolist() == [0, 1, 2, 2]
+    assert labels.tolist() == [0, 1, 2, 3]
 
 
 def test_public_archive_download_resumes_range_request(tmp_path: Path) -> None:

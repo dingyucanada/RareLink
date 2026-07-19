@@ -20,6 +20,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from rarelink.imaging.public_benchmark import MSD_TASK01_LABEL_MAPPING  # noqa: E402
+
 
 def _resolve(manifest_path: Path, value: str) -> Path:
     path = Path(value)
@@ -42,7 +44,7 @@ def validate_manifest(manifest_path: Path) -> dict[str, Any]:
         raise ValueError("Manifest must explicitly identify public patient imaging data")
     if manifest.get("clinical_use_prohibited") is not True:
         raise ValueError("Manifest must keep the public benchmark out of clinical use")
-    if manifest.get("label_mapping") != {"0": 0, "1": 1, "2": 2, "4": 2}:
+    if manifest.get("label_mapping") != MSD_TASK01_LABEL_MAPPING:
         raise ValueError("Unexpected Task01 label mapping")
 
     cases = manifest.get("cases", [])

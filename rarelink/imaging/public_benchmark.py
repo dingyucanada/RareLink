@@ -21,6 +21,7 @@ from rarelink.imaging.synthetic import sha256_file
 
 MSD_TASK01_URL = "https://msd-for-monai.s3-us-west-2.amazonaws.com/Task01_BrainTumour.tar"
 MSD_TASK01_MD5 = "240a19d752f0d9e9101544901065d872"
+MSD_TASK01_LABEL_MAPPING = {"0": 0, "1": 1, "2": 2, "3": 2}
 SITE_IDS = ("site-a", "site-b", "site-c")
 
 
@@ -199,7 +200,7 @@ def create_msd_manifest(
         "seed": seed,
         "sites": list(SITE_IDS),
         "modalities": ["FLAIR", "T1w", "T1wCE", "T2w"],
-        "label_mapping": {"0": 0, "1": 1, "2": 2, "4": 2},
+        "label_mapping": MSD_TASK01_LABEL_MAPPING,
         "partition": {
             "method": "tumor_volume_quantiles",
             "simulation_only": True,

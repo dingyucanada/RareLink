@@ -4,7 +4,6 @@ import time
 from pathlib import Path
 from typing import Any
 
-
 # The lightweight three-level SegResNet downsamples twice, so every spatial
 # dimension must be divisible by four for encoder/decoder skip connections to
 # align. MSD Task01 volumes are 240×240×155; padding the final axis to 156 keeps
@@ -18,10 +17,12 @@ def _resolve_image(dataset_root: Path, value: str | list[str]) -> str | list[str
     return [str((dataset_root / path).resolve()) for path in value]
 
 
-def _remap_brats_label(label: Any) -> Any:
-    """Map MSD's enhancing-tumour class 4 into our two-foreground-class contract."""
-    result = label.clone() if hasattr(label, "clone") else label.copy()
-    result[label == 4] = 2
+def _remap_label(label: Any, mapping: dict[str, int]) -> Any:
+    """Apply a manifest-declared label contract without cascading replacements."""
+    source = label.clone() if hasattr(label, "clone") else label.copy()
+    result = source.clone() if hasattr(source, "clone") else source.copy()
+    for raw_value, target_value in mapping.items():
+        result[source == int(raw_value)] = int(target_value)
     return result
 
 
@@ -93,7 +94,16 @@ def run_monai_smoke(
             LoadImaged(keys=["image", "label"]),
             EnsureChannelFirstd(keys=["image", "label"]),
             ScaleIntensityd(keys=["image"]),
-            *([Lambdad(keys=["label"], func=_remap_brats_label)] if label_mapping else []),
+            *(
+                [
+                    Lambdad(
+                        keys=["label"],
+                        func=lambda value: _remap_label(value, label_mapping),
+                    )
+                ]
+                if label_mapping
+                else []
+            ),
             DivisiblePadd(
                 keys=["image", "label"],
                 k=SEGRESNET_SPATIAL_DIVISOR,

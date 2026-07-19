@@ -32,7 +32,7 @@ def test_public_msd_intake_receipt_is_aggregate_only(tmp_path: Path) -> None:
         "public_benchmark": True,
         "clinical_use_prohibited": True,
         "modalities": ["FLAIR", "T1w", "T1wCE", "T2w"],
-        "label_mapping": {"0": 0, "1": 1, "2": 2, "4": 2},
+        "label_mapping": {"0": 0, "1": 1, "2": 2, "3": 2},
         "source": {
             "name": "MSD",
             "url": "https://medicaldecathlon.com/",
