@@ -71,7 +71,7 @@ The local compute boundary and the language-model boundary are intentionally sep
 | Privacy | Opacus sample-level DP-SGD; conservative three-round accounting `ε=6.076881`, `δ=1e-5`. | Not end-to-end, user-level, institution-level or clinical privacy assurance. |
 | Secure federation | Spark–Mac mTLS registration, reconnect and wrong-identity rejection. | Not production hospital-WAN certification. |
 | Agent safety | 26/26 deterministic red-team and safe-control cases passed. | Not a complete penetration test or medical-safety certification. |
-| Public MRI intake | One public MNI152 image/structural-label pair passed local NIfTI geometry and hash checks. | Not MSD Task01, tumor performance or clinical validation. |
+| Public real MRI | 24 four-modal MSD Task01 cases passed geometry/hash checks, single-site CUDA training and one-round three-logical-site FedAvg; 3/3 updates were aggregated and a global model was persisted. | Engineering smoke evidence only; not a pediatric cohort, clinical performance or real cross-hospital validation. |
 
 ## Technology and data provenance
 
@@ -81,7 +81,7 @@ Current data status is intentionally explicit:
 
 - Synthetic four-modal MRI is generated locally for engineering tests.
 - The public MNI152 pair is used only for external NIfTI intake and geometry validation.
-- The repository contains a resumable MSD Task01 downloader and manifest validator, but the slow competition-node download is not presented as a completed benchmark result.
+- MSD Task01 is now downloaded and verified on Spark; 24 cases completed a one-round three-logical-site engineering run. The raw images and model weights are not committed.
 - BraTS-PEDs is a planned, policy-controlled external validation source, not a dataset already used for the current reported experiments.
 
 ## Documentation
@@ -93,6 +93,7 @@ Current data status is intentionally explicit:
 - [Technical and data references](docs/references.md)
 - [Technical stack](outputs/RareLink-技术栈说明.md)
 - [Formal DGX Spark report](outputs/RareLink-2026-07-17-DGX-Spark系统移植与实机实验正式报告.md)
+- [MSD real-image Spark federation report](outputs/RareLink-2026-07-20-MSD真实影像Spark联邦运行报告.md)
 - [Enterprise roadmap](outputs/RareLink-企业化一页路线图.md)
 
 ## Quick start

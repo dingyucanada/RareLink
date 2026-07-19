@@ -307,7 +307,7 @@ Metrics: mean Dice / worst-site Dice / HD95 / win rate / runtime / peak GPU memo
 | --- | --- | --- |
 | 本地合成四模态 MRI | 软件、训练、联邦聚合和前端展示 | 已完成工程验证，不是患者数据 |
 | Project MONAI MNI152 | 公开 NIfTI 图像/标签接入与几何校验 | 已在 Spark 完成；不是肿瘤基准 |
-| MSD Task01 BrainTumour | 公开研究基准下载与分区工具 | 脚本已实现；节点下载受限，未伪造完成结果 |
+| MSD Task01 BrainTumour | 真实公开影像工程基准 | 24 例已在 Spark 完成几何校验、单站 CUDA 与一轮三逻辑站点 FedAvg；不是临床性能 |
 | TCIA BraTS-PEDs | 儿童高级别胶质瘤外部验证计划 | 需遵守 TCIA/Synapse 政策，尚未宣称完成临床实验 |
 
 **底部小字**：所有公开数据均须按原始数据集的 DOI、许可证和 Data Usage Policy 引用。
@@ -320,7 +320,7 @@ Metrics: mean Dice / worst-site Dice / HD95 / win rate / runtime / peak GPU memo
 | --- | --- | --- |
 | Local synthetic four-modal MRI | Software, training, federation and UI evidence | Engineering validation; not patient data |
 | Project MONAI MNI152 | Public NIfTI image/label intake and geometry checks | Completed on Spark; not a tumor benchmark |
-| MSD Task01 BrainTumour | Public benchmark downloader and partitioning tools | Implemented; slow node download is not presented as completed evidence |
+| MSD Task01 BrainTumour | Public real-image engineering benchmark | 24 cases completed geometry checks, single-site CUDA and one-round three-logical-site FedAvg on Spark; not clinical performance |
 | TCIA BraTS-PEDs | Planned external validation for pediatric HGG | Requires TCIA/Synapse policy compliance; no completed clinical experiment is claimed |
 
 **Footer**: Cite each public dataset by its DOI, license and Data Usage Policy.
@@ -659,9 +659,9 @@ Metrics: mean Dice / worst-site Dice / HD95 / win rate / runtime / peak GPU memo
 4. 记录空间尺寸 `91×109×91` 与 `2 mm` spacing。
 5. 写入图像与标签 SHA-256，但 evidence 只保留聚合收据，不保留原始像素。
 
-**结论**：已证明外部公开 NIfTI 的本地接入与几何检查；不等于 MSD Task01、肿瘤分割、联邦训练或临床验证。
+**MSD 新增结果**：24 例四模态 MRI 完成 Spark 几何校验、单站 CUDA 和一轮三逻辑站点 FedAvg；3/3 更新聚合并生成全局模型。该单轮结果只证明工程链路，不等于儿童队列、临床性能或真实跨院验证。
 
-**MSD / BraTS-PEDs**：仓库提供 MSD 直连下载和校验脚本；BraTS-PEDs 作为后续合规外部研究来源，必须完成访问政策、引用和授权检查。
+**MNI152 / BraTS-PEDs**：MNI152 保留为早期 NIfTI 接入收据；BraTS-PEDs 仍是后续合规儿童外部研究来源，必须完成访问政策、引用和授权检查。
 
 ### English
 
@@ -675,9 +675,9 @@ Metrics: mean Dice / worst-site Dice / HD95 / win rate / runtime / peak GPU memo
 4. Record `91×109×91` geometry and `2 mm` spacing.
 5. Record SHA-256 values while publishing aggregate-only evidence without raw pixels.
 
-**Conclusion**: external NIfTI intake and geometry checks passed; this is not MSD Task01, tumor segmentation, federated training or clinical validation.
+**New MSD result**: 24 four-modal cases completed Spark geometry checks, single-site CUDA and one-round three-logical-site FedAvg; 3/3 updates were aggregated and a global model was persisted. This proves an engineering path, not pediatric-cohort, clinical-performance or real cross-hospital validity.
 
-**MSD / BraTS-PEDs**: the repository provides the MSD direct-download and verification path; BraTS-PEDs remains a governed future external-validation source subject to access and citation policy.
+**MNI152 / BraTS-PEDs**: MNI152 remains the earlier NIfTI intake receipt; BraTS-PEDs remains a governed future pediatric external-validation source subject to access and citation policy.
 
 ## A7. 开发过程：从 API 到实机 / Development path: from API to hardware
 

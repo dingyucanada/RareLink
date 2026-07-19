@@ -28,7 +28,7 @@
 | --- | --- | --- |
 | 合成四模态 MRI | RareLink 本地生成器 | 用于软件、训练、联邦聚合和前端链路冒烟；不是患者数据。 |
 | MNI152 结构 MRI/NIfTI 对 | [Project MONAI extra-test-data release](https://github.com/Project-MONAI/MONAI-extra-test-data/releases/tag/0.8.1) | 已在 Spark 完成一对公开 NIfTI 图像/结构标签的几何与哈希接入校验；不是 MSD、肿瘤分割或临床结果。 |
-| MSD Task01_BrainTumour | [官方数据页](https://medicaldecathlon.com/dataaws/) · [官方 S3 archive](https://msd-for-monai.s3-us-west-2.amazonaws.com/Task01_BrainTumour.tar) · [任务论文](https://doi.org/10.1038/s41467-022-30695-9) | 仓库提供直连下载、MD5/SHA-256、标签映射和非 IID 分区脚本；赛事节点下载速度受限，未将未完成下载包装成实测结果。 |
+| MSD Task01_BrainTumour | [官方数据页](https://medicaldecathlon.com/dataaws/) · [官方 S3 archive](https://msd-for-monai.s3-us-west-2.amazonaws.com/Task01_BrainTumour.tar) · [任务论文](https://doi.org/10.1038/s41467-022-30695-9) | 赛事 Spark 已完成归档校验、24 例几何检查、单站 CUDA 与三逻辑站点一轮 FedAvg；仅作工程兼容性证据，不等于儿童队列或临床性能。 |
 | BraTS-PEDs | [TCIA collection](https://www.cancerimagingarchive.net/collection/brats-peds/) · [TCIA policy](https://www.cancerimagingarchive.net/tcia-data-usage-policy/) | 计划中的儿童高级别胶质瘤外部研究验证数据；需遵守 TCIA/Synapse 条款和数据引用要求，当前版本不宣称已完成该基准训练。 |
 
 ## Stepfun Step 3.7
@@ -41,4 +41,3 @@
 ## 引用建议
 
 引用 RareLink 的工程实现时，请同时说明：版本、运行节点、数据来源、是否为合成数据、是否为逻辑站点模拟，以及“非临床验证”的边界。公开数据集请按各自页面的作者、DOI、许可证和 Data Usage Policy 要求引用。
-

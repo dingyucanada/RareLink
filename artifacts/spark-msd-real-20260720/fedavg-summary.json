@@ -1,0 +1,60 @@
+{
+  "job_id": "rarelink-fedavg",
+  "status": "completed_with_global_model",
+  "sdk_status": null,
+  "result": "/workspace/artifacts/msd-real-fedavg-r1-v2/run-workspace/rarelink-fedavg",
+  "global_model": "/workspace/artifacts/msd-real-fedavg-r1-v2/run-workspace/rarelink-fedavg/server/simulate_job/app_server/FL_global_model.pt",
+  "strategy": "fedavg",
+  "sites": [
+    "site-a",
+    "site-b",
+    "site-c"
+  ],
+  "rounds": 1,
+  "local_epochs": 1,
+  "seed": 2026,
+  "manifest": "/workspace/competition-runtime/msd-brain-tumour-v1/manifest.json",
+  "metrics_dir": "/workspace/artifacts/msd-real-fedavg-r1-v2/metrics",
+  "metrics": {
+    "mean_dice": 0.041624,
+    "worst_site_dice": 0.012345,
+    "site_dice_std": 0.024265,
+    "hd95": 102.413666,
+    "sites": [
+      {
+        "site_id": "site-a",
+        "dice": 0.012345,
+        "hd95": 119.77195739746094,
+        "round": 1,
+        "train_loss": 1.657893,
+        "elapsed_seconds": 6.6302,
+        "peak_gpu_memory_mb": 5240.349,
+        "privacy": null
+      },
+      {
+        "site_id": "site-b",
+        "dice": 0.040765,
+        "hd95": 107.58299255371094,
+        "round": 1,
+        "train_loss": 1.653218,
+        "elapsed_seconds": 6.3943,
+        "peak_gpu_memory_mb": 5240.349,
+        "privacy": null
+      },
+      {
+        "site_id": "site-c",
+        "dice": 0.071763,
+        "hd95": 79.88604736328125,
+        "round": 1,
+        "train_loss": 1.64994,
+        "elapsed_seconds": 6.7046,
+        "peak_gpu_memory_mb": 5240.349,
+        "privacy": null
+      }
+    ]
+  },
+  "simulated_sites": true,
+  "elapsed_seconds": 69.0084,
+  "peak_gpu_memory_mb": 5240.349,
+  "privacy": null
+}

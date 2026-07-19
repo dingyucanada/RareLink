@@ -57,6 +57,10 @@
 - [x] Resumable direct MSD download and aggregate-only public NIfTI geometry-validation receipt
 - [x] Spark public MNI152 structural-MRI/label intake validation: 91×109×91, 2 mm isotropic,
   SHA-256 recorded and no pixels/paths/case IDs exported in the receipt
+- [x] MSD Task01 archive MD5/SHA-256 validation, 24-case four-modal NIfTI geometry validation and
+  deterministic three-site non-IID partition on Spark
+- [x] MSD real-image single-site CUDA smoke and one-round three-logical-site NVFLARE FedAvg: 3/3
+  updates aggregated, global model persisted, exit code 0
 
 ## Next Spark milestone
 
@@ -79,11 +83,10 @@
   performance claim is made from the tiny synthetic cohort.
 - NVFLARE `SimEnv` can emit a harmless Python multiprocessing semaphore warning during interpreter
   shutdown; success is determined by the persisted global-model postcondition, not process text alone.
-- The official MSD Task01 archive remains a pending public-benchmark result until its archive checksum,
-  extraction, selected-case hashes and benchmark execution all complete. As of 2026-07-19, the Spark
-  node is using a resumable, multi-connection, MD5-gated direct transfer followed by automatic safe
-  extraction and manifest preparation; no data are transferred through SSH and no incomplete archive is
-  presented as an experiment result.
+- The official MSD Task01 archive completed checksum verification, extraction, selected-case hashes,
+  geometry intake and a one-round 24-case engineering run on 2026-07-20. Its low one-epoch Dice is not
+  presented as clinical performance, method superiority or a pediatric rare-disease result; the three
+  sites remain logical partitions on one Spark.
 - A separate, small Project MONAI MNI152 public structural-MRI asset was validated on Spark as an
   external NIfTI I/O check. The Spark release host could not be reached directly, so the 1.4 MiB
   official asset pair was transparently transferred through encrypted SSH after source verification.

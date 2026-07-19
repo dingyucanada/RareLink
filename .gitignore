@@ -14,6 +14,8 @@ dist/
 coverage/
 artifacts/*
 !artifacts/.gitkeep
+!artifacts/spark-msd-real-20260720/
+!artifacts/spark-msd-real-20260720/**
 data/runtime/
 data/raw/
 *.nii

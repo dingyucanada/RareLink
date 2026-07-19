@@ -255,7 +255,7 @@ sudo docker exec -it rarelink-api python3 scripts/prepare_msd_brain_tumour.py \
 
 脚本会在节点直接下载公开归档，校验发布的 MD5，再记录归档 SHA-256 和每个入选文件的 SHA-256。
 它按肿瘤体素量的低、中、高三分位创建 `site-a`、`site-b`、`site-c`，每站抽取固定数量病例；
-这是可重复的非 IID **模拟**，不代表真实医院人群分布。MSD 原始标签的 `4` 会映射为 `2`，形成
+这是可重复的非 IID **模拟**，不代表真实医院人群分布。MSD Task01 原始增强肿瘤标签 `3` 会映射为 `2`，形成
 背景、病灶区域、肿瘤核心三个工程类别；映射会写入 manifest。
 
 先做本地/集中式上界，再做两种联邦策略。下列每一条都会输出 Dice、HD95、运行时长、峰值显存；
@@ -283,6 +283,13 @@ sudo docker exec -it rarelink-api python3 scripts/run_nvflare_simulation.py \
 
 录屏时展示 manifest 中的来源、许可证、分区规则和哈希即可；不要展示切片、患者影像内容、原始
 数据目录或任何可识别信息。MSD 的授权与引用要求应在最终提交材料中保留。
+
+### 7.1 赛事 Spark 已完成运行记录（2026-07-20）
+
+赛事节点已完成 7.1 GiB 归档校验、24 例四模态几何验证、单站 CUDA 冒烟训练和三个逻辑站点
+一轮 FedAvg。NVFLARE 聚合 3/3 站点并持久化全局模型，端到端耗时 69.0084 秒，峰值 GPU
+内存 5240.349 MiB。该记录是单轮工程验证，不是临床性能结果；完整过程、指标与边界见
+[`outputs/RareLink-2026-07-20-MSD真实影像Spark联邦运行报告.md`](../outputs/RareLink-2026-07-20-MSD真实影像Spark联邦运行报告.md)。
 
 ## 8. 启动控制台
 

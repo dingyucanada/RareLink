@@ -55,6 +55,7 @@
 
 | 想了解什么 | 直接查看 |
 | --- | --- |
+| MSD 真实公开影像如何在 Spark 上完成联邦运行 | [MSD 真实影像 Spark 联邦运行报告](outputs/RareLink-2026-07-20-MSD真实影像Spark联邦运行报告.md) |
 | 今天完成了哪些 Spark 移植与实验 | [DGX Spark 系统移植与实机实验正式报告](outputs/RareLink-2026-07-17-DGX-Spark系统移植与实机实验正式报告.md) |
 | 25 次五种子、多轮实验的结论 | 同上第 5 节；`5 × 5` 策略—种子组合全部完成 |
 | 样本级 DP-SGD、两设备 mTLS、Agent 红队 | 同上第 6–8 节 |
@@ -78,7 +79,7 @@
 | 隐私 | Opacus 样本级 DP-SGD，三轮保守会计 `ε=6.076881`、`δ=1e-5` | 不宣称端到端、用户级或医院级 DP 保证 |
 | 通信 | Spark–Mac mTLS 首次注册、重连成功，错误身份拒绝 | 不宣称真实医院 WAN/生产身份验证 |
 | Agent 安全 | 输入/输出双向网关；26/26 红队与控制用例通过 | 不宣称完整渗透测试或医疗安全认证 |
-| 公开影像 I/O | Spark 验证一对官方 MNI152 结构 MRI/NIfTI 标签的几何与哈希回执 | 不把该单对公开模板说成肿瘤基准或联邦效果 |
+| 公开真实影像 | MSD Task01 24 例四模态 MRI 完成几何/哈希校验、单站 CUDA 训练与三逻辑站点一轮 FedAvg；3/3 聚合并生成全局模型 | 仅工程冒烟，不宣称儿童队列、临床性能或真实跨院验证 |
 
 ### 评委 90 秒路径
 
@@ -127,7 +128,7 @@ flowchart LR
 | 隐私训练 | [Opacus](https://opacus.ai/) | 样本级 DP-SGD、逐样本裁剪、噪声与 RDP 会计。 |
 | 联邦学习术语 | [NIST Glossary](https://csrc.nist.gov/glossary/term/federated_learning) | 联邦学习的权威定义与边界；联邦学习不自动等于合规。 |
 | 罕见病术语 | [NIH GARD](https://rarediseases.info.nih.gov/diseases/pages/31/faqs-about-rare-diseases) | 美国语境下的罕见病定义；本项目不据此宣称诊断或流行病学结论。 |
-| 公开研究基准 | [MSD](https://medicaldecathlon.com/) · [TCIA BraTS-PEDs](https://www.cancerimagingarchive.net/collection/brats-peds/) | MSD 下载器已实现；BraTS-PEDs 是计划中的合规外部验证来源，不包装为当前已完成训练结果。 |
+| 公开研究基准 | [MSD](https://medicaldecathlon.com/) · [TCIA BraTS-PEDs](https://www.cancerimagingarchive.net/collection/brats-peds/) | MSD Task01 已完成 24 例 Spark 工程验证；BraTS-PEDs 仍是计划中的合规儿童队列来源。 |
 
 完整版本、DOI、许可证、数据使用政策和当前验证状态见[参考资料](docs/references.md)。
 
@@ -168,7 +169,10 @@ flowchart LR
 三逻辑站点 NVFLARE 聚合、API 后台任务和公网前后端映射，并完成五种子多轮矩阵、样本级
 DP-SGD、Spark–Mac 两设备 mTLS 与 Agent 红队。完整的环境、过程、结果、推理和限制见
 [DGX Spark 系统移植与实机实验正式报告](outputs/RareLink-2026-07-17-DGX-Spark系统移植与实机实验正式报告.md)。
-所有结果仍属于单机逻辑站点与合成数据的工程验证，不代表真实多院部署或临床有效性。
+合成数据矩阵仍只用于工程对照。2026-07-20 又完成 MSD Task01 24 例真实公开影像的单站 CUDA
+训练与三逻辑站点一轮 FedAvg，3/3 结果聚合并生成全局模型；详见
+[MSD 真实影像 Spark 联邦运行报告](outputs/RareLink-2026-07-20-MSD真实影像Spark联邦运行报告.md)。
+它仍不代表儿童队列、真实多院部署或临床有效性。
 
 Step Plan 的 `step-3.7-flash` Models API 权限与真实 JSON-mode 协议生成也已完成冒烟验证；
 实验设计、统计评审、隐私评审和科研写作四角色串行协作也已通过真实 API 验证。测试输入为

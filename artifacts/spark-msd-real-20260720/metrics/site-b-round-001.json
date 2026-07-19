@@ -1,0 +1,13 @@
+{
+  "site_id": "site-b",
+  "round": 1,
+  "mean_dice": 0.04076499864459038,
+  "hd95": 107.58299255371094,
+  "train_loss": 1.6532176222120012,
+  "steps": 7,
+  "nonempty_steps": 7,
+  "elapsed_seconds": 6.3943,
+  "peak_gpu_memory_mb": 5240.349,
+  "spatial_padding_multiple": 4,
+  "privacy": null
+}
