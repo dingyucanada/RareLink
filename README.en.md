@@ -5,115 +5,177 @@
 </p>
 
 <p align="center">
-  <strong>Turn scarce cases into collaborative, reviewable research evidence.</strong><br/>
+  <strong>Turn scarce cases into collaborative, verifiable research evidence.</strong><br/>
   DGX Spark × NVIDIA FLARE × MONAI × Step 3.7
 </p>
 
 <p align="center">
-  <img src="assets/rarelink-overview.svg" alt="RareLink architecture and evidence overview" width="100%" />
-</p>
-
-<p align="center">
-  <a href="https://github.com/dingyucanada/RareLink/releases"><img src="https://img.shields.io/github/v/release/dingyucanada/RareLink?style=flat-square&label=release" alt="Release" /></a>
-  <a href="https://github.com/dingyucanada/RareLink/blob/main/LICENSE"><img src="https://img.shields.io/github/license/dingyucanada/RareLink?style=flat-square" alt="License" /></a>
   <img src="https://img.shields.io/badge/NVIDIA-DGX%20Spark-76b900?style=flat-square" alt="NVIDIA DGX Spark" />
-  <img src="https://img.shields.io/badge/FLARE-2.7.2-2563eb?style=flat-square" alt="NVIDIA FLARE" />
+  <img src="https://img.shields.io/badge/NVIDIA%20FLARE-2.7.2-2563eb?style=flat-square" alt="NVIDIA FLARE" />
   <img src="https://img.shields.io/badge/MONAI-1.6.0-7c3aed?style=flat-square" alt="MONAI" />
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-0f766e?style=flat-square" alt="Apache-2.0" /></a>
 </p>
 
-RareLink is a data-local, evidence-traceable federated research platform for rare-disease and multi-center medical-imaging studies. Each participating department can keep patient-level MRI data locally while DGX Spark runs the local imaging workload, NVIDIA FLARE coordinates federated training, and a Step 3.7 Agent Team works only with policy-filtered protocols and aggregate evidence.
+> Research-use engineering prototype; not diagnostic or therapeutic advice. The competition medical-research validation uses three **logical sites** on one real DGX Spark, plus a Spark–Mac mTLS exercise. It is not a production multi-hospital deployment or clinical validation.
 
-> Research-use engineering prototype. It is not a diagnostic or treatment system. The competition validation uses three logical sites on one physical DGX Spark; a separate Spark–Mac mTLS rehearsal does not represent production multi-hospital deployment.
+---
 
-## The 30-second proof: an evidence loop, not a one-off demo
+## Project overview
+
+Rare-disease and small-cohort imaging research needs more than a model: it needs a way for multiple institutions to develop evidence when source data cannot be centralized. RareLink turns protocol design, site feasibility, experiment contracts, federated training, privacy review, and reporting into a controlled workflow: **data stays with the department, models train locally, only approved updates and aggregate metrics cross sites, and the process is recorded in an audit ledger.**
+
+| Research challenge | RareLink implementation |
+| --- | --- |
+| MRI, labels and patient fields cannot be pooled | Local NIfTI/label processing; an input gateway rejects source images, identifiers, DICOM UIDs, secrets and small-cell fields from outbound paths |
+| Mean performance can hide weak sites | Shows mean Dice, weakest-site Dice, site spread, and HD95 together |
+| Agents can exceed scope or leave no trace | Five roles consume only de-identified protocols and aggregates; experiment contracts, I/O gates and human approval constrain them |
+| Experiments are hard to replay | Fixed seeds, strategy matrix, result/model hashes, mTLS receipts, DP accounting, and one-click evidence verification |
+
+### Verified engineering evidence
+
+| Evidence | Result | Boundary |
+| --- | --- | --- |
+| Public imaging run | 24 MSD Task01 four-modality MRIs: geometry/hash checks, CUDA single-site training, one round of three-logical-site FedAvg, 3/3 updates and a persisted global model | Engineering smoke test; not paediatric, clinical, or real cross-hospital validation |
+| Stability comparison | 5 seeds × 5 strategies × 3 rounds; 25/25 combinations completed | Synthetic/logical-site comparison, not medical statistical inference |
+| Privacy and security | Opacus sample-level DP-SGD: conservative 3-round `ε=6.076881`, `δ=1e-5`; 26/26 Agent gateway cases passed | Not end-to-end, user-level, or hospital-level DP; not a penetration test |
+| Secure federation exercise | Spark–Mac mTLS registration, reconnect, and invalid-identity rejection | Not a production hospital WAN or identity system |
+
+Read the [MSD real-imaging Spark report](outputs/RareLink-2026-07-20-MSD真实影像Spark联邦运行报告.md) and [formal Spark migration report](outputs/RareLink-2026-07-17-DGX-Spark系统移植与实机实验正式报告.md) for methods and limitations.
+
+---
+
+## NVIDIA platform and tools
+
+DGX Spark is not used as a web server alone: it defines the local CUDA/3D-training boundary, runs NVIDIA FLARE workloads and the evidence API/web service, and provides an optional local-LLM route.
+
+| Platform / tool | Role in RareLink | Evidence / use |
+| --- | --- | --- |
+| [NVIDIA DGX Spark](https://www.nvidia.com/en-us/products/workstations/dgx-spark/) | Local compute and runtime boundary | GB10 / ARM64 / CUDA 13 ran CUDA, MONAI 3D, FLARE and API/web services; the MSD one-round three-site aggregation completed in about 69 seconds |
+| [CUDA](https://developer.nvidia.com/cuda) + PyTorch | Local tensor compute, AMP and training runtime | Runs MONAI training and federated client work on Spark |
+| [NVIDIA FLARE](https://nvidia.github.io/NVFlare/) | FedAvg/FedProx, Client API, mTLS and orchestration | Three logical-site aggregation plus two-physical-device mTLS evidence |
+| [Project MONAI](https://project-monai.github.io/) | NIfTI, 3D SegResNet, transforms, Dice/HD95 | Used for synthetic-imaging engineering controls and MSD Task01 verification |
+| [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM) (optional) | Spark-local OpenAI-compatible Research Agent route | Metadata receipts, independent checks, 26 gateway red-team cases and `1/2/4` concurrency tools are implemented; the UI says `NOT CLAIMED` until a real local-model receipt exists |
+| Step 3.7 | Policy-constrained experiment design, statistics/privacy review, research writing | Receives only de-identified text and aggregate metrics; falls back to deterministic template agents without a key |
+
+### Organizer reference-workshop baseline
+
+Independently from the medical-research workflow, the organizer-provided **OpenClaw + ComfyUI Workshop** was completed on the same DGX Spark: the official notebook completed 26 code cells without errors; local Ollama `qwen3.6:35b`, ComfyUI 0.18.1 with the FLUX + PuLID official sample (51.87 seconds), and OpenClaw 2026.5.19 with the `superhero` Skill were all verified. This is **baseline reference-code completion**, never a clinical or medical-imaging claim. See the [completion receipt and boundaries](docs/progress.md#2026-07-20--组织方-openclaw--comfyui-参考-workshop-基础完赛).
+
+---
+
+## Product walkthrough and system screens
+
+The frontend separates an interactive research-workflow sandbox from persisted hardware evidence. The sandbox demonstrates protocol, contract, Agent, and approval states. The evidence console recomputes hashes and verifies the three sites, global model, metrics, and stated boundaries.
 
 <p align="center">
-  <img src="assets/rarelink-evidence-scorecard.svg" alt="RareLink engineering evidence scorecard: 25 of 25 repeated runs, 26 of 26 Agent safety cases, sample-level DP-SGD, Spark–Mac mTLS and worst-site Dice across five strategies" width="100%" />
+  <img src="assets/rarelink-overview.svg" alt="RareLink: departmental data, DGX Spark local training, FLARE aggregation, constrained Agent review and evidence cockpit" width="100%" />
 </p>
 
-This scorecard brings the pitch-deck evidence into the repository itself. It states both what the prototype can prove and what it cannot: in the current synthetic experiment, FedAvg is the engineering demo candidate because it has the highest mean worst-site Dice (`0.072276`). FedProx, strict SVT, and DP-SGD outcomes are retained rather than hiding negative or costly results. These are **synthetic-data, three-logical-site, three-round engineering comparisons** — not clinical performance or claims of method superiority.
+### Reviewer path
 
-| Pitch-deck question | Verifiable answer in this repository |
-| --- | --- |
-| Can patient data leave a department? | Raw MRI, labels and patient-level fields stay local; only policy-approved model updates and aggregate statistics may leave. |
-| Does Spark do real local work? | CUDA, MONAI 3D training, FLARE aggregation, and API/Web services ran on a GB10 / ARM64 / CUDA 13 node. |
-| Are Agents merely a chat wrapper? | Five roles receive only redacted protocols and aggregate metrics, bounded by an experiment contract, input/output gates, and human approval. |
-| Can results be audited? | 25/25 repeated combinations, 26/26 red-team cases, DP accounting, mTLS receipts, and a one-command verifier each have an evidence path. |
+1. Run the one-click reviewer package; it does not download images, model weights, certificates, or API keys.
+2. Click **Verify local evidence hashes** in the evidence cockpit.
+3. Expand the site receipt to view Dice, HD95, training time, aggregate metrics, and non-clinical boundary.
+4. Create a demonstration study in the workflow sandbox to inspect protocol, site-statistics, contract, policy, and Agent evidence states.
+5. Use `review_demo.sh` to reproduce the same evidence gates.
 
-## What the system does
+<p align="center">
+  <img src="assets/rarelink-evidence-scorecard.svg" alt="RareLink evidence scorecard: 25/25 repeated experiments, 26/26 Agent gateway cases, sample-level DP-SGD, Spark-Mac mTLS and five-strategy comparison" width="100%" />
+</p>
 
-RareLink treats federated learning as a research workflow, not only as a model-training primitive. A study moves through a controlled state machine: research question → protocol → site feasibility → locked experiment contract → local training → federated aggregation → statistical review → evidence report. Decisions, retries, model paths, metrics and policy checks are recorded in an audit ledger.
+The three-minute demo should show real interaction—not slides alone: verify hashes, expand a site receipt, then show the Agent workflow and reproducibility package. Use the [demo script](outputs/RareLink-三分钟演示视频脚本.md).
 
-| Research problem | RareLink response |
-| --- | --- |
-| Patient MRI cannot simply be pooled | Local NIfTI/label processing; only approved model updates and aggregate statistics leave a site. |
-| Average metrics can hide site failure | Reports include mean Dice, worst-site Dice, site variation and HD95. |
-| Agents can overreach | Input redaction, output gates, human approval and a locked experiment contract. |
-| Experiments are difficult to reproduce | Five seeds × five strategies × three rounds, mTLS receipts, DP accounting and a review script. |
+---
 
-## Architecture
+## Technical innovations
 
-The local compute boundary and the language-model boundary are intentionally separate:
+1. **Federated training becomes an evidence loop.** Protocols, feasibility, contracts, job states, aggregate metrics, model paths, and audit events form a traceable state machine rather than a single score.
+2. **Compute and language-model boundaries are separated.** MRI/labels stay at the site; Spark runs image training; FLARE coordinates approved updates; Step 3.7 or local TensorRT-LLM consumes only de-identified text and aggregates.
+3. **Privacy–utility is measured, not asserted.** Local, FedAvg, FedProx, strict SVT, and sample-level DP-SGD are compared while preserving both average and weakest-site metrics.
+4. **Agents operate inside an auditable safety boundary.** Bidirectional gateways block source fields, identifiers, paths, secrets, and diagnostic instructions; 26 deterministic attack/safe controls run before and after Agent access.
+5. **Local-LLM claims require evidence.** Endpoint availability, receipt capture, and independent verification are surfaced separately. No real receipt means `NOT CLAIMED`.
 
-1. **Hospital / department site** — MRI, labels and patient-level fields remain local.
-2. **DGX Spark** — CUDA, PyTorch, MONAI and the local FLARE Client run the imaging workload.
-3. **NVIDIA FLARE** — coordinates FedAvg/FedProx jobs, client identity and secure communication.
-4. **Spark-local TensorRT-LLM (optional)** — serves approved aggregate research context through a private OpenAI-compatible endpoint; it never receives MRI, labels, identifiers or credentials.
-5. **Step 3.7 Agent Team** — receives only policy-approved text when the selected routing mode permits remote collaboration.
-6. **Evidence cockpit** — exposes provenance, boundaries, metrics, failures and reproducibility receipts.
+See [architecture](docs/architecture.md) and [authoritative technical/data references](docs/references.md).
 
-## Verified engineering evidence
+---
 
-| Area | Verified result | Claim boundary |
+## Future outlook
+
+RareLink does not aim to replace clinicians. It aims to become a multi-center research operating system where **data does not leave the hospital and evidence remains traceable**.
+
+| Stage | Goal | Prerequisites |
 | --- | --- | --- |
-| Local hardware | NVIDIA DGX Spark GB10, ARM64, CUDA 13; CUDA kernels, MONAI 3D training, FLARE aggregation and services ran on the node. | Not a clinical performance claim. |
-| Stability | 25/25 combinations completed across five seeds, five strategies and three rounds. | Synthetic/logical-site engineering evidence, not medical statistics. |
-| Privacy | Opacus sample-level DP-SGD; conservative three-round accounting `ε=6.076881`, `δ=1e-5`. | Not end-to-end, user-level, institution-level or clinical privacy assurance. |
-| Secure federation | Spark–Mac mTLS registration, reconnect and wrong-identity rejection. | Not production hospital-WAN certification. |
-| Agent safety | 26/26 deterministic red-team and safe-control cases passed. | Not a complete penetration test or medical-safety certification. |
-| Public real MRI | 24 four-modal MSD Task01 cases passed geometry/hash checks, single-site CUDA training and one-round three-logical-site FedAvg; 3/3 updates were aggregated and a global model was persisted. | Engineering smoke evidence only; not a pediatric cohort, clinical performance or real cross-hospital validation. |
+| External engineering validation | Repeat the workflow with properly authorized public paediatric data such as BraTS-PEDs | Data-use policy, preprocessing, transparent reporting limits |
+| Real multi-hospital pilot | Independent Spark client, certificate-based FLARE communication, and local audit at each hospital | IRB/data-use agreement/security review/network and identity readiness |
+| Clinical research collaboration | PACS/FHIR integration, clinical governance, cross-site feasibility and evidence packages | Institutional partners, independent clinical validation, regulatory route |
+| Local-Agent upgrade | Capture real TensorRT-LLM receipts, concurrency data and security red-team evidence on Spark | Available local model and compliant inference resources |
 
-## Technology and data provenance
+See the [one-page enterprise roadmap](outputs/RareLink-企业化一页路线图.md).
 
-The authoritative references for NVIDIA DGX Spark, CUDA, NVIDIA FLARE, MONAI, Opacus, federated-learning terminology, rare-disease terminology, MSD and BraTS-PEDs are maintained in [Technical & Data References](docs/references.md).
-
-Current data status is intentionally explicit:
-
-- Synthetic four-modal MRI is generated locally for engineering tests.
-- The public MNI152 pair is used only for external NIfTI intake and geometry validation.
-- MSD Task01 is now downloaded and verified on Spark; 24 cases completed a one-round three-logical-site engineering run. The raw images and model weights are not committed.
-- BraTS-PEDs is a planned, policy-controlled external validation source, not a dataset already used for the current reported experiments.
-
-## Documentation
-
-- [Chinese project page](README.md)
-- [Architecture](docs/architecture.md)
-- [Deployment guide](docs/deployment.md)
-- [Review and reproducibility package](DEMO.md)
-- [Technical and data references](docs/references.md)
-- [Technical stack](outputs/RareLink-技术栈说明.md)
-- [Formal DGX Spark report](outputs/RareLink-2026-07-17-DGX-Spark系统移植与实机实验正式报告.md)
-- [MSD real-image Spark federation report](outputs/RareLink-2026-07-20-MSD真实影像Spark联邦运行报告.md)
-- [Enterprise roadmap](outputs/RareLink-企业化一页路线图.md)
+---
 
 ## Quick start
 
-The review package does not download medical images, model weights, certificates or API keys:
+### One-click reviewer replay (recommended)
+
+No medical images, weights, certificates, or API key are required. The script can create clearly labelled demonstration evidence only when a runtime artifact is missing; it never presents it as a new experiment.
 
 ```bash
+git clone https://github.com/dingyucanada/RareLink.git
+cd RareLink
 bash scripts/review_demo.sh
 ```
 
-For the full local stack, see [DEMO.md](DEMO.md) and [the deployment guide](docs/deployment.md). If `STEP_API_KEY` is absent, RareLink uses a deterministic local template agent so the workflow remains runnable without external inference.
+Open the local address printed by the terminal, or read [DEMO.md](DEMO.md) for the four expected evidence gates.
 
-### Optional Spark-local LLM path
+### Local development
 
-RareLink can route its structured Research Agent calls through a TensorRT-LLM endpoint on Spark using `spark_local`, `step_remote`, or `hybrid` routing. The default deployment target is NVIDIA Nemotron 120B NVFP4, downloaded directly by the Spark node. The local path includes a metadata-only receipt, an independent verifier, a 26-case local gateway red-team runner, and a fixed safe `1 / 2 / 4` concurrency profiler. The UI distinguishes a running endpoint from captured and verified evidence; until a real local run is captured it explicitly says **NOT CLAIMED**. See [the deployment guide](docs/deployment.md#43-spark-本地大模型推理tensorrt-llm).
+```bash
+cp .env.example .env
+python3 -m venv .venv
+. .venv/bin/activate
+make install
+make install-web
+make dev-api
+```
+
+In a second terminal:
+
+```bash
+make dev-web
+```
+
+Open `http://localhost:5173`; API docs are at `http://localhost:8000/docs`. Without `STEP_API_KEY`, deterministic template agents still run the controlled workflow. Keep secrets in `.env` only.
+
+### Optional real public-imaging engineering run
+
+Download public MSD Task01 directly on Spark—do not upload large files through SSH/SCP. The scripts verify the public archive MD5, record hashes, and form three non-IID sites by tumour-volume quantiles:
+
+```bash
+python scripts/prepare_msd_brain_tumour.py \
+  --data-root data/raw/msd-task01 \
+  --output data/runtime/msd-brain-tumour-v1 \
+  --cases-per-site 8
+
+python scripts/run_nvflare_simulation.py \
+  --manifest data/runtime/msd-brain-tumour-v1/manifest.json \
+  --strategy fedavg --rounds 1 --local-epochs 1 \
+  --workspace artifacts/msd-fedavg
+```
+
+See [DGX Spark deployment](docs/deployment.md) for ARM64/CUDA checks, data limitations, and full commands.
+
+### Project documents
+
+- [Competition project description](outputs/RareLink-比赛项目说明.md)
+- [Technology stack](outputs/RareLink-技术栈说明.md)
+- [Final submission checklist](outputs/RareLink-最终提交清单.md)
+- [DGX Spark hackathon ten-day log](outputs/RareLink-DGX-Spark黑客松十日谈.md)
 
 ## Safety and responsible use
 
-RareLink does not provide diagnosis or treatment advice. Do not commit API keys, passwords, patient images, DICOM identifiers, raw manifests or identifiable clinical fields. Public data must be used under the source dataset's license, attribution and access policy. Any future clinical or multi-hospital deployment requires institutional approvals, security review, data-use agreements and independent validation.
+Never commit API keys, passwords, patient images, DICOM identifiers, source manifests, or identifiable clinical fields. Public data must follow source licences, citation and access policies. Any clinical or real multi-hospital deployment requires institutional approval, data-use agreements, security review, and independent validation.
 
 ## License
 
-Apache-2.0. See [LICENSE](LICENSE).
+[Apache-2.0](LICENSE)

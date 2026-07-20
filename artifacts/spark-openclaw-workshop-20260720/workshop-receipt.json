@@ -1,0 +1,47 @@
+{
+  "receipt_type": "organizer_workshop_baseline_completion",
+  "executed_at": "2026-07-20",
+  "environment": {
+    "platform": "NVIDIA DGX Spark",
+    "gpu": "NVIDIA GB10",
+    "architecture": "aarch64",
+    "os": "Ubuntu 24.04.3 LTS"
+  },
+  "reference_workshop": {
+    "name": "OpenClaw + ComfyUI Superhero Photo Generation Workshop",
+    "execution_artifact": "workshop-executed.ipynb",
+    "executed_code_cell_count": 26,
+    "notebook_error_cell_count": 0
+  },
+  "verified_components": {
+    "ollama": {
+      "model": "qwen3.6:35b",
+      "local_health_reply": "DGX Spark local model ready"
+    },
+    "comfyui": {
+      "version": "0.18.1",
+      "workflow": "FLUX + PuLID official workshop sample",
+      "prompt_execution_seconds": 51.87,
+      "generated_output_count": 1
+    },
+    "openclaw": {
+      "version": "2026.5.19",
+      "gateway_port": 3030,
+      "skill": "superhero",
+      "skill_status": "ready",
+      "agent": "main",
+      "agent_provider": "ollama",
+      "agent_model": "qwen3.6:35b",
+      "agent_health_reply": "OpenClaw local agent ready",
+      "agent_duration_ms": 23291
+    }
+  },
+  "scope": {
+    "purpose": "Organizer reference-workshop baseline completion and local multimodal Agent proof.",
+    "not_a_rarelink_clinical_claim": true,
+    "contains_raw_images": false,
+    "contains_credentials": false,
+    "contains_gateway_token": false,
+    "contains_network_address": false
+  }
+}

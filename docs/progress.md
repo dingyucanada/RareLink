@@ -91,3 +91,9 @@
   external NIfTI I/O check. The Spark release host could not be reached directly, so the 1.4 MiB
   official asset pair was transparently transferred through encrypted SSH after source verification.
   This is not claimed as an MSD benchmark, federated training result, tumour result, or clinical evidence.
+# 2026-07-20 · 组织方 OpenClaw + ComfyUI 参考 Workshop 基础完赛
+
+- 在 DGX Spark GB10 上执行组织方预置的 `workshop.ipynb`，输出独立 `workshop-executed.ipynb`；26 个代码单元无错误完成。
+- 本地 Ollama `qwen3.6:35b`、ComfyUI 0.18.1（FLUX + PuLID）与 OpenClaw 2026.5.19 全部完成运行核验；官方样例生成耗时 51.87 秒，`superhero` Skill 状态为 `ready`。
+- OpenClaw 默认 `main` Agent 已通过本地 Ollama 健康检查。由于 RareLink API 已占用 Spark 9000，Workshop Gateway 保持官方参考的 3030 端口，避免跨项目冲突。
+- 聚合收据位于 [`artifacts/spark-openclaw-workshop-20260720/`](../artifacts/spark-openclaw-workshop-20260720/)。本项是赛事参考代码基础完赛证据，与 RareLink 医学科研功能独立，不作临床或医学影像结论。
