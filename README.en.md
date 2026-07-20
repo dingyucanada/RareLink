@@ -61,6 +61,12 @@ DGX Spark is not used as a web server alone: it defines the local CUDA/3D-traini
 
 Independently from the medical-research workflow, the organizer-provided **OpenClaw + ComfyUI Workshop** was completed on the same DGX Spark: the official notebook completed 26 code cells without errors; local Ollama `qwen3.6:35b`, ComfyUI 0.18.1 with the FLUX + PuLID official sample (51.87 seconds), and OpenClaw 2026.5.19 with the `superhero` Skill were all verified. This is **baseline reference-code completion**, never a clinical or medical-imaging claim. See the [completion receipt and boundaries](docs/progress.md#2026-07-20--组织方-openclaw--comfyui-参考-workshop-基础完赛).
 
+<p align="center">
+  <img src="assets/screenshots/dgx-spark-openclaw-comfyui-workshop-receipt.png" alt="Token-free DGX Spark OpenClaw and ComfyUI Workshop completion receipt" width="860" />
+</p>
+
+<p align="center"><sub>The public screenshot includes only completion status and timing—no source images, prompts, weights, credentials, or network addresses.</sub></p>
+
 ---
 
 ## Product walkthrough and system screens
@@ -69,6 +75,14 @@ The frontend separates an interactive research-workflow sandbox from persisted h
 
 <p align="center">
   <img src="assets/rarelink-overview.svg" alt="RareLink: departmental data, DGX Spark local training, FLARE aggregation, constrained Agent review and evidence cockpit" width="100%" />
+</p>
+
+### Real product screenshot
+
+This is a capture from a locally running RareLink frontend—not a design mockup. The `DGX SPARK · VERIFIED RUN RECEIPT` panel reads a persisted public-MSD engineering receipt; reviewers can verify hashes and expand the site details. The imaging preview uses bundled synthetic de-identified demonstration slices and contains no patient image.
+
+<p align="center">
+  <img src="assets/screenshots/rarelink-live-evidence-console.png" alt="RareLink live evidence cockpit with DGX Spark receipt, three-site aggregation and local-model boundary" width="100%" />
 </p>
 
 ### Reviewer path

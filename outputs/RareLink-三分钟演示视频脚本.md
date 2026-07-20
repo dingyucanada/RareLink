@@ -13,7 +13,7 @@
 | 1:43–2:01 | 点击运行沙盘实验，录制训练任务卡进度与策略公平比较图；随后切 **评审证据驾驶舱**。 | “工作流把每一步写入审计账本。策略比较同时呈现平均 Dice、最弱站点 Dice、站点差异和 HD95，避免只用平均数掩盖小中心退化。” |
 | 2:01–2:22 | 点击 **生成证据解读**，展示 Agent 生成的候选策略、公平性和局限性；再滚动到红队、DP 与 mTLS 证据卡。 | “证据 Agent 仅读取已经锁定的聚合指标，生成可追溯解释和限制条件。样本级 DP-SGD、跨设备 mTLS 与 Agent 红队结果均有可复核证据。” |
 | 2:22–2:43 | 插入短终端素材：`bash scripts/review_demo.sh` 的必检 gate 通过；立即切回网页的对应证据卡。 | “前端并不是结论来源。评委可以运行一键核验：它不下载医学影像，也不需要 API 密钥，而是验证提交的工程收据。” |
-| 2:43–2:55 | 插入脱敏的 Spark 训练/FLARE 聚合完成日志 5–7 秒，切回 Verified Run Receipt。 | “DGX Spark 承担 CUDA 三维训练和 FLARE 聚合；网页将运行结果、边界与文件完整性收据统一呈现。” |
+| 2:43–2:55 | 先插入 `assets/screenshots/dgx-spark-openclaw-comfyui-workshop-receipt.png` 约 4 秒，再给脱敏的 Spark 训练/FLARE 聚合完成日志约 4 秒，最后切回实际网页的 Verified Run Receipt 约 4 秒。 | “赛事参考 Workshop 已在同一台 Spark 上完成本地多模态 Agent 链路核验；RareLink 则用这台 Spark 承担 CUDA 三维训练和 FLARE 聚合。两条证据独立呈现，网页统一展示运行结果、边界与文件完整性收据。” |
 | 2:55–3:00 | 回到网页顶端，定格 `Integrity Verified` 与项目一句话。 | “RareLink 让数据不出院，让证据可回溯。它是工程原型，不替代医生。” |
 
 ## 录制前检查
@@ -23,6 +23,15 @@
 3. 再预置或现场完成一个工作流沙盘研究，至少有 Local、FedAvg、FedProx 指标和一条 Agent 证据解读。画面必须标明 `WORKFLOW SANDBOX`，不可将其说成真实跨院训练。
 4. 在视频角落或结尾展示：`Research-use engineering demo · MSD public-data smoke test · 3 logical sites on one DGX Spark · Not clinical validation`。
 5. 需要证明 Spark 时，展示脱敏后的 `nvidia-smi`、MONAI/NVFLARE 日志摘要或项目内实机验证报告，绝不展示用户名、密码、IP、端口、密钥和数据路径。
+
+## 已准备好的静态插入素材
+
+两张 PNG 已放入仓库，均可直接拖入剪辑软件；不要为它们补造终端画面或模拟运行记录。
+
+| 文件 | 用途 | 推荐位置 | 必须保留的说明 |
+|---|---|---|---|
+| `assets/screenshots/rarelink-live-evidence-console.png` | RareLink 实际本地运行的证据驾驶舱截图 | 主视频开头；也可在点击哈希核验后用作 1–2 秒定格画面 | `MSD public-data engineering smoke test · 3 logical sites on one DGX Spark · Not clinical validation` |
+| `assets/screenshots/dgx-spark-openclaw-comfyui-workshop-receipt.png` | 官方 OpenClaw + ComfyUI 参考 Workshop 的无敏感完赛收据 | 2:43–2:47 的短切片或答辩插图 | “赛事参考代码基础完赛，与 RareLink 医学科研链路独立。” |
 
 ## 两段可插入答辩的短证据素材（各 20–30 秒）
 
