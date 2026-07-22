@@ -234,6 +234,7 @@ function ActionPanel({ study, experiments, artifacts }: { study: Study; experime
     onError: (reason) => setError(reason instanceof Error ? reason.message : "操作失败"),
   });
 
+  const contractRounds = typeof study.contract?.rounds === "number" ? study.contract.rounds : 1;
   const labels: Partial<Record<StudyStatus, string>> = {
     DRAFT: "生成研究协议",
     PROTOCOL_REVIEW: "批准协议，启动站点统计",
@@ -241,7 +242,7 @@ function ActionPanel({ study, experiments, artifacts }: { study: Study; experime
     FEASIBILITY_REVIEW: artifacts.some((item) => item.artifact_type === "experiment_proposal")
       ? "人工批准并锁定 Agent 实验提案"
       : "实验设计 Agent 生成比较方案",
-    CONTRACT_LOCKED: "启动 Local 基线（1 轮）",
+    CONTRACT_LOCKED: `启动 Local 基线（${contractRounds} 轮）`,
     TRAINING_RUNNING: (() => {
       const running = experiments.find((item) => item.status === "PENDING" || item.status === "RUNNING");
       if (running) return `${running.strategy.toUpperCase()} 正在运行，请等待任务完成`;
@@ -249,7 +250,7 @@ function ActionPanel({ study, experiments, artifacts }: { study: Study; experime
         ? study.contract.strategies.filter((item): item is string => typeof item === "string")
         : ["local", "fedavg", "fedprox"];
       const next = contracted.find((strategy) => !experiments.some((item) => item.strategy === strategy));
-      return next ? `启动 ${next.toUpperCase()}（1 轮）` : "正在汇总已完成实验";
+      return next ? `启动 ${next.toUpperCase()}（${contractRounds} 轮）` : "正在汇总已完成实验";
     })(),
     FAILED_RETRYABLE: "重试失败的真实训练任务",
     RESULTS_REVIEW: study.review_markdown ? "批准结果与局限性" : "生成循证评审",
