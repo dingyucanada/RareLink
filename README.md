@@ -10,6 +10,8 @@
 
 <a href="README.en.md">English</a> · <strong>中文</strong>
 
+<strong>📘 <a href="outputs/RareLink-项目报告书.md">阅读完整项目报告书</a></strong> · <a href="#部署模型与快速开始">快速开始</a> · <a href="#工程验证与可信边界">工程证据</a>
+
 <a href="https://www.nvidia.com/en-us/products/workstations/dgx-spark/"><img src="https://img.shields.io/badge/NVIDIA-DGX%20Spark-76B900?style=flat-square&logo=nvidia&logoColor=white" alt="NVIDIA DGX Spark" /></a>
 <a href="https://nvidia.github.io/NVFlare/"><img src="https://img.shields.io/badge/NVIDIA%20FLARE-2.7.2-2563EB?style=flat-square" alt="NVIDIA FLARE" /></a>
 <a href="https://project-monai.github.io/"><img src="https://img.shields.io/badge/MONAI-1.6.0-7C3AED?style=flat-square" alt="MONAI" /></a>
@@ -25,6 +27,7 @@
 ## 目录
 
 - [为什么需要 RareLink](#为什么需要-rarelink)
+- [项目报告书（完整提交版）](outputs/RareLink-项目报告书.md)
 - [从研究问题到证据包](#从研究问题到证据包)
 - [产品界面与核心能力](#产品界面与核心能力)
 - [系统架构与数据边界](#系统架构与数据边界)
