@@ -210,11 +210,12 @@ function ActionPanel({ study, experiments, artifacts }: { study: Study; experime
           const contractedStrategies = Array.isArray(study.contract?.strategies)
             ? study.contract.strategies.filter((item): item is string => typeof item === "string")
             : ["local", "fedavg", "fedprox"];
-          for (const strategy of contractedStrategies) {
-            let experiment = existing.get(strategy);
-            if (!experiment) experiment = await api.createExperiment(study.id, strategy);
-            if (experiment.status === "PENDING") await api.runExperiment(experiment.id);
-          }
+          const running = experiments.find((item) => item.status === "PENDING" || item.status === "RUNNING");
+          if (running) return api.getStudy(study.id);
+          const nextStrategy = contractedStrategies.find((strategy) => !existing.has(strategy));
+          if (!nextStrategy) return api.getStudy(study.id);
+          const experiment = await api.createExperiment(study.id, nextStrategy);
+          await api.runExperiment(experiment.id);
           return api.getStudy(study.id);
         }
         case "FAILED_RETRYABLE": {
@@ -240,8 +241,16 @@ function ActionPanel({ study, experiments, artifacts }: { study: Study; experime
     FEASIBILITY_REVIEW: artifacts.some((item) => item.artifact_type === "experiment_proposal")
       ? "人工批准并锁定 Agent 实验提案"
       : "实验设计 Agent 生成比较方案",
-    CONTRACT_LOCKED: "运行三策略基准实验",
-    TRAINING_RUNNING: "继续未完成实验",
+    CONTRACT_LOCKED: "启动 Local 基线（1 轮）",
+    TRAINING_RUNNING: (() => {
+      const running = experiments.find((item) => item.status === "PENDING" || item.status === "RUNNING");
+      if (running) return `${running.strategy.toUpperCase()} 正在运行，请等待任务完成`;
+      const contracted = Array.isArray(study.contract?.strategies)
+        ? study.contract.strategies.filter((item): item is string => typeof item === "string")
+        : ["local", "fedavg", "fedprox"];
+      const next = contracted.find((strategy) => !experiments.some((item) => item.strategy === strategy));
+      return next ? `启动 ${next.toUpperCase()}（1 轮）` : "正在汇总已完成实验";
+    })(),
     FAILED_RETRYABLE: "重试失败的真实训练任务",
     RESULTS_REVIEW: study.review_markdown ? "批准结果与局限性" : "生成循证评审",
     PRIVACY_REVIEW: "通过隐私复核，生成报告",
@@ -263,9 +272,9 @@ function ActionPanel({ study, experiments, artifacts }: { study: Study; experime
         <strong>{label}</strong>
         <p>所有关键动作均写入不可覆盖的审计时间线。</p>
       </div>
-      <button className="primary" onClick={() => mutation.mutate()} disabled={mutation.isPending}>
+      <button className="primary" onClick={() => mutation.mutate()} disabled={mutation.isPending || (study.status === "TRAINING_RUNNING" && experiments.some((item) => item.status === "PENDING" || item.status === "RUNNING"))}>
         {mutation.isPending ? <Activity className="spin" size={18} /> : <Play size={17} />}
-        {mutation.isPending ? "执行中…" : label}
+        {mutation.isPending ? "正在提交…" : label}
       </button>
       {error && <div className="error"><CircleAlert size={15} />{error}</div>}
     </div>

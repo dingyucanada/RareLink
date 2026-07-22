@@ -53,6 +53,12 @@ export const api = {
       body: JSON.stringify({
         ...proposal,
         contract_id: `contract-${id}`,
+        // The public click-through path is intentionally short and visibly
+        // interactive. Full DP-SGD/five-round comparisons remain available
+        // through the reproducible research workflow, not this shared demo.
+        strategies: ["local", "fedavg", "fedprox"],
+        rounds: 1,
+        max_trials: 3,
         raw_data_egress: false,
         llm_raw_data_access: false,
         approved_by: "Competition PI",
