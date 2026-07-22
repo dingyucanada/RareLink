@@ -12,7 +12,10 @@ class Settings(BaseSettings):
     artifact_root: Path = Path("./artifacts")
     data_root: Path = Path("./data/runtime")
 
-    step_api_base: str = "https://api.stepfun.com/v1"
+    # Step Plan uses an OpenAI-compatible endpoint. Keep this default aligned
+    # with the competition plan endpoint so a deployment does not silently
+    # fall back to an unrelated /v1 route when STEP_API_BASE is omitted.
+    step_api_base: str = "https://api.stepfun.com/step_plan/v1"
     step_api_key: str = ""
     step_model: str = "step-3.7-flash"
     step_timeout_seconds: float = 60

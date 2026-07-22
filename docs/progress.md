@@ -32,6 +32,8 @@
 - [x] Local CPU three-site NVFLARE FedProx used NVIDIA `PTFedProxLoss` and produced a global model
 - [x] Step Plan endpoint and `step-3.7-flash` account access verified through the Models API
 - [x] Live Step 3.7 JSON-mode protocol generation passed with a fully synthetic research request
+- [x] Step runtime receipts record source, role, latency, usage, policy categories and response hash
+  after schema and output-safety validation, without retaining prompt/completion content
 - [x] Persistent Agent artifact registry and export bundle integration
 - [x] Step 3.7 Experiment Designer, Statistical Reviewer, Privacy Reviewer, and Research Writer
 - [x] Live four-role Step 3.7 Agent Team smoke run on synthetic aggregate evidence

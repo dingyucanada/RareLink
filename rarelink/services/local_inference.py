@@ -136,3 +136,53 @@ def write_local_inference_receipt(
         json.dumps(receipt, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     return receipt
+
+
+def write_step_inference_receipt(
+    settings: Settings,
+    *,
+    role: str,
+    model: str,
+    latency_ms: int,
+    usage: Any,
+    policy_categories: tuple[str, ...],
+    response_content: str,
+) -> dict[str, Any]:
+    """Persist metadata-only proof of a guarded Step Agent response.
+
+    This deliberately mirrors the local inference receipt but keeps the
+    transport distinction explicit. It never stores the request, response,
+    API key, or aggregate values that were supplied to the model.
+    """
+    output_dir: Path = settings.artifact_root / "step-agent-inference"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    usage_payload = usage.model_dump() if hasattr(usage, "model_dump") else (usage or {})
+    receipt = {
+        "schema_version": "rarelink-step-agent-inference-v1",
+        "captured_at_unix": round(time.time(), 3),
+        "backend": "step-3.7-openai-compatible",
+        "model": model,
+        "endpoint_scope": "configured_step_plan_api",
+        "remote_step_api_called": True,
+        "raw_patient_data_transmitted": False,
+        "role": role,
+        "latency_ms": latency_ms,
+        "usage": usage_payload,
+        "input_policy_categories": list(policy_categories),
+        "response_sha256": hashlib.sha256(response_content.encode("utf-8")).hexdigest(),
+        "prompt_or_response_content_persisted": False,
+        "output_safety_gate_passed": True,
+        "claim_boundary": (
+            "Proof of one guarded research-workflow model call only; it is not clinical "
+            "validation, a model-quality benchmark, or a guarantee of future availability."
+        ),
+    }
+    (output_dir / "last-inference.json").write_text(
+        json.dumps(receipt, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    # Keep an append-only, metadata-only role trail for the five-agent team.
+    # It is safe to export as operational evidence because it has no prompt or
+    # response text, aggregate values, credentials, or endpoint secret.
+    with (output_dir / "events.jsonl").open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(receipt, ensure_ascii=False) + "\n")
+    return receipt

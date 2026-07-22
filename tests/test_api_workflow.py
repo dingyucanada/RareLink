@@ -32,6 +32,29 @@ def test_capabilities_show_local_inference_as_not_claimed(client: TestClient) ->
     assert "raw images" in payload["local_inference_boundary"]
 
 
+def test_step_agent_runtime_does_not_claim_configuration_as_a_live_call(
+    client: TestClient, tmp_path: Path
+) -> None:  # type: ignore[no-untyped-def]
+    api_main.app.dependency_overrides[get_settings] = lambda: Settings(
+        _env_file=None,
+        artifact_root=tmp_path,
+        step_api_key="configured-but-not-called",
+    )
+
+    response = client.get("/api/system/step-agent")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "available": False,
+        "configured": True,
+        "model": "step-3.7-flash",
+        "boundary": (
+            "A live receipt appears only after a guarded Step Agent request succeeds; "
+            "configuration alone is not presented as a successful model call."
+        ),
+    }
+
+
 def test_msd_run_receipt_can_be_integrity_verified(client: TestClient, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
     root = tmp_path / "msd-artifacts" / "spark-msd-real-20260720"
     metrics = root / "metrics"

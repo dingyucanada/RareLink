@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Activity, Database, FileSearch, KeyRound, Repeat2, Server, ShieldAlert, ShieldCheck } from "lucide-react";
+import { Activity, Bot, Database, FileSearch, KeyRound, Repeat2, Server, ShieldAlert, ShieldCheck } from "lucide-react";
 import { api } from "../api";
 
 export default function SystemEvidence() {
@@ -18,6 +18,7 @@ export default function SystemEvidence() {
   const localInferenceRedteam = evidence.data?.local_inference_redteam;
   const localInferenceVerification = evidence.data?.local_inference_verification;
   const localInferenceBenchmark = evidence.data?.local_inference_benchmark;
+  const stepInference = evidence.data?.step_inference;
   const localGpu = localInference?.gpu_snapshot_after.gpus[0];
   const localInferenceVerified = localInferenceVerification?.passed === true;
   const publicMriVerified = Boolean(
@@ -54,6 +55,11 @@ export default function SystemEvidence() {
           <Server size={18} />
           <div><small>SPARK LOCAL LLM</small><strong>{localInference ? `${localInference.model.split("/").at(-1)} · ${localInference.latency_ms} ms` : "本地推理证据待采集"}</strong><p>{localInference ? `本地端点 · Step API 调用：${localInference.remote_step_api_called ? "是" : "否"} · 原始患者数据传输：${localInference.raw_patient_data_transmitted ? "是" : "否"}` : "启动 TensorRT-LLM 后，由 Agent 调用自动记录模型、延迟、用量与输出哈希，不存储提示词正文。"}</p>{localGpu && <p>GPU：{localGpu.name} · 显存 {localGpu.memory_used_mib}/{localGpu.memory_total_mib} MiB · 利用率 {localGpu.gpu_utilization_percent}%</p>}{localInferenceRedteam && <p>本地网关红队：{localInferenceRedteam.passed_count}/{localInferenceRedteam.case_count} · 实测本地请求 {localInferenceRedteam.local_model_request_count} 次</p>}{localInferenceBenchmark?.peak_safe_throughput && <p>固定安全负载峰值：并发 {localInferenceBenchmark.peak_safe_throughput.concurrency} · {localInferenceBenchmark.peak_safe_throughput.accepted_requests_per_second.toFixed(2)} 请求/秒</p>}</div>
           <span>{localInferenceVerified ? "VERIFIED" : localInferenceRedteam?.all_passed ? "RED TEAM PASS" : localInference ? "CAPTURED" : "NOT CLAIMED"}</span>
+        </article>
+        <article className={`local-inference-evidence ${stepInference ? "verified" : "pending"}`}>
+          <Bot size={18} />
+          <div><small>STEP 3.7 AGENT RUNTIME</small><strong>{stepInference ? `${stepInference.model} · ${stepInference.latency_ms} ms` : "实时回执待采集"}</strong><p>{stepInference ? `角色：${stepInference.role} · 结构校验与输出安全门：${stepInference.output_safety_gate_passed ? "通过" : "未通过"}` : "仅在真实受控 Agent 请求成功后显示；已配置密钥不等同模型已经运行。"}</p><p>{stepInference ? `Step API：${stepInference.remote_step_api_called ? "已调用" : "否"} · 原始患者数据：${stepInference.raw_patient_data_transmitted ? "传输" : "未传输"} · 提示词/回答正文：不落盘` : "固定合成研究问题；不含影像、标识符或病例级统计。"}</p></div>
+          <span>{stepInference ? "VERIFIED" : "NOT CLAIMED"}</span>
         </article>
       </div>
       {repeated && <div className="stability-grid" aria-label="五种子最弱站点 Dice 对比">{ranked.map(([strategy, winRate], index) => {

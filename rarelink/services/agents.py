@@ -18,6 +18,7 @@ from rarelink.services.local_inference import (
     gpu_runtime_snapshot,
     probe_spark_inference,
     write_local_inference_receipt,
+    write_step_inference_receipt,
 )
 from rarelink.services.policy import sanitize_llm_payload
 
@@ -271,7 +272,10 @@ class OpenAICompatibleResearchAgentTeam:
         payload: dict[str, Any],
         response_model: type[ModelT],
     ) -> ModelT:
-        policy = sanitize_llm_payload(payload)
+        # The Agent boundary must use the deployment's threshold, not a
+        # hard-coded default. This keeps small-cell suppression consistent
+        # between site feasibility release and every remote/local model call.
+        policy = sanitize_llm_payload(payload, self.settings.rarelink_min_group_size)
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
             {
@@ -326,6 +330,16 @@ class OpenAICompatibleResearchAgentTeam:
                 policy_categories=tuple(sorted(set(policy.blocked_fields))),
                 response_content=content,
                 gpu_snapshot_before=gpu_before,
+            )
+        elif self.source == "step-3.7":
+            write_step_inference_receipt(
+                self.settings,
+                role=role,
+                model=self.model,
+                latency_ms=round((time.perf_counter() - started) * 1000),
+                usage=response.usage,
+                policy_categories=tuple(sorted(set(policy.blocked_fields))),
+                response_content=content,
             )
         return result
 

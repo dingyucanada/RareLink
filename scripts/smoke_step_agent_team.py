@@ -1,14 +1,16 @@
 import json
 
 from rarelink.config import Settings
-from rarelink.services.agents import build_research_agent
+from rarelink.services.agents import StepResearchAgentTeam
 
 
 def main() -> None:
     settings = Settings()
     if not settings.step_api_key:
         raise SystemExit("STEP_API_KEY is empty; configure it in .env")
-    team = build_research_agent(settings)
+    # Explicit remote integration test: a local endpoint must never make a
+    # Step verification look passed through hybrid fallback behavior.
+    team = StepResearchAgentTeam(settings)
 
     protocol = {
         "title": "RareLink synthetic federated study",
@@ -86,6 +88,9 @@ def main() -> None:
             "privacy_assessment": privacy.model_dump(),
         }
     )
+    sources = [proposal.source, review.source, privacy.source, narrative.source]
+    if any(source != "step-3.7" for source in sources):
+        raise RuntimeError(f"Expected four Step 3.7 artifacts, received {sources!r}")
     print(
         json.dumps(
             {

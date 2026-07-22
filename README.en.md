@@ -184,6 +184,8 @@ RareLink does not let a generic chatbot decide a study. It divides work into ver
 | `spark_local` | TensorRT-LLM on a private Spark endpoint | Aggregates only; requires a real GPU and content-free receipt before being described as verified |
 | `template` | Offline demos, tests, and no-key environments | Deterministic template Agent keeps the workflow stable and testable; never presented as model inference |
 
+Step 3.7 integration is not merely a configuration flag: every successful live call that passes JSON-schema validation and the output safety gate produces a local metadata-only receipt. It contains no prompt, completion text, image, case field, or credential. The evidence cockpit shows `STEP 3.7 AGENT RUNTIME · VERIFIED` only when such a receipt exists; see the [deployment guide](docs/deployment.md) for the exact commands and boundary.
+
 > The TensorRT-LLM adapter, deployment scripts, receipt tooling, red-team harness, and concurrency benchmark exist. Until a real Spark model call, red-team run, and benchmark are captured, RareLink does not claim measured local-LLM performance or medical capability.
 
 ---

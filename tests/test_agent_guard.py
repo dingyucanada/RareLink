@@ -27,3 +27,16 @@ def test_agent_output_guard_allows_research_only_limitation() -> None:
     )
 
     assert result.allowed is True
+
+
+def test_agent_output_guard_allows_negated_clinical_validation_limitations() -> None:
+    result = guard_agent_output(
+        {
+            "limitations": (
+                "This workflow is not clinically validated and is not ready for diagnosis; "
+                "external validation remains required."
+            )
+        }
+    )
+
+    assert result.allowed is True

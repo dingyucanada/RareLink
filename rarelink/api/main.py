@@ -3,8 +3,8 @@ import io
 import json
 import secrets
 import zipfile
-from hashlib import sha256
 from contextlib import asynccontextmanager
+from hashlib import sha256
 from typing import Annotated, Any
 
 import yaml
@@ -233,6 +233,34 @@ def _read_json_if_present(path) -> dict[str, Any] | None:  # type: ignore[no-unt
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def step_agent_receipt(config: Settings) -> dict[str, Any] | None:
+    """Load a metadata-only receipt from a successful guarded Step call.
+
+    The receipt is produced only after structured-output validation and the
+    output safety gate succeed. It intentionally has no prompt, completion,
+    API key, image, identifier, or aggregate value to expose through the API.
+    """
+    return _read_json_if_present(
+        config.artifact_root / "step-agent-inference" / "last-inference.json"
+    )
+
+
+@app.get("/api/system/step-agent")
+def get_step_agent_runtime(config: SettingsDep) -> dict[str, Any]:
+    receipt = step_agent_receipt(config)
+    if receipt:
+        return {"available": True, "receipt": receipt}
+    return {
+        "available": False,
+        "configured": bool(config.step_api_key and config.rarelink_allow_llm),
+        "model": config.step_model if config.step_api_key else None,
+        "boundary": (
+            "A live receipt appears only after a guarded Step Agent request succeeds; "
+            "configuration alone is not presented as a successful model call."
+        ),
+    }
+
+
 def _sha256_file(path) -> str:  # type: ignore[no-untyped-def]
     """Return a file digest without exposing the file's contents to the API."""
     digest = sha256()
@@ -362,6 +390,7 @@ def system_evidence(config: SettingsDep) -> dict[str, Any]:
     local_inference_benchmark = _read_json_if_present(
         config.artifact_root / "spark-local-inference" / "concurrency-benchmark.json"
     )
+    step_inference = step_agent_receipt(config)
     return {
         "repeated_benchmark": repeated,
         "mtls_provisioning": provisioned,
@@ -373,6 +402,7 @@ def system_evidence(config: SettingsDep) -> dict[str, Any]:
         "local_inference_redteam": local_inference_redteam,
         "local_inference_verification": local_inference_verification,
         "local_inference_benchmark": local_inference_benchmark,
+        "step_inference": step_inference,
         "privacy_comparison": repeated.get("privacy_comparison") if repeated else None,
         "contains_patient_data": False,
         "evidence_scope": "synthetic_competition_engineering",

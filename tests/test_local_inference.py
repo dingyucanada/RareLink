@@ -13,6 +13,7 @@ from rarelink.services.agents import (
 from rarelink.services.local_inference import (
     probe_spark_inference,
     write_local_inference_receipt,
+    write_step_inference_receipt,
 )
 from scripts.benchmark_spark_local_llm import run_benchmark
 from scripts.run_spark_local_llm_redteam import run_cases
@@ -49,6 +50,27 @@ def test_local_receipt_never_persists_response_content(tmp_path: Path) -> None:
     assert receipt["prompt_or_response_content_persisted"] is False
     assert "secret patient context" not in saved
     assert json.loads(saved)["response_sha256"] == receipt["response_sha256"]
+
+
+def test_step_receipt_never_persists_prompt_or_response_content(tmp_path: Path) -> None:
+    settings = Settings(_env_file=None, artifact_root=tmp_path)
+    receipt = write_step_inference_receipt(
+        settings,
+        role="research-director-agent",
+        model="step-3.7-flash",
+        latency_ms=321,
+        usage={"completion_tokens": 12},
+        policy_categories=("protocol.patient_id",),
+        response_content='{"hypothesis": "secret aggregate context must not be stored"}',
+    )
+
+    saved = (tmp_path / "step-agent-inference" / "last-inference.json").read_text()
+    history = (tmp_path / "step-agent-inference" / "events.jsonl").read_text()
+    assert receipt["remote_step_api_called"] is True
+    assert receipt["prompt_or_response_content_persisted"] is False
+    assert "secret aggregate context" not in saved
+    assert "secret aggregate context" not in history
+    assert len(receipt["response_sha256"]) == 64
 
 
 def test_hybrid_without_local_server_or_step_key_returns_template_agent() -> None:

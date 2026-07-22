@@ -275,6 +275,19 @@ export interface SystemEvidence {
     } | null;
     claim_boundary: string;
   } | null;
+  step_inference: {
+    backend: string;
+    model: string;
+    endpoint_scope: string;
+    remote_step_api_called: boolean;
+    raw_patient_data_transmitted: boolean;
+    role: string;
+    latency_ms: number;
+    usage: Record<string, unknown>;
+    prompt_or_response_content_persisted: boolean;
+    output_safety_gate_passed: boolean;
+    claim_boundary: string;
+  } | null;
 }
 
 export interface GpuSnapshot {

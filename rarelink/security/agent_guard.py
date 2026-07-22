@@ -19,8 +19,10 @@ OUTPUT_PATTERNS = {
         re.IGNORECASE,
     ),
     "clinical_overclaim": re.compile(
-        r"(clinically validated|proven safe for clinical|ready for diagnosis|"
-        r"可用于临床诊断|已完成临床验证)",
+        # Match affirmative deployment claims, while allowing a required
+        # limitation such as "not clinically validated" to pass through.
+        r"((?<!not )\bclinically validated|(?<!not )\bproven safe for clinical|"
+        r"(?<!not )\bready for diagnosis|(?<!不)可用于临床诊断|(?<!未)已完成临床验证)",
         re.IGNORECASE,
     ),
 }

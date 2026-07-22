@@ -99,10 +99,15 @@ RARELINK_FL_MODE=nvflare
 
 ```bash
 .venv/bin/python scripts/verify_step_api.py
-.venv/bin/python scripts/smoke_step_protocol.py
+# 一次研究主任 Agent 的真实 JSON 结构化调用；回执仅保存元数据和输出哈希
+.venv/bin/python scripts/verify_step_agent_runtime.py
+# 实验设计、统计评审、隐私评审与科研写作四角色真实调用
+.venv/bin/python scripts/smoke_step_agent_team.py
 ```
 
 若赛事 Key 的模型列表未返回 `step-3.7-flash`，应选择列表中的准确 ID，不要修改代码硬猜。
+`/api/system/step-agent` 和证据驾驶舱只有在真实调用成功、且结构校验和输出安全门均通过后才显示
+`VERIFIED`；“已配置 Key”本身不会被当作模型运行证据。
 
 ### 4.3 Spark 本地大模型推理（TensorRT-LLM）
 
