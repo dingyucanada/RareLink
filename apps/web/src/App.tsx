@@ -305,7 +305,10 @@ function App() {
   });
   const create = useMutation({
     mutationFn: api.createStudy,
-    onSuccess: () => client.invalidateQueries({ queryKey: ["studies"] }),
+    onSuccess: async () => {
+      settledJobsRef.current = "";
+      await client.invalidateQueries({ queryKey: ["studies"] });
+    },
   });
   const policyBlocks = useMemo(
     () => study?.feasibility?.policy_decisions.reduce((sum, item) => sum + item.blocked_fields.length, 0) ?? 0,
@@ -335,6 +338,10 @@ function App() {
         <div className="system-pills">
           <span className={capabilities.data?.gpu_available ? "ok" : "muted"}><Server size={14} /> {capabilities.data?.gpu_available ? "GPU READY" : "LOCAL DEV"}</span>
           <span className={capabilities.data?.local_inference_available ? "ok" : "muted"}><BrainCircuit size={14} /> {capabilities.data?.local_inference_available ? "SPARK LLM READY" : "SPARK LLM STANDBY"}</span>
+          <button className="new-demo-button" onClick={() => create.mutate()} disabled={create.isPending}>
+            {create.isPending ? <RefreshCcw className="spin" size={13} /> : <Play size={13} />}
+            {create.isPending ? "正在创建…" : "从头演示"}
+          </button>
         </div>
       </header>
 
@@ -345,7 +352,10 @@ function App() {
             <h1>{study.title}</h1>
             <p>{study.research_question}</p>
           </div>
-          <div className="status-badge"><i /> {study.status.replaceAll("_", " ")}</div>
+          <div className="hero-status">
+            <div className="status-badge"><i /> {study.status.replaceAll("_", " ")}</div>
+            {study.status === "REPORT_READY" && <small>这是已核验的完成态证据；点击右上角“从头演示”可新建一条可操作流程。</small>}
+          </div>
         </section>
 
         <Suspense fallback={<div className="run-console loading-console">正在读取 DGX Spark 实机收据…</div>}>
