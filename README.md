@@ -24,8 +24,23 @@
 
 ---
 
+## 产品演示视频
+
+下方为 RareLink 最终演示成片：以真实产品界面的证据哈希核验、站点收据、研究工作流、Agent 安全护栏和一键复现为主，PPT 仅用于解释架构与路线图。视频中的公开 MSD 工程验证为单 Spark 三逻辑站点原型，不构成临床结论或真实跨医院部署证明。
+
+<p align="center">
+  <video controls preload="metadata" width="100%" poster="assets/screenshots/rarelink-live-evidence-console.png" src="https://github.com/dingyucanada/RareLink/raw/refs/heads/main/assets/demo/RareLink_%E7%A8%80%E8%81%94_Demo_%E6%9C%80%E7%BB%88%E6%8F%90%E4%BA%A4%E7%89%88.mp4">
+    您的浏览器不支持嵌入式视频播放。
+  </video>
+</p>
+
+> **时长：** 4 分 00 秒｜**规格：** 1920×1080、30fps、真人中文配音、内嵌字幕。
+
+---
+
 ## 目录
 
+- [产品演示视频](#产品演示视频)
 - [为什么需要 RareLink](#为什么需要-rarelink)
 - [项目报告书（完整提交版）](outputs/RareLink-项目报告书.md)
 - [从研究问题到证据包](#从研究问题到证据包)

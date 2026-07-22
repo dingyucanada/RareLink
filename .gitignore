@@ -12,6 +12,7 @@ apps/web/vite.config.d.ts
 node_modules/
 dist/
 coverage/
+.tmp/
 artifacts/*
 !artifacts/.gitkeep
 !artifacts/spark-msd-real-20260720/
@@ -24,3 +25,11 @@ data/raw/
 *.pt
 *.pth
 *.ckpt
+outputs/.rarelink_video_clips/
+outputs/*.inspect.ndjson
+outputs/*待配音*.mp4
+outputs/*自动生成*.mp4
+outputs/*视觉母版*.mp4
+outputs/*中文字幕*.srt
+outputs/*片段清单*.txt
+outputs/*生成视觉母版.sh
