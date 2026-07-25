@@ -90,6 +90,8 @@
 - [x] Physical mode rejects SQLite; PostgreSQL deployment example keeps the database
   off host ports, requires OIDC and managed secrets, and persists database/artifacts
   in pre-created external volumes
+- [x] PostgreSQL physical audit appends acquire a transaction advisory lock before
+  reading the chain head; a unique predecessor index rejects any concurrent fork
 - [x] MSD real-image single-site CUDA smoke and one-round three-logical-site NVFLARE FedAvg: 3/3
   updates aggregated, global model persisted, exit code 0
 

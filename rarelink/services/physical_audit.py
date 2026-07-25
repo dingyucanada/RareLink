@@ -8,12 +8,18 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
+from sqlalchemy import text
 from sqlmodel import Session, select
 
 from rarelink.domain import utc_now
 from rarelink.models import PhysicalControlEvent, new_id
 
 GENESIS_HASH = "0" * 64
+CHAIN_APPEND_LOCK_ID = int.from_bytes(
+    hashlib.sha256(b"rarelink.physical-audit-chain.v1").digest()[:8],
+    byteorder="big",
+    signed=True,
+)
 ALLOWED_PAYLOAD_KEYS = {
     "site.register": {"organization", "expected"},
     "site.heartbeat-accepted": {
@@ -89,6 +95,15 @@ FORBIDDEN_PAYLOAD_KEYS = {
 
 class PhysicalAuditError(ValueError):
     pass
+
+
+def _acquire_chain_append_lock(session: Session) -> None:
+    """Serialize chain-head reads across PostgreSQL workers for this transaction."""
+    if session.get_bind().dialect.name == "postgresql":
+        session.execute(
+            text("SELECT pg_advisory_xact_lock(:lock_id)"),
+            {"lock_id": CHAIN_APPEND_LOCK_ID},
+        )
 
 
 def _timestamp(value: datetime) -> str:
@@ -174,6 +189,7 @@ def append_physical_event(
 ) -> PhysicalControlEvent:
     safe_payload = payload or {}
     _validate_payload(action, safe_payload)
+    _acquire_chain_append_lock(session)
     previous = session.exec(
         select(PhysicalControlEvent).order_by(PhysicalControlEvent.id.desc())
     ).first()

@@ -127,7 +127,7 @@ class PhysicalControlEvent(SQLModel, table=True):
     resource_id: str = Field(index=True)
     outcome: str = Field(index=True)
     payload_json: str = "{}"
-    previous_hash: str
+    previous_hash: str = Field(index=True, sa_column_kwargs={"unique": True})
     event_hash: str = Field(index=True)
     algorithm: str
     key_id: str | None = Field(default=None, index=True)

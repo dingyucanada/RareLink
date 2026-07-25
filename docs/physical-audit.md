@@ -258,7 +258,7 @@ pytest -q tests/test_physical_audit.py tests/test_physical_api.py
 | SQLite pilot 不是 WORM | 数据库管理员仍可删除整库；持有 key 时可重建链 | PostgreSQL + 串行事件追加 + WORM/远端签名锚点 + 独立备份 |
 | 尚未记录全部拒绝操作 | 认证失败、schema 422、策略拒绝等可能没有物理事件 | 建立不含攻击原文的拒绝事件 taxonomy，并避免认证洪泛污染主链 |
 | 没有旧 HMAC key-ring 轮换 | 更换 key 后无法仅用当前 key 验证多个历史 HMAC key ID | Vault/KMS key-ring、版本化 key ID、轮换仪式和历史验证服务 |
-| 多 worker 并发需 PostgreSQL 序列化 | SQLite 中“读取链头→追加”可能并发分叉 | PostgreSQL 行/顾问锁、唯一前序约束、事务重试或单写入器 |
+| 多 worker PostgreSQL 追加已串行化 | 事务级 advisory lock 串行化“读取链头→追加”，唯一 `previous_hash` 索引阻止分叉 | 尚需真实 PostgreSQL 高并发、锁超时、进程崩溃和恢复演练 |
 | legacy 操作员 token 仍保留在隔离验收模式 | 该路径无用户级身份且不能作为双人审批证据 | `physical` 已强制 OIDC/RBAC；继续补 MFA、会话吊销和资源级作用域 |
 | 应用时间不是可信时间 | 有主机权限者可影响事件时间 | NTP 监控、可信时间源、外部时间戳/签名锚定 |
 | 禁用字段基于 key 名 | 良性字段名下仍可能误放敏感值 | 固定 Pydantic 事件 schema、DLP 测试、代码审查和出口扫描 |

@@ -78,8 +78,12 @@ SQLite 不允许作为真实多医院中心控制面生产数据库，原因包�
 - 非 SQLite 运行时不会调用 `SQLModel.metadata.create_all()` 或 additive SQLite migration；
 - PostgreSQL 应用启动前检查 `alembic_version`，数据库未托管、revision 落后或存在非预期 head 时失败关闭；
 - 初始 schema 的 upgrade/downgrade、表列/外键/唯一索引和离线 SQL 秘密不泄露测试。
+- revision `0002_serialize_physical_audit_chain` 为审计链前序摘要增加唯一索引；
+  应用在 PostgreSQL 事务内取得固定 advisory lock 后再读取链头并追加事件，避免
+  多 worker 同时从同一链头分叉。已有分叉会使迁移失败并进入人工调查，不会被
+  自动覆盖。
 
-当前自动化主要在临时 SQLite 上验证 Alembic schema 语义，并生成 PostgreSQL
+当前自动化主要在临时 SQLite 上验证 Alembic schema 语义和前序唯一约束，并生成 PostgreSQL
 offline SQL 检查秘密边界；这不等于真实 PostgreSQL 实例的锁、事务、并发和性能
 验证。真实 PostgreSQL 集成测试与现场验收仍是发布门。
 
