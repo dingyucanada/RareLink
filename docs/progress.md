@@ -73,7 +73,7 @@
   invalidation enter the same chained ledger
 - [x] Offline OIDC JWT validation against an administrator-supplied in-memory JWKS:
   RS256/ES256 allow-list and issuer/audience/signature/time/subject/role/organization/site checks
-- [x] Fail-closed physical RBAC with five roles and nine permissions; physical mode
+- [x] Fail-closed physical RBAC with five roles and ten permissions; physical mode
   rejects legacy operator tokens, while legacy compatibility remains isolated-integration only
 - [x] OIDC tokens and raw claims are not persisted or appended to the physical audit chain
 - [x] Canonical physical contract v1 SHA-256 binds study, strategy, bundle, sorted three-site
@@ -85,6 +85,8 @@
 - [x] OIDC `site_ids` resource scope requires every target site for registration,
   contract create/approve, submit, sync, abort, retry/resume, and model verification;
   denial happens before NVIDIA FLARE and does not enumerate missing sites
+- [x] Physical site/job lists require OIDC state-read permission and filter by `site_ids`;
+  audit details export only authorized site/job events while verifying the complete chain
 - [x] Alembic `0001_initial_schema` covers all control-plane models, with schema
   drift tests, explicit psycopg 3 runtime, and production startup revision verification
 - [x] Physical mode rejects SQLite; PostgreSQL deployment example keeps the database

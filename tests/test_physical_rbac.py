@@ -33,6 +33,7 @@ def principal(
 
 EXPECTED_MATRIX = {
     PhysicalRole.RESEARCH_LEAD: {
+        PhysicalPermission.CONTROL_STATE_READ,
         PhysicalPermission.CONTRACT_CREATE,
         PhysicalPermission.CONTRACT_APPROVE,
         PhysicalPermission.JOB_SUBMIT,
@@ -43,6 +44,7 @@ EXPECTED_MATRIX = {
         PhysicalPermission.AUDIT_READ,
     },
     PhysicalRole.SITE_ADMIN: {
+        PhysicalPermission.CONTROL_STATE_READ,
         PhysicalPermission.SITE_REGISTER,
         PhysicalPermission.JOB_SYNC,
         PhysicalPermission.JOB_ABORT,
@@ -50,15 +52,18 @@ EXPECTED_MATRIX = {
         PhysicalPermission.AUDIT_READ,
     },
     PhysicalRole.DATA_STEWARD: {
+        PhysicalPermission.CONTROL_STATE_READ,
         PhysicalPermission.CONTRACT_APPROVE,
         PhysicalPermission.AUDIT_READ,
     },
     PhysicalRole.REVIEWER: {
+        PhysicalPermission.CONTROL_STATE_READ,
         PhysicalPermission.CONTRACT_APPROVE,
         PhysicalPermission.MODEL_VERIFY,
         PhysicalPermission.AUDIT_READ,
     },
     PhysicalRole.SECURITY_ADMIN: {
+        PhysicalPermission.CONTROL_STATE_READ,
         PhysicalPermission.SITE_REGISTER,
         PhysicalPermission.CONTRACT_APPROVE,
         PhysicalPermission.JOB_SYNC,

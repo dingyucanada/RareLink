@@ -1,5 +1,6 @@
 import json
 import time
+from contextlib import suppress
 from typing import Any
 
 import jwt
@@ -8,6 +9,8 @@ from fastapi.testclient import TestClient
 
 from rarelink.api.main import app
 from rarelink.config import Settings, get_settings
+from rarelink.database import get_session
+from rarelink.models import PhysicalFederationJob
 
 ISSUER = "https://identity.hospital.example"
 AUDIENCE = "rarelink-physical-control"
@@ -214,3 +217,100 @@ def test_physical_oidc_missing_jwks_is_configuration_failure(
     assert response.status_code == 503
     assert "not configured" in response.json()["detail"]
     assert token not in response.text
+
+
+def test_physical_reads_are_authenticated_and_site_scope_filtered(
+    client: TestClient,
+) -> None:
+    private_key, jwk = oidc_material()
+    enable_physical_oidc(jwk)
+    site_a_admin = oidc_token(
+        private_key,
+        subject="site-a-admin",
+        roles=["site_admin"],
+        site_ids=["hospital-a"],
+    )
+    site_b_admin = oidc_token(
+        private_key,
+        subject="site-b-admin",
+        roles=["site_admin"],
+        site_ids=["hospital-b"],
+    )
+    for site_id, token in (
+        ("hospital-a", site_a_admin),
+        ("hospital-b", site_b_admin),
+    ):
+        response = client.post(
+            "/api/physical/sites",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "site_id": site_id,
+                "display_name": f"{site_id} Spark",
+                "organization": site_id,
+            },
+        )
+        assert response.status_code == 201
+
+    session_provider = app.dependency_overrides[get_session]()
+    session = next(session_provider)
+    try:
+        session.add(
+            PhysicalFederationJob(
+                id="job-hospital-abc",
+                strategy="fedavg",
+                expected_sites_json=json.dumps(
+                    ["hospital-a", "hospital-b", "hospital-c"]
+                ),
+                total_rounds=5,
+                local_epochs=1,
+                quorum_required=3,
+                job_directory="/coordinator-only/job-abc",
+            )
+        )
+        session.commit()
+    finally:
+        session.close()
+        with suppress(StopIteration):
+            next(session_provider)
+
+    assert client.get("/api/physical/sites").status_code == 401
+    assert client.get("/api/physical/jobs").status_code == 401
+
+    site_list = client.get(
+        "/api/physical/sites",
+        headers={"Authorization": f"Bearer {site_a_admin}"},
+    )
+    assert site_list.status_code == 200
+    assert [site["site_id"] for site in site_list.json()] == ["hospital-a"]
+
+    narrow_jobs = client.get(
+        "/api/physical/jobs",
+        headers={"Authorization": f"Bearer {site_a_admin}"},
+    )
+    assert narrow_jobs.status_code == 200
+    assert narrow_jobs.json() == []
+
+    all_sites_lead = oidc_token(
+        private_key,
+        subject="all-sites-lead",
+        roles=["research_lead"],
+        site_ids=["hospital-a", "hospital-b", "hospital-c"],
+    )
+    scoped_jobs = client.get(
+        "/api/physical/jobs",
+        headers={"Authorization": f"Bearer {all_sites_lead}"},
+    )
+    assert [job["id"] for job in scoped_jobs.json()] == ["job-hospital-abc"]
+    assert "/coordinator-only" not in scoped_jobs.text
+
+    events = client.get(
+        "/api/physical/events",
+        headers={"Authorization": f"Bearer {site_a_admin}"},
+    )
+    assert events.status_code == 200
+    assert events.json()["verified"] is True
+    assert events.json()["chain_event_count"] == 2
+    assert events.json()["event_count"] == 1
+    assert events.json()["scope_filtered"] is True
+    assert events.json()["events"][0]["resource_id"] == "hospital-a"
+    assert "site-b-admin" not in events.text

@@ -118,22 +118,18 @@ legacy 主体拥有测试用全角色，但没有来自受信 IdP 的真实 `sit
 
 ## 7. 当前读取边界
 
-以下读取路径当前**未按 `site_ids` 过滤**：
+physical 模式下读取路径执行以下规则：
 
-- 公开 `GET /api/physical/sites`；
-- 公开 `GET /api/physical/jobs`；
-- 公开 `GET /api/physical/audit-summary`；
-- 具有 `physical.audit.read` 的 `GET /api/physical/events` 返回最近事件，但不按站点过滤。
+- `GET /api/physical/sites` 要求 `physical.control_state.read`，仅返回 claim 内站点；
+- `GET /api/physical/jobs` 要求相同权限，仅当作业全部参与站点均属于 claim 时返回；
+- `GET /api/physical/events` 要求 `physical.audit.read`，只导出授权站点及授权作业事件；
+- 审计响应的 `verified` 针对服务端完整链，`chain_event_count` 与 `event_count` 分别表示
+  全链事件数和本次 scope 导出数；
+- `GET /api/physical/audit-summary` 保持公开最小完整性锚点，只返回事件数、链头摘要、
+  算法和更新时间，不返回 actor、resource 或 payload。
 
-因此：
-
-- 当前资源级 scope 保护的是目标明确的控制操作；
-- 它不构成按医院隔离的多租户读取模型；
-- 若站点/作业元数据在目标医院被判定为敏感，应先通过私网/API Gateway 限制；
-- 生产版本需为 list/detail/audit 定义组织、研究、站点组合过滤与分页；
-- 不能因为写操作已 scope 化，就宣称每家医院只能看到本站元数据。
-
-审计读取尤其需要谨慎：事件 actor、job 和站点引用可能跨三院，`audit.read` 当前是协调方全局权限。
+这已形成站点级读取隔离，但还不是完整多租户模型：organization 与 study membership
+尚未绑定资源，列表尚未分页，协调方全局审计角色也尚未单独建模。
 
 ## 8. 错误与信息最小化
 
@@ -167,6 +163,8 @@ scope 不足统一返回：
 - legacy isolated 跳过，但 physical 拒绝 legacy；
 - 作业目标来自持久化合同，不接受请求覆盖；
 - 合同摘要与 scope 的目标集合一致。
+- physical 的 site/job list 必须认证并按 scope 过滤；
+- audit 明细按 scope 导出，但仍核验完整事件链；
 
 ```bash
 pytest -q \
@@ -176,7 +174,7 @@ pytest -q \
   tests/test_physical_api.py
 ```
 
-当前全量回归基线为 **194 项测试通过**；scope 子集不能替代全仓回归。
+当前全量回归基线为 **208 项测试通过**；scope 子集不能替代全仓回归。
 
 现场验收：
 
@@ -185,14 +183,14 @@ pytest -q \
 3. 证明所有越界请求在 NVFLARE runner 前终止；
 4. 检查错误、代理日志、trace 和审计不泄露缺失站点；
 5. 验证 legacy token 在 physical 模式始终 503；
-6. 单独记录公开列表与全局 audit read 的现有可见性。
+6. 核对公开 audit summary 不含 actor/resource/payload。
 
 ## 10. 当前局限与下一步
 
 | 局限 | 影响 | 生产升级 |
 | --- | --- | --- |
-| 公开 site/job list 不过滤 | 不能作为医院级读取隔离 | OIDC 保护、按 site/org/study 过滤 |
-| audit read 是全局权限 | 授权审计者可见跨站事件 | 站点/组织审计视图和协调方专属角色 |
+| 无分页和查询上限 | 大量站点/作业可能影响响应性能 | 游标分页、上限和确定性排序 |
+| 无协调方全局审计角色 | 当前只有站点 scope 审计视图 | 独立联盟审计身份、到期授权和双人审批 |
 | 无 organization scope 强制 | claim 中 organization 尚未绑定资源组织 | 组织资源模型和策略组合 |
 | 无 study scope | 同站点主体可能操作不同研究 | research membership/role binding |
 | 不支持 wildcard | 大型协调方需列出全部站点 | 受治理的协调方 scope 类型，不接受自由 `*` |

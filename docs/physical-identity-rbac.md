@@ -5,7 +5,7 @@
 **实现：** `rarelink/security/oidc.py`、`rarelink/security/physical_rbac.py`  
 **定位：** 受信内存 JWKS 的离线 JWT 验证和动作级 RBAC；尚不是完整医院 IAM 集成
 
-> 当前实现能够验证由预先信任密钥签发的 OIDC JWT，并按固定角色—权限矩阵失败关闭。物理合同的独立第二审批已持久化，目标明确的控制操作也已强制 `site_ids` 全目标站点子集；但 OIDC discovery、远程 JWKS 生命周期、MFA、会话吊销、读取列表/审计过滤，以及提交/恢复动作本身的双人批准仍未完成。真实医院部署仍需 IAM、安全和合规验收。
+> 当前实现能够验证由预先信任密钥签发的 OIDC JWT，并按固定角色—权限矩阵失败关闭。物理合同的独立第二审批已持久化，目标明确的控制操作强制 `site_ids` 全目标站点子集；physical 模式下站点、作业和审计明细读取也已认证并按同一 scope 过滤。但 OIDC discovery、远程 JWKS 生命周期、MFA、会话吊销、组织/研究成员关系以及提交/恢复动作本身的双人批准仍未完成。真实医院部署仍需 IAM、安全和合规验收。
 
 ## 1. 已实现范围
 
@@ -14,7 +14,7 @@
 - 校验签名、`iss`、`aud`、`exp`、`iat`、可选 `nbf` 和 `sub`；
 - 校验可配置的角色、组织、站点 claim；
 - 将验证结果最小化为 `PhysicalPrincipal`；
-- 五个固定角色、九种固定权限，未知角色和未知动作失败关闭；
+- 五个固定角色、十种固定权限，未知角色和未知动作失败关闭；
 - `physical` 模式强制 OIDC Bearer 身份，拒绝 legacy operator token；
 - `legacy-token` 仅保留给 `isolated-integration` 三进程/三容器验收；
 - OIDC access token、refresh token 和 raw claims 不持久化、不进入审计；
@@ -97,10 +97,11 @@ PhysicalPrincipal(
 
 Principal 不包含 JWT、refresh token、JWK、JWT header 或 raw claims。
 
-## 4. 五角色与九权限
+## 4. 五角色与十权限
 
 | 权限 | 含义 |
 | --- | --- |
+| `physical.control_state.read` | 读取授权站点及覆盖全部授权站点的作业 |
 | `physical.site.register` | 登记预期物理站点 |
 | `physical.contract.create` | 创建物理作业合同 |
 | `physical.contract.approve` | 合同批准能力 |
@@ -113,13 +114,13 @@ Principal 不包含 JWT、refresh token、JWK、JWT header 或 raw claims。
 
 ### 4.1 角色—权限矩阵
 
-| 角色 | 站点登记 | 合同创建 | 合同批准 | 提交 | 同步 | 中止 | 重试/恢复 | 模型核验 | 审计 |
-| --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| `research_lead` |  | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `site_admin` | ✓ |  |  |  | ✓ | ✓ | ✓ |  | ✓ |
-| `data_steward` |  |  | ✓ |  |  |  |  |  | ✓ |
-| `reviewer` |  |  | ✓ |  |  |  |  | ✓ | ✓ |
-| `security_admin` | ✓ |  | ✓ |  | ✓ | ✓ |  |  | ✓ |
+| 角色 | 状态读取 | 站点登记 | 合同创建 | 合同批准 | 提交 | 同步 | 中止 | 重试/恢复 | 模型核验 | 审计 |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| `research_lead` | ✓ |  | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `site_admin` | ✓ | ✓ |  |  |  | ✓ | ✓ | ✓ |  | ✓ |
+| `data_steward` | ✓ |  |  | ✓ |  |  |  |  |  | ✓ |
+| `reviewer` | ✓ |  |  | ✓ |  |  |  |  | ✓ | ✓ |
+| `security_admin` | ✓ | ✓ |  | ✓ |  | ✓ | ✓ |  |  | ✓ |
 
 矩阵在代码中只读。多角色主体获得权限并集，不存在隐含超级管理员；空角色和未知动作授予零权限。
 
@@ -127,6 +128,7 @@ Principal 不包含 JWT、refresh token、JWK、JWT header 或 raw claims。
 
 | API | 权限 |
 | --- | --- |
+| `GET /api/physical/sites` / `jobs` | `physical.control_state.read`（physical 模式） |
 | `POST /api/physical/sites` | `physical.site.register` |
 | `POST /api/physical/jobs` | `physical.contract.create` |
 | `POST /api/physical/jobs/{id}:submit` | `physical.job.submit` |
@@ -140,8 +142,10 @@ Principal 不包含 JWT、refresh token、JWK、JWT header 或 raw claims。
 
 除动作权限外，site register、contract create/approve、submit、sync、abort、
 retry/resume 和 verify-model 均要求全部目标站点是 OIDC `site_ids` 的子集，并在
-调用 NVIDIA FLARE 前检查。scope 不足返回不枚举缺失站点的 403。只读站点、作业
-列表和公开摘要仍未按站点过滤；`audit.read` 也是协调方全局读取权限。完整边界见
+调用 NVIDIA FLARE 前检查。scope 不足返回不枚举缺失站点的 403。physical 模式下，
+站点列表只返回 claim 内站点；作业只有在全部参与站点均属于 claim 时才返回；
+审计明细只导出授权站点及授权作业事件，同时对完整链做内部核验。公开摘要只暴露
+事件数、链头摘要和算法，不导出 actor/resource/payload。完整边界见
 [站点资源级授权](physical-site-scope.md)。
 
 ## 5. 模式硬门
@@ -212,7 +216,7 @@ raw claims 同样不持久化。物理审计 actor 只记录已验证的 `sub`�
 - 缺失、未知和重复 `kid`；
 - issuer、audience、签名和全部时间 claim 负例；
 - subject、角色、组织和站点 claim 负例；
-- 五角色九权限逐项 allow/deny；
+- 五角色十权限逐项 allow/deny；
 - physical 拒绝 legacy，OIDC 拒绝共享 token；
 - 配置缺失安全失败；
 - token/raw claims 不出现在响应和审计。
@@ -224,7 +228,7 @@ pytest -q \
   tests/test_physical_oidc_api.py
 ```
 
-当前全量回归基线为 **194 项测试通过**；身份子集不能替代全仓回归。
+当前全量回归基线为 **208 项测试通过**；身份子集不能替代全仓回归。
 
 医院集成还必须验证真实 issuer/audience、计划内密钥轮换、五角色治理、每角色负面 API、日志泄露检查、时钟告警和账户/密钥应急流程。
 
@@ -237,9 +241,9 @@ pytest -q \
 | 无自动缓存/轮换 | key 轮换需手工重启/重载 | bounded cache、后台刷新、旧 key 宽限和告警 |
 | 无 MFA assurance | token 不证明执行过特定 MFA | 与 IdP 约定并校验 `acr`/`amr` |
 | 无会话/主体吊销 | token 在 `exp` 前可能继续有效 | 短 TTL、introspection/deny-list、事件驱动吊销 |
-| 读取接口未按 `site_ids` 过滤 | 控制操作已 scope 化，但列表/审计仍可能跨站可见 | 站点/组织/研究级读取 policy |
+| 无 organization/study scope 强制 | 站点级读取已隔离，但同站点不同研究尚未分离 | 组织资源模型、研究成员关系与策略组合 |
 | 合同审批缺少完整生命周期 | 第二审批已持久化，但无撤销、过期和替补流程 | 审批状态机、撤销/到期、替补和执行动作双审 |
-| 只读运行元数据未纳入 RBAC | 公共 UI 可见运行摘要 | 医院分级、网关或读取权限 |
+| Web 尚未接医院 OIDC 登录流程 | API 已保护 physical 读取，但正式 UI 还不能获取/续期 token | Authorization Code + PKCE、短会话与登出/吊销 |
 | legacy 主体拥有全角色 | 隔离环境一旦暴露影响大 | 仅 loopback/测试网；physical 永久禁止 |
 
 ## 10. 相关文档

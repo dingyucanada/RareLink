@@ -23,6 +23,7 @@ class PhysicalRole(StrEnum):
 
 
 class PhysicalPermission(StrEnum):
+    CONTROL_STATE_READ = "physical.control_state.read"
     SITE_REGISTER = "physical.site.register"
     CONTRACT_CREATE = "physical.contract.create"
     CONTRACT_APPROVE = "physical.contract.approve"
@@ -37,6 +38,7 @@ class PhysicalPermission(StrEnum):
 _ROLE_PERMISSIONS_SOURCE: Final[dict[PhysicalRole, frozenset[PhysicalPermission]]] = {
     PhysicalRole.RESEARCH_LEAD: frozenset(
         {
+            PhysicalPermission.CONTROL_STATE_READ,
             PhysicalPermission.CONTRACT_CREATE,
             PhysicalPermission.CONTRACT_APPROVE,
             PhysicalPermission.JOB_SUBMIT,
@@ -49,6 +51,7 @@ _ROLE_PERMISSIONS_SOURCE: Final[dict[PhysicalRole, frozenset[PhysicalPermission]
     ),
     PhysicalRole.SITE_ADMIN: frozenset(
         {
+            PhysicalPermission.CONTROL_STATE_READ,
             PhysicalPermission.SITE_REGISTER,
             PhysicalPermission.JOB_SYNC,
             PhysicalPermission.JOB_ABORT,
@@ -58,12 +61,14 @@ _ROLE_PERMISSIONS_SOURCE: Final[dict[PhysicalRole, frozenset[PhysicalPermission]
     ),
     PhysicalRole.DATA_STEWARD: frozenset(
         {
+            PhysicalPermission.CONTROL_STATE_READ,
             PhysicalPermission.CONTRACT_APPROVE,
             PhysicalPermission.AUDIT_READ,
         }
     ),
     PhysicalRole.REVIEWER: frozenset(
         {
+            PhysicalPermission.CONTROL_STATE_READ,
             PhysicalPermission.CONTRACT_APPROVE,
             PhysicalPermission.MODEL_VERIFY,
             PhysicalPermission.AUDIT_READ,
@@ -71,6 +76,7 @@ _ROLE_PERMISSIONS_SOURCE: Final[dict[PhysicalRole, frozenset[PhysicalPermission]
     ),
     PhysicalRole.SECURITY_ADMIN: frozenset(
         {
+            PhysicalPermission.CONTROL_STATE_READ,
             PhysicalPermission.SITE_REGISTER,
             PhysicalPermission.CONTRACT_APPROVE,
             PhysicalPermission.JOB_SYNC,

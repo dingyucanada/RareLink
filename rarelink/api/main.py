@@ -430,6 +430,30 @@ def require_physical_job_scope(
     require_physical_site_scope(principal, expected_sites, config)
 
 
+def physical_read_principal(
+    request: Request,
+    config: Settings,
+    permission: PhysicalPermission,
+) -> PhysicalPrincipal | None:
+    """Protect production reads while preserving isolated/demo compatibility."""
+    if config.rarelink_physical_mode != "physical":
+        return None
+    return require_physical_principal(request, config, permission)
+
+
+def principal_can_read_job(
+    principal: PhysicalPrincipal,
+    job: PhysicalFederationJob,
+) -> bool:
+    expected_sites = as_json(job.expected_sites_json, [])
+    return (
+        isinstance(expected_sites, list)
+        and bool(expected_sites)
+        and all(isinstance(site_id, str) for site_id in expected_sites)
+        and set(expected_sites).issubset(principal.site_ids)
+    )
+
+
 def build_physical_controller(
     session: Session,
     config: Settings,
@@ -603,8 +627,21 @@ def register_physical_site(
 
 
 @app.get("/api/physical/sites")
-def list_physical_sites(session: SessionDep, config: SettingsDep) -> list[dict[str, Any]]:
+def list_physical_sites(
+    request: Request,
+    session: SessionDep,
+    config: SettingsDep,
+) -> list[dict[str, Any]]:
     statement = select(PhysicalSite).order_by(PhysicalSite.site_id)
+    principal = physical_read_principal(
+        request,
+        config,
+        PhysicalPermission.CONTROL_STATE_READ,
+    )
+    if principal is not None:
+        statement = statement.where(
+            PhysicalSite.site_id.in_(sorted(principal.site_ids))
+        )
     return [physical_site_view(site, config) for site in session.exec(statement).all()]
 
 
@@ -853,9 +890,21 @@ def create_physical_job(
 
 
 @app.get("/api/physical/jobs")
-def list_physical_jobs(session: SessionDep, config: SettingsDep) -> list[dict[str, Any]]:
+def list_physical_jobs(
+    request: Request,
+    session: SessionDep,
+    config: SettingsDep,
+) -> list[dict[str, Any]]:
     statement = select(PhysicalFederationJob).order_by(PhysicalFederationJob.created_at.desc())
-    return [physical_job_view(job, config) for job in session.exec(statement).all()]
+    jobs = list(session.exec(statement).all())
+    principal = physical_read_principal(
+        request,
+        config,
+        PhysicalPermission.CONTROL_STATE_READ,
+    )
+    if principal is not None:
+        jobs = [job for job in jobs if principal_can_read_job(principal, job)]
+    return [physical_job_view(job, config) for job in jobs]
 
 
 @app.post("/api/physical/jobs/{job_id}:approve")
@@ -1301,7 +1350,7 @@ def list_physical_events(
     session: SessionDep,
     config: SettingsDep,
 ) -> dict[str, Any]:
-    require_physical_principal(
+    principal = require_physical_principal(
         request,
         config,
         PhysicalPermission.AUDIT_READ,
@@ -1311,15 +1360,38 @@ def list_physical_events(
             select(PhysicalControlEvent).order_by(PhysicalControlEvent.id)
         ).all()
     )
+    exported_events = events
+    scope_filtered = False
+    if config.rarelink_physical_mode == "physical":
+        jobs = list(session.exec(select(PhysicalFederationJob)).all())
+        allowed_job_ids = {
+            job.id for job in jobs if principal_can_read_job(principal, job)
+        }
+        exported_events = [
+            event
+            for event in events
+            if (
+                event.resource_type == "physical-site"
+                and event.resource_id in principal.site_ids
+            )
+            or (
+                event.resource_type == "physical-job"
+                and event.resource_id in allowed_job_ids
+            )
+        ]
+        scope_filtered = True
+    recent_events = exported_events[-200:]
     return {
         "schema_version": "rarelink-physical-audit-chain-v1",
         "verified": verify_physical_event_chain(
             events,
             hmac_key=config.rarelink_audit_hmac_key,
         ),
-        "event_count": len(events),
-        "events": [physical_event_view(event) for event in events[-200:]],
-        "truncated": len(events) > 200,
+        "chain_event_count": len(events),
+        "event_count": len(exported_events),
+        "events": [physical_event_view(event) for event in recent_events],
+        "truncated": len(exported_events) > 200,
+        "scope_filtered": scope_filtered,
         "contains_patient_data": False,
         "contains_secret": False,
         "contains_local_path": False,
