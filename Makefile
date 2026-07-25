@@ -1,7 +1,7 @@
 PYTHON ?= python3
 PROJECT_PYTHON = $(if $(wildcard .venv/bin/python),.venv/bin/python,$(PYTHON))
 
-.PHONY: install install-web dev-api dev-web test lint smoke step-models step-smoke step-team-smoke synthetic-data monai-smoke nvflare-smoke nvflare-fedprox training-job-smoke demo-seed demo-evidence spark-local-verify spark-local-benchmark
+.PHONY: install install-web dev-api dev-web test lint smoke step-models step-smoke step-team-smoke synthetic-data monai-smoke nvflare-smoke nvflare-fedprox training-job-smoke demo-seed demo-evidence spark-local-verify spark-local-benchmark physical-render physical-preflight physical-job
 
 install:
 	$(PROJECT_PYTHON) -m pip install -e ".[dev]"
@@ -59,3 +59,14 @@ spark-local-verify:
 
 spark-local-benchmark:
 	$(PROJECT_PYTHON) scripts/benchmark_spark_local_llm.py
+
+# Physical deployment commands intentionally require explicit topology/runtime paths.
+# They never upload medical data, startup kits, certificates, or private keys.
+physical-render:
+	@echo "Usage: $(PROJECT_PYTHON) scripts/render_physical_federation.py --topology deploy/physical/topology.yml"
+
+physical-preflight:
+	@echo "Usage: $(PROJECT_PYTHON) scripts/validate_physical_site.py --topology ... --site-runtime ..."
+
+physical-job:
+	@echo "Usage: $(PROJECT_PYTHON) scripts/export_physical_nvflare_job.py --topology ... --output-dir ..."

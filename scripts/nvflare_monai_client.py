@@ -18,6 +18,35 @@ from rarelink.imaging.monai_runner import (  # noqa: E402
 )
 
 
+def validate_manifest_for_site(
+    manifest_path: Path, site_id: str, require_local_only: bool = False
+) -> dict:
+    """Validate client-side ownership before MONAI opens a single image file.
+
+    In simulation one manifest intentionally contains several logical sites. In
+    a physical deployment, every Spark receives a separate local manifest and
+    this check prevents an accidental multi-hospital mount from becoming part
+    of a client job.
+    """
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    cases = manifest.get("cases")
+    if not isinstance(cases, list):
+        raise ValueError("Manifest must contain a cases list")
+    site_cases = [case for case in cases if case.get("site_id") == site_id]
+    if len(site_cases) < 2:
+        raise ValueError(f"Site {site_id!r} requires at least two local cases")
+    if require_local_only:
+        foreign_sites = sorted(
+            {str(case.get("site_id")) for case in cases if case.get("site_id") != site_id}
+        )
+        if foreign_sites:
+            raise ValueError(
+                "Physical deployment rejected a manifest containing non-local cases: "
+                f"{foreign_sites!r}"
+            )
+    return manifest
+
+
 def build_site_loaders(manifest_path: Path, site_id: str):  # type: ignore[no-untyped-def]
     from monai.data import CacheDataset, DataLoader
     from monai.transforms import (
@@ -30,7 +59,7 @@ def build_site_loaders(manifest_path: Path, site_id: str):  # type: ignore[no-un
         ScaleIntensityd,
     )
 
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest = validate_manifest_for_site(manifest_path, site_id)
     dataset_root = manifest_path.parent
     site_cases = [case for case in manifest["cases"] if case["site_id"] == site_id]
     if len(site_cases) < 2:
@@ -195,6 +224,14 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description="RareLink MONAI client for NVIDIA FLARE")
     parser.add_argument("--manifest", type=Path, required=True)
+    parser.add_argument(
+        "--require-local-only-manifest",
+        action="store_true",
+        help=(
+            "Reject any non-local site cases before opening imaging files "
+            "(required for physical sites)."
+        ),
+    )
     parser.add_argument("--epochs", type=int, default=1)
     parser.add_argument("--fedprox-mu", type=float, default=0.0)
     parser.add_argument("--metrics-dir", type=Path)
@@ -208,6 +245,9 @@ def main() -> None:
     set_determinism(args.seed)
     flare.init()
     site_id = flare.get_site_name()
+    validate_manifest_for_site(
+        args.manifest, site_id, require_local_only=args.require_local_only_manifest
+    )
     train_loader, validation_loader = build_site_loaders(args.manifest, site_id)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = build_segmentation_model().to(device)

@@ -10,7 +10,7 @@
 
 <a href="README.en.md">English</a> · <strong>中文</strong>
 
-<strong>📘 <a href="outputs/RareLink-项目报告书.md">阅读完整项目报告书</a></strong> · <a href="#部署模型与快速开始">快速开始</a> · <a href="#工程验证与可信边界">工程证据</a>
+<strong>📘 <a href="outputs/RareLink-项目报告书.md">阅读完整项目报告书</a></strong> · <a href="#部署模型与快速开始">快速开始</a> · <a href="docs/physical-deployment.md">三物理 Spark 部署</a> · <a href="#工程验证与可信边界">工程证据</a>
 
 <a href="https://www.nvidia.com/en-us/products/workstations/dgx-spark/"><img src="https://img.shields.io/badge/NVIDIA-DGX%20Spark-76B900?style=flat-square&logo=nvidia&logoColor=white" alt="NVIDIA DGX Spark" /></a>
 <a href="https://nvidia.github.io/NVFlare/"><img src="https://img.shields.io/badge/NVIDIA%20FLARE-2.7.2-2563EB?style=flat-square" alt="NVIDIA FLARE" /></a>
@@ -20,7 +20,7 @@
 
 </div>
 
-> **研究用途工程原型。** RareLink 不提供诊断或治疗建议。当前实机验证在一台真实 DGX Spark 上以三个**逻辑站点**完成；另有 Spark–Mac mTLS 演练。两者均不等同真实多医院生产部署或临床验证。
+> **研究用途工程原型。** RareLink 不提供诊断或治疗建议。当前实机验证在一台真实 DGX Spark 上以三个**逻辑站点**完成；另有 Spark–Mac mTLS 演练。仓库同时提供三台独立 Spark 的拓扑、签名启动包、站点本地数据验证、作业导出与管理员提交工程路径；在完成真实多院网络、治理与多轮试点前，不将其表述为生产或临床验证。
 
 ---
 
@@ -50,6 +50,7 @@
 - [DGX Spark 与 NVIDIA 技术底座](#dgx-spark-与-nvidia-技术底座)
 - [工程验证与可信边界](#工程验证与可信边界)
 - [部署模型与快速开始](#部署模型与快速开始)
+- [三物理 Spark 部署](docs/physical-deployment.md)
 - [路线图、资料与责任使用](#路线图资料与责任使用)
 
 ---

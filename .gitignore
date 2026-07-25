@@ -33,3 +33,6 @@ outputs/*视觉母版*.mp4
 outputs/*中文字幕*.srt
 outputs/*片段清单*.txt
 outputs/*生成视觉母版.sh
+deploy/physical/rendered/
+deploy/physical/provisioned/
+deploy/physical/site-runtime.yml

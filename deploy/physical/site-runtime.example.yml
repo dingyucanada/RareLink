@@ -1,0 +1,8 @@
+# Keep this file on ONE hospital's Spark only. Do not commit a populated copy.
+# Each hospital supplies its own local manifest; there is no central data path.
+schema_version: rarelink-site-runtime-v1
+site_id: hospital-a
+dataset_manifest: /srv/rarelink/site-data/manifest.json
+artifact_root: /var/lib/rarelink/artifacts
+startup_kit: /opt/rarelink/flare/hospital-a
+required_free_memory_percent: 15

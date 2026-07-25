@@ -42,6 +42,25 @@ The Spark path uses NVIDIA FLARE 2.7.2's maintained Recipe and Client APIs direc
 The same recipe can be exported for POC/production environments without rewriting the MONAI training
 script. Auto-FL remains an optional feature flag after the stable FedAvg/FedProx path is proven.
 
+## Physical multi-Spark deployment path
+
+The local `SimEnv` path is deliberately not reused as a claim of multi-hospital execution. Physical
+deployment uses a separate, validated topology contract in `deploy/physical/topology.example.yml`:
+
+```text
+Coordinator (FLARE Server + Admin Kit)
+  ├─ mTLS ─ Hospital A Spark (independent FLARE Client + local MONAI + local manifest)
+  ├─ mTLS ─ Hospital B Spark (independent FLARE Client + local MONAI + local manifest)
+  └─ mTLS ─ Hospital C Spark (independent FLARE Client + local MONAI + local manifest)
+```
+
+`scripts/render_physical_federation.py` turns that central, non-sensitive contract into the project
+source that NVIDIA FLARE signs. It contains no data mount, image identifier, label, patient field,
+certificate, private key, public IP or SSH detail. Each hospital keeps an untracked `site-runtime.yml`
+and passes a local manifest to its own Client. The physical job export sets
+`--require-local-only-manifest`; the Client rejects a manifest containing any other site's cases before
+opening an image. The full operational runbook is [physical-deployment.md](physical-deployment.md).
+
 In `nvflare` mode, FastAPI creates a persisted `TrainingJob` and returns immediately. A process-local
 unified-memory guard serializes Local, FedAvg, and FedProx workloads on one Spark. Progress, logs,
 aggregate Dice/HD95, workspace, failure details, and global-model paths are written back to SQLModel;

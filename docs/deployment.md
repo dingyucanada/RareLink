@@ -1,5 +1,8 @@
 # RareLink DGX Spark 部署手册
 
+> 对三台独立 Spark 的真实多中心试点，请使用新增的[物理多站点部署手册](physical-deployment.md)。
+> 本文的 `SimEnv` / 三逻辑站点路径仅用于单机工程验证，不能代替真实跨院部署。
+
 ## 1. 部署边界
 
 赛事提供的是一台可 SSH 登录的 DGX Spark 节点，而不是三家真实医院。演示环境在一台 Spark

@@ -1,0 +1,25 @@
+# Copy to /etc/systemd/system/rarelink-flare-ROLE.service on the appropriate Spark.
+# Replace ROLE and KIT_DIR. The startup kit must be provisioned and signed first.
+# Run jobs as the dedicated rarelink service account, never as root.
+[Unit]
+Description=RareLink NVIDIA FLARE ROLE
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rarelink
+Group=rarelink
+WorkingDirectory=KIT_DIR
+Environment=PYTHONUNBUFFERED=1
+Environment=NVFL_WORKSPACE=/var/lib/rarelink/flare-workspace
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ReadWritePaths=/var/lib/rarelink
+ExecStart=KIT_DIR/startup/start.sh
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

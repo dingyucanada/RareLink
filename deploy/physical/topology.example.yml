@@ -1,0 +1,22 @@
+# Central deployment metadata. This file deliberately has no image path,
+# patient count, data directory, certificate, token, public IP, or SSH detail.
+# Use routable internal DNS names approved by every hospital's IT team.
+schema_version: rarelink-physical-topology-v1
+federation_name: rarelink-pediatric-hgg-pilot
+coordinator:
+  endpoint:
+    hostname: flare-coordinator.research.example.org
+    fed_learn_port: 8002
+    admin_port: 8003
+  organization: rarelink_coordinator
+  admin_identity: research-admin@rarelink.example.org
+sites:
+  - site_id: hospital-a
+    organization: hospital_a
+    spark_label: Hospital A radiology research Spark
+  - site_id: hospital-b
+    organization: hospital_b
+    spark_label: Hospital B paediatric neuro-oncology Spark
+  - site_id: hospital-c
+    organization: hospital_c
+    spark_label: Hospital C imaging AI Spark
