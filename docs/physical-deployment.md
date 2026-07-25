@@ -9,6 +9,7 @@
 - [ADR-0003：任务幂等、固定参与方与 Quorum](adr/0003-idempotency-and-quorum.md)
 - [医院本地 NIfTI 数据规范](site-data-manifest.md)
 - [物理控制面防篡改审计设计与验收](physical-audit.md)
+- [物理控制面 OIDC 身份与 RBAC 设计](physical-identity-rbac.md)
 
 ## 1. 目标拓扑与不可变边界
 
@@ -138,9 +139,15 @@ MONAI、NVFLARE、证书、manifest 和启动包。任何必要检查失败时�
 
 ```bash
 RARELINK_PHYSICAL_MODE=physical
+RARELINK_PHYSICAL_AUTH_MODE=oidc
 RARELINK_PHYSICAL_SITE_SECRETS='{"hospital-a":"...","hospital-b":"...","hospital-c":"..."}'
-RARELINK_PHYSICAL_OPERATOR_TOKEN='...'
 RARELINK_AUDIT_HMAC_KEY='由受控密钥系统注入的至少 32 字符随机值'
+RARELINK_OIDC_ISSUER='https://identity.hospital.example'
+RARELINK_OIDC_AUDIENCE='rarelink-physical-control'
+RARELINK_OIDC_JWKS_JSON='{"keys":[...已核验验证公钥...]}'
+RARELINK_OIDC_ROLES_CLAIM=roles
+RARELINK_OIDC_ORGANIZATION_CLAIM=organization
+RARELINK_OIDC_SITES_CLAIM=site_ids
 RARELINK_NVFLARE_ADMIN_KIT=/opt/rarelink/admin/research-admin
 ```
 
@@ -165,6 +172,17 @@ python3 scripts/push_site_heartbeat.py \
 `RARELINK_AUDIT_HMAC_KEY` 时，受保护物理写操作返回 `503`，不会回退为无密钥
 SHA-256 事件。长度门不验证随机熵；真实部署必须由 Vault/KMS 等受控密钥系统
 生成和注入，并与数据库、备份和日志分离。
+
+`physical` 模式同时强制 `RARELINK_PHYSICAL_AUTH_MODE=oidc`。操作员使用
+`Authorization: Bearer <OIDC access token>`；共享
+`X-RareLink-Operator-Token` 即使配置也会被拒绝。当前 Adapter 只使用环境
+JSON 注入的受信内存 JWKS，支持 RS256/ES256，并校验 issuer、audience、时间、
+sub、角色、组织和站点 claims。JWT/raw claims 不持久化、不写审计。
+
+`legacy-token` 仅允许 `isolated-integration`，不能用于真实医院或公网。当前
+尚无 discovery/HTTPS JWKS 拉取、自动缓存轮换、MFA、会话吊销、资源级站点
+范围和持久化双人审批，见
+[物理控制面 OIDC/RBAC 文档](physical-identity-rbac.md)。
 
 Site Agent 的执行后端同样默认 `disabled`，因此未完成现场授权时，任务接口
 会失败关闭。医院 IT 可设置
@@ -207,8 +225,10 @@ python3 scripts/submit_physical_nvflare_job.py \
 - `POST /api/physical/jobs/{job_id}:verify-model`：只有作业已完成且三个
   指定站点均满足 quorum 时，才能绑定协调端全局模型 SHA-256。
 
-所有写操作默认失败关闭；未配置 `RARELINK_PHYSICAL_OPERATOR_TOKEN` 时返回
-`503`，错误响应不转发 NVFLARE 原始输出、Admin Kit 路径或凭据。
+所有写操作默认失败关闭。`physical` 模式缺少有效 OIDC 配置时返回 `503`，
+token 无效返回 `401`，角色无权返回 `403`；错误响应不转发 token、raw claims、
+NVFLARE 原始输出、Admin Kit 路径或凭据。`isolated-integration` 的 legacy
+模式未配置 `RARELINK_PHYSICAL_OPERATOR_TOKEN` 时返回 `503`。
 
 ### 6.1 物理控制面审计
 

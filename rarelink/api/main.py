@@ -47,7 +47,17 @@ from rarelink.models import (
     Study,
     TrainingJob,
 )
-from rarelink.security import verify_heartbeat_signature
+from rarelink.security import (
+    OfflineOIDCAdapter,
+    OIDCClaimsConfig,
+    OIDCValidationError,
+    PhysicalPermission,
+    PhysicalPermissionDenied,
+    PhysicalPrincipal,
+    PhysicalRole,
+    require_permission,
+    verify_heartbeat_signature,
+)
 from rarelink.services.agents import build_research_agent
 from rarelink.services.federation import build_federation_runner
 from rarelink.services.ledger import append_event, list_events
@@ -302,17 +312,70 @@ def require_physical_enabled(config: Settings) -> None:
         )
 
 
-def require_physical_operator(request: Request, config: Settings) -> None:
+def require_physical_principal(
+    request: Request,
+    config: Settings,
+    permission: PhysicalPermission,
+) -> PhysicalPrincipal:
     require_physical_enabled(config)
-    expected = config.rarelink_physical_operator_token
-    if not expected:
-        raise HTTPException(
-            status_code=503,
-            detail="Physical federation operator authentication is not configured",
+    if config.rarelink_physical_auth_mode == "legacy-token":
+        if config.rarelink_physical_mode == "physical":
+            raise HTTPException(
+                status_code=503,
+                detail="Physical mode requires OIDC operator authentication",
+            )
+        expected = config.rarelink_physical_operator_token
+        if not expected:
+            raise HTTPException(
+                status_code=503,
+                detail="Physical federation operator authentication is not configured",
+            )
+        provided = request.headers.get("X-RareLink-Operator-Token", "")
+        if not secrets.compare_digest(provided, expected):
+            raise HTTPException(
+                status_code=401,
+                detail="Physical federation operator token required",
+            )
+        principal = PhysicalPrincipal(
+            subject_id="legacy-isolated-operator",
+            roles=frozenset(PhysicalRole),
+            organization="isolated-integration",
         )
-    provided = request.headers.get("X-RareLink-Operator-Token", "")
-    if not secrets.compare_digest(provided, expected):
-        raise HTTPException(status_code=401, detail="Physical federation operator token required")
+    else:
+        authorization = request.headers.get("Authorization", "")
+        scheme, separator, token = authorization.partition(" ")
+        if scheme.lower() != "bearer" or not separator or not token:
+            raise HTTPException(status_code=401, detail="OIDC bearer token required")
+        try:
+            oidc_config = OIDCClaimsConfig(
+                issuer=config.rarelink_oidc_issuer,
+                audience=config.rarelink_oidc_audience,
+                role_claim=config.rarelink_oidc_roles_claim,
+                organization_claim=config.rarelink_oidc_organization_claim,
+                site_claim=config.rarelink_oidc_sites_claim,
+            )
+            trusted_jwks = config.physical_oidc_jwks
+            if not trusted_jwks.get("keys"):
+                raise ValueError("OIDC JWKS is empty")
+            principal = OfflineOIDCAdapter(
+                oidc_config,
+                trusted_jwks,
+            ).authenticate(token)
+        except (TypeError, ValueError):
+            raise HTTPException(
+                status_code=503,
+                detail="Physical OIDC authentication is not configured",
+            ) from None
+        except OIDCValidationError:
+            raise HTTPException(
+                status_code=401,
+                detail="OIDC identity validation failed",
+            ) from None
+    try:
+        require_permission(principal, permission)
+    except PhysicalPermissionDenied as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
+    return principal
 
 
 def build_physical_controller(
@@ -413,7 +476,11 @@ def register_physical_site(
     session: SessionDep,
     config: SettingsDep,
 ) -> dict[str, Any]:
-    require_physical_operator(request, config)
+    principal = require_physical_principal(
+        request,
+        config,
+        PhysicalPermission.SITE_REGISTER,
+    )
     if session.get(PhysicalSite, payload.site_id):
         raise HTTPException(status_code=409, detail="Physical site is already registered")
     site = PhysicalSite(
@@ -426,7 +493,7 @@ def register_physical_site(
     append_physical_event(
         session,
         action="site.register",
-        actor="physical-operator",
+        actor=principal.subject_id,
         resource_type="physical-site",
         resource_id=site.site_id,
         outcome="accepted",
@@ -588,7 +655,11 @@ def create_physical_job(
     session: SessionDep,
     config: SettingsDep,
 ) -> dict[str, Any]:
-    require_physical_operator(request, config)
+    principal = require_physical_principal(
+        request,
+        config,
+        PhysicalPermission.CONTRACT_CREATE,
+    )
     if payload.study_id and not session.get(Study, payload.study_id):
         raise HTTPException(status_code=422, detail="Linked study does not exist")
     expected_sites = list(dict.fromkeys(payload.expected_sites))
@@ -656,7 +727,7 @@ def create_physical_job(
     append_physical_event(
         session,
         action="job.contract-created",
-        actor="physical-operator",
+        actor=principal.subject_id,
         resource_type="physical-job",
         resource_id=job.id,
         outcome="approval-pending",
@@ -690,7 +761,11 @@ def submit_physical_job(
     session: SessionDep,
     config: SettingsDep,
 ) -> dict[str, Any]:
-    require_physical_operator(request, config)
+    principal = require_physical_principal(
+        request,
+        config,
+        PhysicalPermission.JOB_SUBMIT,
+    )
     job = session.get(PhysicalFederationJob, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Physical job not found")
@@ -719,7 +794,7 @@ def submit_physical_job(
             status_code=409,
             detail="Physical site readiness or dataset version changed after approval",
         )
-    job.approved_by = payload.approved_by
+    job.approved_by = principal.subject_id
     job.approval_note = payload.note
     job.updated_at = utc_now()
     session.add(job)
@@ -740,7 +815,7 @@ def submit_physical_job(
     append_physical_event(
         session,
         action="job.submitted",
-        actor=payload.approved_by,
+        actor=principal.subject_id,
         resource_type="physical-job",
         resource_id=job_id,
         outcome="accepted",
@@ -764,7 +839,11 @@ def sync_physical_job(
     session: SessionDep,
     config: SettingsDep,
 ) -> dict[str, Any]:
-    require_physical_operator(request, config)
+    principal = require_physical_principal(
+        request,
+        config,
+        PhysicalPermission.JOB_SYNC,
+    )
     controller, admin_kit = build_physical_controller(session, config)
     try:
         controller.status(job_id, admin_kit=admin_kit)
@@ -777,7 +856,7 @@ def sync_physical_job(
     append_physical_event(
         session,
         action="job.status-synchronized",
-        actor="physical-operator",
+        actor=principal.subject_id,
         resource_type="physical-job",
         resource_id=job_id,
         outcome="accepted",
@@ -802,7 +881,11 @@ def abort_physical_job(
     session: SessionDep,
     config: SettingsDep,
 ) -> dict[str, Any]:
-    require_physical_operator(request, config)
+    principal = require_physical_principal(
+        request,
+        config,
+        PhysicalPermission.JOB_ABORT,
+    )
     controller, admin_kit = build_physical_controller(session, config)
     try:
         controller.abort(job_id, admin_kit=admin_kit)
@@ -815,7 +898,7 @@ def abort_physical_job(
     append_physical_event(
         session,
         action="job.aborted",
-        actor="physical-operator",
+        actor=principal.subject_id,
         resource_type="physical-job",
         resource_id=job_id,
         outcome="accepted",
@@ -839,7 +922,11 @@ def retry_physical_job(
     session: SessionDep,
     config: SettingsDep,
 ) -> dict[str, Any]:
-    require_physical_operator(request, config)
+    principal = require_physical_principal(
+        request,
+        config,
+        PhysicalPermission.JOB_RETRY_RESUME,
+    )
     existing = session.get(PhysicalFederationJob, job_id)
     if existing and existing.error and existing.error.startswith("DATASET_VERSION_CHANGED"):
         raise HTTPException(
@@ -859,13 +946,13 @@ def retry_physical_job(
     job = session.get(PhysicalFederationJob, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Physical job not found")
-    job.approved_by = payload.approved_by
+    job.approved_by = principal.subject_id
     job.approval_note = payload.note
     session.add(job)
     append_physical_event(
         session,
         action="job.retried",
-        actor=payload.approved_by,
+        actor=principal.subject_id,
         resource_type="physical-job",
         resource_id=job_id,
         outcome="accepted",
@@ -889,7 +976,11 @@ def resume_physical_job(
     session: SessionDep,
     config: SettingsDep,
 ) -> dict[str, Any]:
-    require_physical_operator(request, config)
+    principal = require_physical_principal(
+        request,
+        config,
+        PhysicalPermission.JOB_RETRY_RESUME,
+    )
     existing = session.get(PhysicalFederationJob, job_id)
     if existing and existing.error and existing.error.startswith("DATASET_VERSION_CHANGED"):
         raise HTTPException(
@@ -912,7 +1003,7 @@ def resume_physical_job(
     append_physical_event(
         session,
         action="job.resumed",
-        actor=payload.approved_by,
+        actor=principal.subject_id,
         resource_type="physical-job",
         resource_id=job_id,
         outcome="accepted",
@@ -941,7 +1032,11 @@ def verify_physical_global_model(
     The supplied path is used only inside the coordinator and is never included
     in the response or persisted in an audit payload exposed to the browser.
     """
-    require_physical_operator(request, config)
+    principal = require_physical_principal(
+        request,
+        config,
+        PhysicalPermission.MODEL_VERIFY,
+    )
     controller, _admin_kit = build_physical_controller(session, config)
     try:
         receipt = controller.verify_global_model(
@@ -955,7 +1050,7 @@ def verify_physical_global_model(
     append_physical_event(
         session,
         action="job.global-model-verified",
-        actor="physical-operator",
+        actor=principal.subject_id,
         resource_type="physical-job",
         resource_id=job_id,
         outcome="accepted",
@@ -976,7 +1071,11 @@ def list_physical_events(
     session: SessionDep,
     config: SettingsDep,
 ) -> dict[str, Any]:
-    require_physical_operator(request, config)
+    require_physical_principal(
+        request,
+        config,
+        PhysicalPermission.AUDIT_READ,
+    )
     events = list(
         session.exec(
             select(PhysicalControlEvent).order_by(PhysicalControlEvent.id)

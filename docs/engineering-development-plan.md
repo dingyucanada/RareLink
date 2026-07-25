@@ -27,23 +27,27 @@
 
 | 能力 | 当前实现 | 验收证据 | 尚未完成 |
 | --- | --- | --- | --- |
-| 独立 Site Agent | 每站独立 FastAPI、SQLite 状态库、健康预检、签名心跳 | Site Agent 与负面测试 | 医院 OIDC、证书吊销和多实例高可用 |
+| 独立 Site Agent | 每站独立 FastAPI、SQLite 状态库、健康预检、签名心跳 | Site Agent 与负面测试 | 医院证书吊销和多实例高可用 |
 | 本地任务控制 | `start/stop/recover` 状态机、`task + round + contract` 幂等、重启失败关闭 | 重复执行、合同冲突、恢复测试 | checkpoint 语义和跨进程事务锁 |
 | FLARE Client 生命周期 | 固定 unit、无 shell 的 systemd 适配器；默认禁用 | 命令白名单和敏感错误输出测试 | 三台 Spark 上的 polkit 与现场故障演练 |
 | 中心物理作业 | 导出包校验、人工审批、真实 FLARE Job ID、sync/abort/retry/resume | 注入式 NVIDIA FLARE CLI 契约测试 | 真实 Admin Kit 的三设备端到端运行 |
 | 固定参与方 | 严格三个指定 Site ID、`3/3` quorum，2/3 不得完成 | 不完整 quorum 失败测试 | 安全聚合和迟到更新的 FLARE 侧插件 |
 | 结果入账 | 全局模型文件与可信 SHA-256 核验，路径不出协调端 | 模型篡改负面对照 | 模型签名、模型卡和发布双人审批 |
-| 物理运行面 | 真实 Site/Job API 轮询，显示站点、轮次、Job ID、quorum 与回执 | TypeScript 生产构建 | SSE、OIDC/RBAC 和操作按钮审批流 |
+| 物理运行面 | 真实 Site/Job API 轮询，显示站点、轮次、Job ID、quorum 与回执 | TypeScript 生产构建 | SSE 和操作按钮审批流 |
+| OIDC/RBAC | 受信内存 JWKS 离线验证 RS256/ES256；校验 issuer/audience/time/sub/角色/组织/站点 claims；五角色九权限，physical 拒绝 legacy token | JWT 正反例、权限矩阵与 API 硬门测试 | discovery/HTTPS JWKS、自动缓存轮换、MFA、会话吊销、资源级 site scope |
 | 物理审计链 | 规范化事件、前序摘要、SHA256 历史兼容、HMAC-SHA256 新事件、公开摘要/受保护明细分离 | 篡改、敏感字段、密钥硬门和 API 边界测试 | PostgreSQL 串行写入、WORM 锚定、拒绝事件全集和 HMAC key-ring |
 | 模式隔离 | `disabled / isolated-integration / physical` 进入 API 和 UI | 默认失败关闭、模式测试 | 生产策略中心 |
 | 设备前验收 | 三个独立 OS 进程生成各自签名心跳，中心接受 3/3 并创建合同 | `make physical-control-smoke` 返回 `passed=true` | 三容器网络故障矩阵和三 Spark Level 2 |
 | 医院 NIfTI 数据层 | 四模态、几何、标签、路径和直接标识质控；生成脱敏内容指纹 | 数据证明、篡改/外站/标识/几何负面对照 | DICOM/PACS、MONAI 缓存服务和医院数据治理审批 |
 | 数据版本合同 | 物理作业固定三站数据指纹；变化时自动失败且禁止 retry/resume | API 失效测试与训练前内容复核 | 合同修订 UI、双人复核和 PostgreSQL 事务 |
 
-当前自动回归为 **111 项测试通过**，Python lint、前端 TypeScript/Vite 生产构建和
-Git diff 完整性检查通过。该数字是软件回归证据，不是医学性能或临床验证证据。
-当前 Site Agent 到控制 API 的 P0 身份为每站独立 HMAC；NVIDIA FLARE 数据面
-仍使用其证书化通信。物理事件链已能检测历史修改并在 `physical` 模式强制配置
+当前全量回归为 **160 项测试通过**；Python lint、前端 TypeScript/Vite 生产构建和
+Git diff 完整性检查通过。这些是软件回归证据，不是医学性能或临床验证证据。
+当前 Site Agent 心跳仍使用每站独立 HMAC，NVIDIA FLARE 数据面使用证书化通信；
+操作员 API 已增加离线 OIDC JWT 验证与固定 RBAC，`physical` 模式拒绝 legacy
+token。JWKS 仍由环境 JSON 注入，尚无 discovery/HTTPS 拉取、自动缓存轮换、
+MFA、会话吊销、资源级 site scope 和持久化双人审批，详见
+[物理控制面 OIDC/RBAC 文档](physical-identity-rbac.md)。物理事件链已能检测历史修改并在 `physical` 模式强制配置
 HMAC 密钥，但 SQLite pilot 不是 WORM，尚未覆盖全部拒绝操作，也没有旧 HMAC
 key-ring 轮换；多 worker 串行写入仍需 PostgreSQL。医院级 mTLS/OIDC 身份、
 PACS/FHIR、安全聚合和真实三设备运行仍按下文 P1/P2 与 Level 2 推进。完整设计、
@@ -624,4 +628,5 @@ Level 2 表明“完成三物理站点工程验证”，仍不等于完成临床
 - [ADR-0003：任务幂等、固定参与方与 Quorum](adr/0003-idempotency-and-quorum.md)
 - [三物理 DGX Spark 联邦部署手册](physical-deployment.md)
 - [物理控制面防篡改审计设计与验收](physical-audit.md)
+- [物理控制面 OIDC 身份与 RBAC 设计](physical-identity-rbac.md)
 - [医院本地 NIfTI 数据规范](site-data-manifest.md)

@@ -71,6 +71,11 @@
 - [x] Physical mode fails closed when a managed audit HMAC key is absent or shorter than
   the P0 minimum; model verification, site heartbeats, job lifecycle and dataset-version
   invalidation enter the same chained ledger
+- [x] Offline OIDC JWT validation against an administrator-supplied in-memory JWKS:
+  RS256/ES256 allow-list and issuer/audience/signature/time/subject/role/organization/site checks
+- [x] Fail-closed physical RBAC with five roles and nine permissions; physical mode
+  rejects legacy operator tokens, while legacy compatibility remains isolated-integration only
+- [x] OIDC tokens and raw claims are not persisted or appended to the physical audit chain
 - [x] MSD real-image single-site CUDA smoke and one-round three-logical-site NVFLARE FedAvg: 3/3
   updates aggregated, global model persisted, exit code 0
 
@@ -109,6 +114,10 @@
   requires PostgreSQL serialization, managed key rotation, protected external anchoring, and a
   complete low-risk rejection-event taxonomy. See
   [`physical-audit.md`](physical-audit.md).
+- Physical operator OIDC currently consumes trusted JWKS supplied as environment JSON.
+  Discovery, HTTPS JWKS retrieval, automatic caching/key rotation, MFA, session revocation,
+  resource-level `site_ids` enforcement, and durable two-person approvals remain outstanding.
+  See [`physical-identity-rbac.md`](physical-identity-rbac.md).
 # 2026-07-20 · 组织方 OpenClaw + ComfyUI 参考 Workshop 基础完赛
 
 - 在 DGX Spark GB10 上执行组织方预置的 `workshop.ipynb`，输出独立 `workshop-executed.ipynb`；26 个代码单元无错误完成。

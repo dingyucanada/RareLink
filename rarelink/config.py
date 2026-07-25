@@ -45,7 +45,14 @@ class Settings(BaseSettings):
     rarelink_physical_mode: Literal[
         "disabled", "isolated-integration", "physical"
     ] = "disabled"
+    rarelink_physical_auth_mode: Literal["legacy-token", "oidc"] = "legacy-token"
     rarelink_physical_heartbeat_max_age_seconds: int = 300
+    rarelink_oidc_issuer: str = ""
+    rarelink_oidc_audience: str = ""
+    rarelink_oidc_jwks_json: str = ""
+    rarelink_oidc_roles_claim: str = "roles"
+    rarelink_oidc_organization_claim: str = "organization"
+    rarelink_oidc_sites_claim: str = "site_ids"
     rarelink_nvflare_admin_kit: str = ""
     rarelink_nvflare_executable: str = "nvflare"
     cors_origins: str = "http://localhost:5173"
@@ -64,6 +71,15 @@ class Settings(BaseSettings):
             for key, secret in value.items()
         ):
             raise ValueError("RARELINK_PHYSICAL_SITE_SECRETS must be a JSON string map")
+        return value
+
+    @property
+    def physical_oidc_jwks(self) -> dict[str, object]:
+        if not self.rarelink_oidc_jwks_json:
+            return {}
+        value = json.loads(self.rarelink_oidc_jwks_json)
+        if not isinstance(value, dict) or not isinstance(value.get("keys"), list):
+            raise ValueError("RARELINK_OIDC_JWKS_JSON must be a JWKS object")
         return value
 
 
