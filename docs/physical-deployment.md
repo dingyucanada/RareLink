@@ -7,6 +7,7 @@
 - [ADR-0001：物理联邦控制面与模拟路径隔离](adr/0001-physical-federation-control-plane.md)
 - [ADR-0002：站点身份、证书与院内数据边界](adr/0002-site-identity-and-data-boundary.md)
 - [ADR-0003：任务幂等、固定参与方与 Quorum](adr/0003-idempotency-and-quorum.md)
+- [医院本地 NIfTI 数据规范](site-data-manifest.md)
 
 ## 1. 目标拓扑与不可变边界
 
@@ -78,21 +79,35 @@ NVIDIA FLARE 将生成 server、三个 client 和 admin 的独立签名包。只
 ```yaml
 site_id: hospital-a
 dataset_manifest: /srv/rarelink/site-data/manifest.json
+dataset_root: /srv/rarelink/site-data
+dataset_receipt: /var/lib/rarelink/site-agent/dataset-receipt.json
 artifact_root: /var/lib/rarelink/artifacts
 startup_kit: /opt/rarelink/flare/hospital-a
 required_free_memory_percent: 15
 ```
 
-`dataset_manifest` 只能包含本院病例，且每条 `site_id` 必须等于本院 site ID。运行预检：
+`dataset_manifest` 只能包含本院病例，且每条 `site_id` 必须等于本院 site ID。
+先在医院本地生成数据版本证明，再运行站点预检：
 
 ```bash
+python3 scripts/validate_site_dataset.py \
+  --manifest /srv/rarelink/site-data/manifest.json \
+  --data-root /srv/rarelink/site-data \
+  --site-id hospital-a \
+  --output /var/lib/rarelink/site-agent/dataset-receipt.json
+
 python3 scripts/validate_physical_site.py \
   --topology deploy/physical/topology.yml \
   --site-runtime /etc/rarelink/site-runtime.yml \
   --output /var/lib/rarelink/artifacts/site-preflight.json
 ```
 
-预检回执只记录本地病例数量、manifest 哈希、GPU 是否可用和 TCP 连通性；不记录病例 ID、路径、影像或标签。TCP 可达不等同 mTLS 注册成功。
+数据验证会检查四模态完整性、NIfTI 文件约束、shape/affine/orientation/spacing、
+标签整数与取值合同、外站记录、路径越界和直接标识字段，并对 manifest 与文件
+内容形成数据指纹。预检回执只记录本地病例数量、数据/manifest/回执哈希、GPU
+是否可用和 TCP 连通性；不记录病例 ID、路径、影像或标签。数据文件或 manifest
+改变后，Site Agent 会把旧证明标记为失效；物理作业绑定三个站点的数据指纹，
+变更后必须创建并重新批准合同。TCP 可达不等同 mTLS 注册成功。
 
 使用 `deploy/physical/rarelink-flare.service.template` 建立 systemd 服务，或在受控会话先启动 Server、再启动三台 Client 的 `startup/start.sh`。每台 Spark 通过相同逻辑路径 `/srv/rarelink/site-data/manifest.json` 加载数据，但路径实际指向完全不同的本地数据卷。
 

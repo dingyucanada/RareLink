@@ -41,7 +41,7 @@ def to_central_heartbeat(
     active = [task for task in tasks if task.state in ACTIVE_STATES]
     current = max(active, key=lambda item: item.updated_at) if active else None
     gpu_ready, _, _ = _check_status(health, "gpu")
-    data_ready, _, _ = _check_status(health, "dataset_manifest")
+    data_ready, _, dataset = _check_status(health, "dataset_manifest")
     _, certificate_status, _ = _check_status(health, "certificate")
     _, _, memory = _check_status(health, "memory")
     _, _, disk = _check_status(health, "disk")
@@ -61,6 +61,7 @@ def to_central_heartbeat(
         "total_rounds": max(current.total_rounds, current.round_id) if current else 0,
         "free_memory_percent": float(memory.get("free_percent", 0)),
         "free_disk_percent": float(disk.get("free_percent", 0)),
+        "dataset_fingerprint": dataset.get("dataset_fingerprint"),
         # Pydantic serializes UTC datetimes in the central schema with ``Z``.
         # Sign that same wire representation so schema validation cannot change
         # the authenticated bytes between the Site Agent and coordinator.

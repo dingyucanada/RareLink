@@ -98,6 +98,9 @@ export default function PhysicalFederationPanel() {
                     <strong>{ageLabel(site.last_heartbeat_at)}</strong>
                   </div>
                 </div>
+                {site.dataset_fingerprint && (
+                  <code>DATASET {site.dataset_fingerprint.slice(0, 12)}…</code>
+                )}
                 {site.receipt_sha256 && <code>RECEIPT {site.receipt_sha256.slice(0, 12)}…</code>}
               </article>
             );

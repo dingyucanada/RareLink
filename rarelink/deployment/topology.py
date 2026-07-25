@@ -147,6 +147,8 @@ class SiteRuntime(BaseModel):
     schema_version: str = "rarelink-site-runtime-v1"
     site_id: str
     dataset_manifest: Path
+    dataset_root: Path | None = None
+    dataset_receipt: Path | None = None
     artifact_root: Path
     startup_kit: Path
     required_free_memory_percent: int = Field(default=15, ge=5, le=80)
@@ -165,6 +167,12 @@ class SiteRuntime(BaseModel):
             "schema_version": self.schema_version,
             "site_id": self.site_id,
             "dataset_manifest_present": self.dataset_manifest.exists(),
+            "dataset_root_present": bool(
+                self.dataset_root and self.dataset_root.exists()
+            ),
+            "dataset_receipt_present": bool(
+                self.dataset_receipt and self.dataset_receipt.exists()
+            ),
             "startup_kit_present": self.startup_kit.exists(),
             "artifact_root_present": self.artifact_root.exists(),
             "raw_patient_data_exported": False,

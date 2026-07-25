@@ -61,7 +61,10 @@ def _healthy_snapshot() -> HealthSnapshot:
             "dataset_manifest": CheckResult(
                 ok=True,
                 status="present",
-                details={"local_path_exported": False},
+                details={
+                    "local_path_exported": False,
+                    "dataset_fingerprint": "d" * 64,
+                },
             ),
             "dependencies": CheckResult(
                 ok=True,
@@ -122,6 +125,7 @@ def _write_exported_job(root: Path) -> Path:
                 "local_epochs": 1,
                 "expected_sites": list(SITES),
                 "local_only_manifest_required": True,
+                "dataset_receipt_required": True,
                 "patient_data_packaged": False,
                 "certificates_packaged": False,
                 "private_keys_packaged": False,

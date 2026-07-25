@@ -47,7 +47,11 @@ def validate_manifest_for_site(
     return manifest
 
 
-def build_site_loaders(manifest_path: Path, site_id: str):  # type: ignore[no-untyped-def]
+def build_site_loaders(
+    manifest_path: Path,
+    site_id: str,
+    data_root: Path | None = None,
+):  # type: ignore[no-untyped-def]
     from monai.data import CacheDataset, DataLoader
     from monai.transforms import (
         Compose,
@@ -60,7 +64,7 @@ def build_site_loaders(manifest_path: Path, site_id: str):  # type: ignore[no-un
     )
 
     manifest = validate_manifest_for_site(manifest_path, site_id)
-    dataset_root = manifest_path.parent
+    dataset_root = (data_root or manifest_path.parent).resolve()
     site_cases = [case for case in manifest["cases"] if case["site_id"] == site_id]
     if len(site_cases) < 2:
         raise ValueError(f"Site {site_id!r} requires at least two cases")
@@ -232,6 +236,8 @@ def main() -> None:
             "(required for physical sites)."
         ),
     )
+    parser.add_argument("--data-root", type=Path)
+    parser.add_argument("--dataset-receipt", type=Path)
     parser.add_argument("--epochs", type=int, default=1)
     parser.add_argument("--fedprox-mu", type=float, default=0.0)
     parser.add_argument("--metrics-dir", type=Path)
@@ -245,10 +251,28 @@ def main() -> None:
     set_determinism(args.seed)
     flare.init()
     site_id = flare.get_site_name()
+    if args.require_local_only_manifest:
+        if args.dataset_receipt is None or args.data_root is None:
+            raise ValueError(
+                "Physical training requires --dataset-receipt and --data-root"
+            )
+        from rarelink.site_data import verify_site_dataset_receipt
+
+        verify_site_dataset_receipt(
+            args.dataset_receipt,
+            args.manifest,
+            site_id=site_id,
+            data_root=args.data_root,
+            verify_content=True,
+        )
     validate_manifest_for_site(
         args.manifest, site_id, require_local_only=args.require_local_only_manifest
     )
-    train_loader, validation_loader = build_site_loaders(args.manifest, site_id)
+    train_loader, validation_loader = build_site_loaders(
+        args.manifest,
+        site_id,
+        data_root=args.data_root,
+    )
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = build_segmentation_model().to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=2e-4, weight_decay=1e-5)

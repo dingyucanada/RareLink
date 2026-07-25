@@ -4,6 +4,7 @@ from sqlalchemy import event
 from sqlmodel import Session, SQLModel, create_engine
 
 from rarelink.config import get_settings
+from rarelink.migrations import migrate_sqlite_schema
 
 settings = get_settings()
 connect_args = {"check_same_thread": False} if settings.database_url.startswith("sqlite") else {}
@@ -22,6 +23,7 @@ if settings.database_url.startswith("sqlite"):
 def create_db_and_tables() -> None:
     settings.artifact_root.mkdir(parents=True, exist_ok=True)
     SQLModel.metadata.create_all(engine)
+    migrate_sqlite_schema(engine)
 
 
 def get_session() -> Generator[Session, None, None]:

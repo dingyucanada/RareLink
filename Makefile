@@ -1,7 +1,7 @@
 PYTHON ?= python3
 PROJECT_PYTHON = $(if $(wildcard .venv/bin/python),.venv/bin/python,$(PYTHON))
 
-.PHONY: install install-web dev-api dev-web test lint smoke step-models step-smoke step-team-smoke synthetic-data monai-smoke nvflare-smoke nvflare-fedprox training-job-smoke demo-seed demo-evidence spark-local-verify spark-local-benchmark physical-render physical-preflight physical-job physical-site-agent physical-control-smoke
+.PHONY: install install-web dev-api dev-web test lint smoke step-models step-smoke step-team-smoke synthetic-data monai-smoke nvflare-smoke nvflare-fedprox training-job-smoke demo-seed demo-evidence spark-local-verify spark-local-benchmark physical-render physical-preflight physical-job physical-site-agent physical-control-smoke site-data-validate
 
 install:
 	$(PROJECT_PYTHON) -m pip install -e ".[dev]"
@@ -77,3 +77,6 @@ physical-site-agent:
 
 physical-control-smoke:
 	$(PROJECT_PYTHON) scripts/smoke_three_site_control_plane.py
+
+site-data-validate:
+	@echo "Usage: $(PROJECT_PYTHON) scripts/validate_site_dataset.py --manifest ... --site-id ... --data-root ... --output ..."

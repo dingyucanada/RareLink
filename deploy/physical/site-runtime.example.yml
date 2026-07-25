@@ -3,6 +3,8 @@
 schema_version: rarelink-site-runtime-v1
 site_id: hospital-a
 dataset_manifest: /srv/rarelink/site-data/manifest.json
+dataset_root: /srv/rarelink/site-data
+dataset_receipt: /var/lib/rarelink/site-agent/dataset-receipt.json
 artifact_root: /var/lib/rarelink/artifacts
 startup_kit: /opt/rarelink/flare/hospital-a
 required_free_memory_percent: 15

@@ -19,6 +19,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from rarelink.deployment.topology import load_physical_topology, load_site_runtime  # noqa: E402
+from rarelink.site_data import verify_site_dataset_receipt  # noqa: E402
 
 
 def sha256_file(path: Path) -> str:
@@ -104,6 +105,27 @@ def main() -> None:
     if not site:
         raise ValueError(f"Local site {runtime.site_id!r} is absent from the approved topology")
     manifest = local_manifest_summary(runtime.dataset_manifest, runtime.site_id)
+    if runtime.dataset_root is None or runtime.dataset_receipt is None:
+        raise ValueError(
+            "Physical site runtime must configure dataset_root and dataset_receipt"
+        )
+    dataset_receipt = verify_site_dataset_receipt(
+        runtime.dataset_receipt,
+        runtime.dataset_manifest,
+        site_id=runtime.site_id,
+        data_root=runtime.dataset_root,
+        verify_content=True,
+    )
+    manifest.update(
+        {
+            "dataset_fingerprint": dataset_receipt["dataset_fingerprint"],
+            "file_state_fingerprint": dataset_receipt["file_state_fingerprint"],
+            "geometry_verified": dataset_receipt["geometry"][
+                "registered_within_case"
+            ],
+            "dataset_receipt_sha256": sha256_file(runtime.dataset_receipt),
+        }
+    )
     startup_present = (runtime.startup_kit / "startup").is_dir()
     if not startup_present:
         raise FileNotFoundError(f"Provisioned startup kit is missing under {runtime.startup_kit}")

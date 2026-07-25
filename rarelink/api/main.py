@@ -217,10 +217,21 @@ def physical_site_view(site: PhysicalSite, config: Settings) -> dict[str, Any]:
         "total_rounds": site.total_rounds,
         "free_memory_percent": site.free_memory_percent,
         "free_disk_percent": site.free_disk_percent,
+        "dataset_fingerprint": site.dataset_fingerprint,
         "receipt_sha256": site.receipt_sha256,
         "last_heartbeat_at": site.last_heartbeat_at,
         "contains_patient_data": False,
     }
+
+
+def physical_site_is_fresh(site: PhysicalSite, config: Settings) -> bool:
+    if site.last_heartbeat_at is None:
+        return False
+    observed_at = site.last_heartbeat_at
+    if observed_at.tzinfo is None:
+        observed_at = observed_at.replace(tzinfo=UTC)
+    age = (datetime.now(UTC) - observed_at).total_seconds()
+    return age <= config.rarelink_physical_heartbeat_max_age_seconds * 2
 
 
 def physical_job_view(job: PhysicalFederationJob, config: Settings) -> dict[str, Any]:
@@ -232,6 +243,7 @@ def physical_job_view(job: PhysicalFederationJob, config: Settings) -> dict[str,
         "strategy": job.strategy,
         "status": job.status,
         "expected_sites": as_json(job.expected_sites_json, []),
+        "dataset_fingerprints": as_json(job.dataset_fingerprints_json, {}),
         "connected_sites": as_json(job.connected_sites_json, []),
         "total_rounds": job.total_rounds,
         "local_epochs": job.local_epochs,
@@ -454,10 +466,36 @@ def receive_physical_site_heartbeat(
     site.total_rounds = payload.total_rounds
     site.free_memory_percent = payload.free_memory_percent
     site.free_disk_percent = payload.free_disk_percent
+    site.dataset_fingerprint = payload.dataset_fingerprint
     site.receipt_sha256 = payload.receipt_sha256
     site.heartbeat_json = json.dumps(serialized, ensure_ascii=False, sort_keys=True)
     site.last_heartbeat_at = utc_now()
     site.updated_at = utc_now()
+    active_states = {
+        PhysicalJobStatus.APPROVAL_PENDING,
+        PhysicalJobStatus.SUBMITTED,
+        PhysicalJobStatus.WAITING_FOR_SITES,
+        PhysicalJobStatus.RUNNING,
+    }
+    active_jobs = session.exec(
+        select(PhysicalFederationJob).where(
+            PhysicalFederationJob.status.in_(active_states)
+        )
+    ).all()
+    for job in active_jobs:
+        expected_sites = set(as_json(job.expected_sites_json, []))
+        if site_id not in expected_sites:
+            continue
+        expected_fingerprint = as_json(job.dataset_fingerprints_json, {}).get(site_id)
+        if (
+            not payload.dataset_fingerprint
+            or payload.dataset_fingerprint != expected_fingerprint
+        ):
+            job.status = PhysicalJobStatus.FAILED
+            job.error = "DATASET_VERSION_CHANGED"
+            job.updated_at = utc_now()
+            site.status = PhysicalSiteStatus.DEGRADED
+            session.add(job)
     session.add(receipt)
     session.add(site)
     session.commit()
@@ -478,18 +516,35 @@ def create_physical_job(
     expected_sites = list(dict.fromkeys(payload.expected_sites))
     if len(expected_sites) != len(payload.expected_sites):
         raise HTTPException(status_code=422, detail="Expected physical sites must be unique")
-    registered = {
-        site.site_id
-        for site in session.exec(
-            select(PhysicalSite).where(PhysicalSite.site_id.in_(expected_sites))
-        ).all()
-    }
+    registered_sites = session.exec(
+        select(PhysicalSite).where(PhysicalSite.site_id.in_(expected_sites))
+    ).all()
+    registered = {site.site_id for site in registered_sites}
     missing = sorted(set(expected_sites) - registered)
     if missing:
         raise HTTPException(
             status_code=422,
             detail=f"Expected physical sites are not registered: {', '.join(missing)}",
         )
+    unready = sorted(
+        site.site_id
+        for site in registered_sites
+        if site.status != PhysicalSiteStatus.READY
+        or not site.data_ready
+        or not site.dataset_fingerprint
+        or not physical_site_is_fresh(site, config)
+    )
+    if unready:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Physical sites require READY status and a verified dataset receipt: "
+                + ", ".join(unready)
+            ),
+        )
+    dataset_fingerprints = {
+        site.site_id: site.dataset_fingerprint for site in registered_sites
+    }
     try:
         bundle = validate_exported_job(Path(payload.job_directory))
     except PhysicalControllerError as exc:
@@ -510,6 +565,10 @@ def create_physical_job(
         status=PhysicalJobStatus.APPROVAL_PENDING,
         bundle_sha256=bundle.bundle_sha256,
         expected_sites_json=json.dumps(expected_sites),
+        dataset_fingerprints_json=json.dumps(
+            dataset_fingerprints,
+            sort_keys=True,
+        ),
         total_rounds=bundle.total_rounds,
         local_epochs=bundle.local_epochs,
         quorum_required=len(expected_sites),
@@ -541,6 +600,29 @@ def submit_physical_job(
         raise HTTPException(status_code=404, detail="Physical job not found")
     if job.status not in {"APPROVAL_PENDING", "SUBMITTED"}:
         raise HTTPException(status_code=409, detail="Physical job is not awaiting submission")
+    expected_fingerprints = as_json(job.dataset_fingerprints_json, {})
+    current_sites = session.exec(
+        select(PhysicalSite).where(
+            PhysicalSite.site_id.in_(as_json(job.expected_sites_json, []))
+        )
+    ).all()
+    mismatched = sorted(
+        site.site_id
+        for site in current_sites
+        if site.status != PhysicalSiteStatus.READY
+        or site.dataset_fingerprint != expected_fingerprints.get(site.site_id)
+        or not physical_site_is_fresh(site, config)
+    )
+    if len(current_sites) != job.quorum_required or mismatched:
+        job.status = PhysicalJobStatus.FAILED
+        job.error = "DATASET_VERSION_CHANGED_OR_SITE_NOT_READY"
+        job.updated_at = utc_now()
+        session.add(job)
+        session.commit()
+        raise HTTPException(
+            status_code=409,
+            detail="Physical site readiness or dataset version changed after approval",
+        )
     job.approved_by = payload.approved_by
     job.approval_note = payload.note
     job.updated_at = utc_now()
@@ -611,6 +693,12 @@ def retry_physical_job(
     config: SettingsDep,
 ) -> dict[str, Any]:
     require_physical_operator(request, config)
+    existing = session.get(PhysicalFederationJob, job_id)
+    if existing and existing.error and existing.error.startswith("DATASET_VERSION_CHANGED"):
+        raise HTTPException(
+            status_code=409,
+            detail="Dataset version changed; create and approve a new physical job contract",
+        )
     controller, admin_kit = build_physical_controller(session, config)
     try:
         controller.retry(
@@ -641,6 +729,12 @@ def resume_physical_job(
     config: SettingsDep,
 ) -> dict[str, Any]:
     require_physical_operator(request, config)
+    existing = session.get(PhysicalFederationJob, job_id)
+    if existing and existing.error and existing.error.startswith("DATASET_VERSION_CHANGED"):
+        raise HTTPException(
+            status_code=409,
+            detail="Dataset version changed; create and approve a new physical job contract",
+        )
     controller, admin_kit = build_physical_controller(session, config)
     try:
         controller.resume(

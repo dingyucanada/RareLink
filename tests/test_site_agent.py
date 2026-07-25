@@ -60,7 +60,11 @@ def healthy() -> HealthSnapshot:
             "memory": CheckResult(ok=True, status="sufficient", details={"free_percent": 80}),
             "disk": CheckResult(ok=True, status="sufficient", details={"free_percent": 70}),
             "certificate": CheckResult(ok=True, status="valid"),
-            "dataset_manifest": CheckResult(ok=True, status="present"),
+            "dataset_manifest": CheckResult(
+                ok=True,
+                status="receipt_verified",
+                details={"dataset_fingerprint": "d" * 64},
+            ),
             "dependencies": CheckResult(
                 ok=True,
                 status="available",

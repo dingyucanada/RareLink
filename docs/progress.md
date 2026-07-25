@@ -61,6 +61,10 @@
   SHA-256 recorded and no pixels/paths/case IDs exported in the receipt
 - [x] MSD Task01 archive MD5/SHA-256 validation, 24-case four-modal NIfTI geometry validation and
   deterministic three-site non-IID partition on Spark
+- [x] Hospital-local NIfTI v1 validation: four modalities, geometry/affine/orientation,
+  label contract, path confinement and direct-identifier rejection
+- [x] De-identified dataset receipt and three-site dataset-version binding; stale data
+  automatically invalidates a pending/running physical job contract
 - [x] MSD real-image single-site CUDA smoke and one-round three-logical-site NVFLARE FedAvg: 3/3
   updates aggregated, global model persisted, exit code 0
 

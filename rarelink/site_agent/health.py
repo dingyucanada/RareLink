@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import importlib.metadata
 import importlib.util
+import json
 import os
 import shutil
 import ssl
@@ -15,6 +16,7 @@ from typing import Protocol
 
 from rarelink.site_agent.config import SiteAgentSettings
 from rarelink.site_agent.schemas import CheckResult, HealthSnapshot, utc_now
+from rarelink.site_data import DatasetValidationError, verify_site_dataset_receipt
 
 
 class HealthProvider(Protocol):
@@ -104,12 +106,54 @@ def _gpu_check() -> CheckResult:
     )
 
 
+def _dataset_check(settings: SiteAgentSettings) -> CheckResult:
+    if not settings.dataset_manifest.is_file():
+        return CheckResult(ok=False, status="manifest_missing")
+    if not settings.require_dataset_receipt:
+        return CheckResult(
+            ok=True,
+            status="manifest_present_receipt_not_required",
+            details={
+                "local_path_exported": False,
+                "dataset_receipt_verified": False,
+            },
+        )
+    receipt_path = settings.dataset_receipt
+    if receipt_path is None or not receipt_path.is_file() or receipt_path.is_symlink():
+        return CheckResult(ok=False, status="receipt_missing")
+    try:
+        receipt = verify_site_dataset_receipt(
+            receipt_path,
+            settings.dataset_manifest,
+            site_id=settings.site_id,
+            data_root=settings.dataset_root,
+        )
+    except (
+        DatasetValidationError,
+        OSError,
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+    ):
+        return CheckResult(ok=False, status="receipt_or_dataset_invalid")
+    return CheckResult(
+        ok=True,
+        status="receipt_verified",
+        details={
+            "dataset_receipt_verified": True,
+            "dataset_fingerprint": receipt.get("dataset_fingerprint"),
+            "receipt_sha256": _sha256_file(receipt_path),
+            "case_count": receipt.get("case_count"),
+            "local_path_exported": False,
+            "case_identifiers_exported": False,
+        },
+    )
+
+
 def collect_health(settings: SiteAgentSettings) -> HealthSnapshot:
     settings.artifact_root.mkdir(parents=True, exist_ok=True)
     disk = shutil.disk_usage(settings.artifact_root)
     disk_free_percent = disk.free / disk.total * 100 if disk.total else 0
     memory_free_percent = _memory_percent_free()
-    manifest_present = settings.dataset_manifest.is_file()
     startup_present = (settings.startup_kit / "startup").is_dir()
 
     checks = {
@@ -130,11 +174,7 @@ def collect_health(settings: SiteAgentSettings) -> HealthSnapshot:
         ),
         "dependencies": _dependency_check(settings.module_names),
         "certificate": _certificate_check(settings.certificate_file),
-        "dataset_manifest": CheckResult(
-            ok=manifest_present,
-            status="present" if manifest_present else "missing",
-            details={"local_path_exported": False},
-        ),
+        "dataset_manifest": _dataset_check(settings),
         "startup_kit": CheckResult(
             ok=startup_present,
             status="present" if startup_present else "missing",

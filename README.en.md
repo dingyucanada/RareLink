@@ -261,7 +261,10 @@ and supports human-approved submission, status reconciliation, abort, retry,
 resume, fixed `3/3` quorum, and SHA-256 verification of a completed global model.
 The Site Agent can control the local FLARE Client lifecycle through a fixed-unit,
 shell-free systemd adapter and fails closed until explicitly authorized. The web
-console polls this physical state every 3–5 seconds.
+console polls this physical state every 3–5 seconds. Before training, the
+hospital data layer validates four-modality NIfTI geometry and the label
+contract and creates a path-free, case-ID-free dataset fingerprint. A version
+change at any site automatically invalidates the old job.
 
 ```mermaid
 flowchart LR
@@ -285,7 +288,9 @@ three-Spark evidence. See the
 [physical deployment guide](docs/physical-deployment.md) for services, secrets,
 and field operations, and the
 [formal engineering plan](docs/engineering-development-plan.md) for the WBS,
-state machines, threat model, and acceptance levels.
+state machines, threat model, and acceptance levels. The
+[hospital-local NIfTI specification](docs/site-data-manifest.md) defines the
+manifest, validation, and version-invalidation contract.
 
 ### One-command experience
 

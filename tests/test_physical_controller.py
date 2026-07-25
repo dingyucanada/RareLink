@@ -34,6 +34,7 @@ def exported_job(tmp_path: Path, **receipt_overrides: object) -> Path:
         "local_epochs": 1,
         "expected_sites": ["hospital-a", "hospital-b", "hospital-c"],
         "local_only_manifest_required": True,
+        "dataset_receipt_required": True,
         "patient_data_packaged": False,
         "certificates_packaged": False,
         "private_keys_packaged": False,
@@ -87,6 +88,7 @@ def test_export_validation_builds_safe_deterministic_receipt(tmp_path: Path) -> 
         ({"patient_data_packaged": True}, "prove data"),
         ({"private_keys_packaged": True}, "prove data"),
         ({"local_only_manifest_required": False}, "local-only"),
+        ({"dataset_receipt_required": False}, "dataset receipt"),
     ],
 )
 def test_export_validation_rejects_unsafe_or_invalid_contract(

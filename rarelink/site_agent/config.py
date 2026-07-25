@@ -27,6 +27,9 @@ class SiteAgentSettings(BaseSettings):
 
     site_id: str
     dataset_manifest: Path
+    dataset_root: Path | None = None
+    dataset_receipt: Path | None = None
+    require_dataset_receipt: bool = True
     artifact_root: Path
     startup_kit: Path
     certificate_file: Path | None = None
@@ -75,6 +78,9 @@ class SiteAgentSettings(BaseSettings):
         return {
             "site_id": self.site_id,
             "manifest_configured": bool(str(self.dataset_manifest)),
+            "dataset_root_configured": self.dataset_root is not None,
+            "dataset_receipt_required": self.require_dataset_receipt,
+            "dataset_receipt_configured": self.dataset_receipt is not None,
             "artifact_store_configured": bool(str(self.artifact_root)),
             "startup_kit_configured": bool(str(self.startup_kit)),
             "certificate_configured": self.certificate_file is not None,

@@ -18,6 +18,11 @@ from rarelink.services.physical_controller import (
 from rarelink.services.physical_store import SqlPhysicalJobStore
 
 OPERATOR_HEADERS = {"X-RareLink-Operator-Token": "operator-secret"}
+SITE_SECRETS = {
+    "hospital-a": "site-secret-a",
+    "hospital-b": "site-secret-b",
+    "hospital-c": "site-secret-c",
+}
 
 
 def register_sites(client: TestClient) -> None:
@@ -32,6 +37,53 @@ def register_sites(client: TestClient) -> None:
             headers=OPERATOR_HEADERS,
         )
         assert response.status_code == 201
+
+
+def send_ready_heartbeat(
+    client: TestClient,
+    site_id: str,
+    *,
+    sequence: int = 1,
+    dataset_fingerprint: str | None = None,
+) -> None:
+    payload = PhysicalSiteHeartbeat(
+        heartbeat_id=f"heartbeat-{site_id}-{sequence:04d}",
+        agent_version="0.2.0",
+        status="READY",
+        certificate_status="VALID",
+        data_ready=True,
+        gpu_ready=True,
+        monai_ready=True,
+        nvflare_ready=True,
+        free_memory_percent=67.5,
+        free_disk_percent=80.0,
+        dataset_fingerprint=dataset_fingerprint or (site_id[-1] * 64),
+        receipt_sha256="f" * 64,
+        captured_at=datetime.now(UTC),
+    )
+    timestamp = int(time.time())
+    body = payload.model_dump(mode="json")
+    signature = heartbeat_signature(
+        site_id,
+        timestamp,
+        payload.heartbeat_id,
+        body,
+        SITE_SECRETS[site_id],
+    )
+    response = client.post(
+        f"/api/physical/sites/{site_id}/heartbeat",
+        json=body,
+        headers={
+            "X-RareLink-Site-Timestamp": str(timestamp),
+            "X-RareLink-Site-Signature": signature,
+        },
+    )
+    assert response.status_code == 200
+
+
+def ready_sites(client: TestClient) -> None:
+    for suffix in ("a", "b", "c"):
+        send_ready_heartbeat(client, f"hospital-{suffix}")
 
 
 def exported_job(tmp_path: Path) -> Path:
@@ -49,6 +101,7 @@ def exported_job(tmp_path: Path) -> Path:
                 "local_epochs": 1,
                 "expected_sites": ["hospital-a", "hospital-b", "hospital-c"],
                 "local_only_manifest_required": True,
+                "dataset_receipt_required": True,
                 "patient_data_packaged": False,
                 "certificates_packaged": False,
                 "private_keys_packaged": False,
@@ -81,6 +134,7 @@ def test_physical_registry_accepts_authenticated_patient_free_heartbeat(
         nvflare_ready=True,
         free_memory_percent=67.5,
         free_disk_percent=80.0,
+        dataset_fingerprint="a" * 64,
         receipt_sha256="a" * 64,
         captured_at=datetime.now(UTC),
     )
@@ -152,8 +206,10 @@ def test_physical_job_requires_three_registered_unique_sites(
         rarelink_allow_llm=False,
         rarelink_physical_mode="isolated-integration",
         rarelink_physical_operator_token="operator-secret",
+        rarelink_physical_site_secrets=json.dumps(SITE_SECRETS),
     )
     register_sites(client)
+    ready_sites(client)
     created = client.post(
         "/api/physical/jobs",
         json={
@@ -171,6 +227,11 @@ def test_physical_job_requires_three_registered_unique_sites(
     assert payload["status"] == "APPROVAL_PENDING"
     assert payload["quorum_required"] == 3
     assert payload["external_job_id"] is None
+    assert payload["dataset_fingerprints"] == {
+        "hospital-a": "a" * 64,
+        "hospital-b": "b" * 64,
+        "hospital-c": "c" * 64,
+    }
 
     invalid = client.post(
         "/api/physical/jobs",
@@ -210,8 +271,10 @@ def test_approved_physical_job_persists_real_external_job_id(
         rarelink_allow_llm=False,
         rarelink_physical_mode="isolated-integration",
         rarelink_physical_operator_token="operator-secret",
+        rarelink_physical_site_secrets=json.dumps(SITE_SECRETS),
     )
     register_sites(client)
+    ready_sites(client)
     created = client.post(
         "/api/physical/jobs",
         headers=OPERATOR_HEADERS,
@@ -256,6 +319,43 @@ def test_approved_physical_job_persists_real_external_job_id(
     assert submitted.json()["status"] == "SUBMITTED"
     assert len(commands) == 1
     assert "submission-token-001" not in " ".join(commands[0])
+
+
+def test_physical_job_is_invalidated_when_a_site_dataset_version_changes(
+    client: TestClient,
+    tmp_path: Path,
+) -> None:
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        _env_file=None,
+        rarelink_allow_llm=False,
+        rarelink_physical_mode="isolated-integration",
+        rarelink_physical_operator_token="operator-secret",
+        rarelink_physical_site_secrets=json.dumps(SITE_SECRETS),
+    )
+    register_sites(client)
+    ready_sites(client)
+    created = client.post(
+        "/api/physical/jobs",
+        headers=OPERATOR_HEADERS,
+        json={
+            "strategy": "fedavg",
+            "expected_sites": ["hospital-a", "hospital-b", "hospital-c"],
+            "total_rounds": 5,
+            "local_epochs": 1,
+            "job_directory": str(exported_job(tmp_path)),
+        },
+    )
+    assert created.status_code == 201
+
+    send_ready_heartbeat(
+        client,
+        "hospital-a",
+        sequence=2,
+        dataset_fingerprint="d" * 64,
+    )
+    jobs = client.get("/api/physical/jobs").json()
+    assert jobs[0]["status"] == "FAILED"
+    assert jobs[0]["error"] == "DATASET_VERSION_CHANGED"
 
 
 def test_model_verification_route_never_exposes_coordinator_path(

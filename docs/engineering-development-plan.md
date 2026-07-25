@@ -36,8 +36,10 @@
 | 物理运行面 | 真实 Site/Job API 轮询，显示站点、轮次、Job ID、quorum 与回执 | TypeScript 生产构建 | SSE、OIDC/RBAC 和操作按钮审批流 |
 | 模式隔离 | `disabled / isolated-integration / physical` 进入 API 和 UI | 默认失败关闭、模式测试 | 生产策略中心 |
 | 设备前验收 | 三个独立 OS 进程生成各自签名心跳，中心接受 3/3 并创建合同 | `make physical-control-smoke` 返回 `passed=true` | 三容器网络故障矩阵和三 Spark Level 2 |
+| 医院 NIfTI 数据层 | 四模态、几何、标签、路径和直接标识质控；生成脱敏内容指纹 | 数据证明、篡改/外站/标识/几何负面对照 | DICOM/PACS、MONAI 缓存服务和医院数据治理审批 |
+| 数据版本合同 | 物理作业固定三站数据指纹；变化时自动失败且禁止 retry/resume | API 失效测试与训练前内容复核 | 合同修订 UI、双人复核和 PostgreSQL 事务 |
 
-当前自动回归为 **96 项测试通过**，Python lint、前端 TypeScript/Vite 生产构建和
+当前自动回归为 **105 项测试通过**，Python lint、前端 TypeScript/Vite 生产构建和
 Git diff 完整性检查通过。该数字是软件回归证据，不是医学性能或临床验证证据。
 当前 Site Agent 到控制 API 的 P0 身份为每站独立 HMAC；NVIDIA FLARE 数据面
 仍使用其证书化通信。医院级 mTLS/OIDC 身份、PostgreSQL、连续审计链、PACS/FHIR、
@@ -617,3 +619,4 @@ Level 2 表明“完成三物理站点工程验证”，仍不等于完成临床
 - [ADR-0002：站点身份、证书与院内数据边界](adr/0002-site-identity-and-data-boundary.md)
 - [ADR-0003：任务幂等、固定参与方与 Quorum](adr/0003-idempotency-and-quorum.md)
 - [三物理 DGX Spark 联邦部署手册](physical-deployment.md)
+- [医院本地 NIfTI 数据规范](site-data-manifest.md)

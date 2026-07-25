@@ -89,6 +89,7 @@ class SqlPhysicalJobStore:
                 status=STATE_TO_MODEL[record.state],
                 bundle_sha256=record.bundle.bundle_sha256,
                 expected_sites_json=json.dumps(record.bundle.expected_sites),
+                dataset_fingerprints_json="{}",
                 connected_sites_json="[]",
                 total_rounds=record.bundle.total_rounds,
                 local_epochs=record.bundle.local_epochs,

@@ -281,7 +281,8 @@ RareLink 在 NVIDIA DGX Spark GB10（ARM64、CUDA 13、PyTorch `2.10.0+cu130`、
 提交、状态同步、停止、重试、恢复、固定 `3/3` quorum，以及完成模型的 SHA-256
 核验。Site Agent 可通过固定 unit、无 shell 的 systemd 适配器控制本站 FLARE
 Client 生命周期，默认未授权时失败关闭。前端“三物理 Spark 运行面”每 3–5 秒
-读取真实控制状态。
+读取真实控制状态。医院数据层会在训练前核验四模态 NIfTI、几何与标签合同，
+形成不含病例 ID/路径的数据指纹；任一站点数据版本变化都会使旧作业自动失效。
 
 ```mermaid
 flowchart LR
@@ -301,7 +302,8 @@ make physical-control-smoke
 但明确标记为 `isolated-integration`：不运行医学训练，也不冒充三台真实 Spark
 证据。完整接口、服务模板、密钥边界和现场步骤见
 [三物理 Spark 部署手册](docs/physical-deployment.md)；产品化 WBS、状态机、
-威胁模型与分级验收见[正式工程开发计划](docs/engineering-development-plan.md)。
+威胁模型与分级验收见[正式工程开发计划](docs/engineering-development-plan.md)，
+院内格式与失效规则见[医院本地 NIfTI 数据规范](docs/site-data-manifest.md)。
 
 ### 一键体验
 

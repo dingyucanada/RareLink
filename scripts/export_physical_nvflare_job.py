@@ -31,6 +31,16 @@ def main() -> None:
             "never a central path."
         ),
     )
+    parser.add_argument(
+        "--site-data-root-path",
+        default="/srv/rarelink/site-data",
+        help="Identical logical mount point backed by a different hospital-local volume.",
+    )
+    parser.add_argument(
+        "--site-dataset-receipt-path",
+        default="/var/lib/rarelink/site-agent/dataset-receipt.json",
+        help="Hospital-local validated dataset receipt; never packaged into the job.",
+    )
     parser.add_argument("--output-dir", type=Path, required=True)
     args = parser.parse_args()
     if args.rounds < 1 or args.local_epochs < 1:
@@ -52,6 +62,8 @@ def main() -> None:
     train_args = " ".join(
         [
             f"--manifest {shlex.quote(args.site_manifest_path)}",
+            f"--data-root {shlex.quote(args.site_data_root_path)}",
+            f"--dataset-receipt {shlex.quote(args.site_dataset_receipt_path)}",
             "--require-local-only-manifest",
             f"--epochs {args.local_epochs}",
             f"--fedprox-mu {args.fedprox_mu if args.strategy == 'fedprox' else 0.0}",
@@ -88,7 +100,10 @@ def main() -> None:
         "local_epochs": args.local_epochs,
         "expected_sites": [site.site_id for site in topology.sites],
         "site_manifest_path_contract": args.site_manifest_path,
+        "site_data_root_path_contract": args.site_data_root_path,
+        "site_dataset_receipt_path_contract": args.site_dataset_receipt_path,
         "local_only_manifest_required": True,
+        "dataset_receipt_required": True,
         "patient_data_packaged": False,
         "certificates_packaged": False,
         "private_keys_packaged": False,

@@ -98,6 +98,7 @@ class PhysicalSite(SQLModel, table=True):
     total_rounds: int = 0
     free_memory_percent: float | None = None
     free_disk_percent: float | None = None
+    dataset_fingerprint: str | None = Field(default=None, index=True)
     receipt_sha256: str | None = None
     heartbeat_json: str | None = None
     last_heartbeat_at: datetime | None = Field(default=None, index=True)
@@ -122,6 +123,7 @@ class PhysicalFederationJob(SQLModel, table=True):
     status: PhysicalJobStatus = Field(default=PhysicalJobStatus.DRAFT, index=True)
     bundle_sha256: str | None = None
     expected_sites_json: str
+    dataset_fingerprints_json: str = "{}"
     connected_sites_json: str = "[]"
     total_rounds: int
     local_epochs: int

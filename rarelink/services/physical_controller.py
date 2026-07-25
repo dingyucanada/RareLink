@@ -379,6 +379,10 @@ def validate_exported_job(job_directory: Path) -> ValidatedJobBundle:
         )
     if receipt.get("local_only_manifest_required") is not True:
         raise JobValidationError("Physical jobs must require each site's local-only manifest")
+    if receipt.get("dataset_receipt_required") is not True:
+        raise JobValidationError(
+            "Physical jobs must require a validated hospital-local dataset receipt"
+        )
 
     strategy = str(receipt.get("strategy", "")).lower()
     if strategy not in {"fedavg", "fedprox"}:
@@ -653,6 +657,11 @@ class PhysicalFederationController:
 
     def status(self, job_id: str, *, admin_kit: Path) -> dict[str, Any]:
         record = self._require(job_id)
+        if record.error_code and record.error_code.startswith("DATASET_VERSION_CHANGED"):
+            receipt = record.public_receipt()
+            receipt["remote_query_skipped"] = True
+            receipt["requires_new_contract"] = True
+            return receipt
         if not record.external_job_id:
             return record.public_receipt()
         result = self.adapter.status(record.external_job_id, admin_kit)

@@ -74,6 +74,10 @@ class PhysicalSiteHeartbeat(BaseModel):
     total_rounds: int = Field(default=0, ge=0, le=10_000)
     free_memory_percent: float = Field(ge=0, le=100)
     free_disk_percent: float = Field(ge=0, le=100)
+    dataset_fingerprint: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{64}$",
+    )
     receipt_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     captured_at: datetime
     contains_patient_data: bool = False

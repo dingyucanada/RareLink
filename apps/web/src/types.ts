@@ -139,6 +139,7 @@ export interface PhysicalSite {
   total_rounds: number;
   free_memory_percent: number | null;
   free_disk_percent: number | null;
+  dataset_fingerprint: string | null;
   receipt_sha256: string | null;
   last_heartbeat_at: string | null;
   contains_patient_data: false;
@@ -160,6 +161,7 @@ export interface PhysicalFederationJob {
     | "FAILED"
     | "ABORTED";
   expected_sites: string[];
+  dataset_fingerprints: Record<string, string>;
   connected_sites: string[];
   total_rounds: number;
   local_epochs: number;
