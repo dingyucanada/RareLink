@@ -31,6 +31,7 @@ from rarelink.domain import (
     ExperimentContract,
     ExperimentCreate,
     ExperimentStatus,
+    PhysicalApprovalRevocation,
     PhysicalJobApproval,
     PhysicalJobCreate,
     PhysicalJobStatus,
@@ -52,6 +53,7 @@ from rarelink.models import (
     PhysicalFederationJob,
     PhysicalHeartbeatReceipt,
     PhysicalJobApprovalRecord,
+    PhysicalJobApprovalRevocation,
     PhysicalSite,
     Study,
     TrainingJob,
@@ -288,8 +290,11 @@ def physical_job_view(job: PhysicalFederationJob, config: Settings) -> dict[str,
             job.second_approved_by
             and approval_expires_at
             and approval_expires_at > datetime.now(UTC)
+            and not job.second_approval_revocation_id
         )
-        if approval_valid:
+        if job.second_approval_revocation_id:
+            approval_state = "SECOND_APPROVAL_REVOKED"
+        elif approval_valid:
             approval_state = "SECOND_APPROVAL_RECORDED"
         elif job.second_approved_by:
             approval_state = "SECOND_APPROVAL_EXPIRED"
@@ -322,6 +327,7 @@ def physical_job_view(job: PhysicalFederationJob, config: Settings) -> dict[str,
         "approval_state": approval_state,
         "approval_valid": approval_valid,
         "approval_expires_at": approval_expires_at,
+        "approval_revoked_at": as_utc(job.second_approval_revoked_at),
         "global_model_sha256": job.global_model_sha256,
         "metrics": as_json(job.metrics_json),
         "error": job.error,
@@ -538,10 +544,17 @@ def require_current_physical_contract(
             PhysicalJobApprovalRecord.job_id == job.id
         )
     ).first()
+    revocation = session.exec(
+        select(PhysicalJobApprovalRevocation).where(
+            PhysicalJobApprovalRevocation.job_id == job.id
+        )
+    ).first()
     approval_expires_at = as_utc(approval.expires_at) if approval else None
     job_approval_expires_at = as_utc(job.second_approval_expires_at)
     if (
         not approval
+        or revocation is not None
+        or job.second_approval_revocation_id is not None
         or approval.contract_sha256 != job.contract_sha256
         or approval.approver_subject_id != job.second_approved_by
         or job.second_approved_by == job.proposed_by
@@ -1027,6 +1040,7 @@ def approve_physical_job_contract(
             and existing_expires_at is not None
             and existing_expires_at == as_utc(job.second_approval_expires_at)
             and existing_expires_at > datetime.now(UTC)
+            and not job.second_approval_revocation_id
         ):
             return physical_job_view(job, config)
         raise HTTPException(
@@ -1088,6 +1102,103 @@ def approve_physical_job_contract(
         raise HTTPException(
             status_code=409,
             detail="Physical job approval was recorded concurrently",
+        ) from None
+    session.refresh(job)
+    return physical_job_view(job, config)
+
+
+@app.post("/api/physical/jobs/{job_id}:revoke-approval")
+def revoke_physical_job_approval(
+    job_id: str,
+    payload: PhysicalApprovalRevocation,
+    request: Request,
+    session: SessionDep,
+    config: SettingsDep,
+) -> dict[str, Any]:
+    principal = require_physical_principal(
+        request,
+        config,
+        PhysicalPermission.CONTRACT_REVOKE,
+    )
+    job = session.get(PhysicalFederationJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Physical job not found")
+    require_physical_job_scope(principal, job, config)
+    if job.status != PhysicalJobStatus.APPROVAL_PENDING:
+        raise HTTPException(
+            status_code=409,
+            detail="Only a pending contract approval can be revoked; abort an active job",
+        )
+    if not job.contract_sha256:
+        raise HTTPException(status_code=409, detail="Physical contract is not locked")
+    try:
+        verify_contract_unchanged(job, job.contract_sha256)
+    except PhysicalApprovalServiceError as exc:
+        raise physical_approval_error(exc) from exc
+    approval = session.exec(
+        select(PhysicalJobApprovalRecord).where(
+            PhysicalJobApprovalRecord.job_id == job_id
+        )
+    ).first()
+    if not approval or approval.approver_subject_id != job.second_approved_by:
+        raise HTTPException(
+            status_code=409,
+            detail="Physical job has no current second approval to revoke",
+        )
+    existing = session.exec(
+        select(PhysicalJobApprovalRevocation).where(
+            PhysicalJobApprovalRevocation.job_id == job_id
+        )
+    ).first()
+    if existing:
+        if (
+            existing.revoked_by == principal.subject_id
+            and existing.attestation == payload.attestation
+            and job.second_approval_revocation_id == existing.id
+        ):
+            return physical_job_view(job, config)
+        raise HTTPException(
+            status_code=409,
+            detail="Physical approval was already revoked",
+        )
+    revoked_at = utc_now()
+    revocation = PhysicalJobApprovalRevocation(
+        job_id=job.id,
+        approval_id=approval.id,
+        contract_sha256=job.contract_sha256,
+        revoked_by=principal.subject_id,
+        attestation=payload.attestation,
+        reason_sha256=sha256(payload.reason.strip().encode("utf-8")).hexdigest(),
+        created_at=revoked_at,
+    )
+    job.second_approval_revocation_id = revocation.id
+    job.second_approval_revoked_at = revoked_at
+    job.updated_at = revoked_at
+    session.add(revocation)
+    session.add(job)
+    append_physical_event(
+        session,
+        action="job.contract-approval-revoked",
+        actor=principal.subject_id,
+        resource_type="physical-job",
+        resource_id=job.id,
+        outcome="revoked",
+        payload={
+            "approval_id": approval.id,
+            "revocation_id": revocation.id,
+            "contract_sha256": job.contract_sha256,
+            "attestation": payload.attestation,
+            "revoked_at": revoked_at.isoformat().replace("+00:00", "Z"),
+        },
+        hmac_key=config.rarelink_audit_hmac_key,
+    )
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Physical approval was revoked concurrently",
         ) from None
     session.refresh(job)
     return physical_job_view(job, config)

@@ -48,6 +48,7 @@ all target_site_ids ⊆ principal.site_ids
 | `POST /api/physical/sites` | `physical.site.register` | 请求的 `site_id` | 写入站点前 |
 | `POST /api/physical/jobs` | `physical.contract.create` | 请求的 `expected_sites` | 读取/锁定三站合同前 |
 | `POST /api/physical/jobs/{id}:approve` | `physical.contract.approve` | job 的 `expected_sites_json` | 记录第二审批前 |
+| `POST /api/physical/jobs/{id}:revoke-approval` | `physical.contract.revoke` | job 的 `expected_sites_json` | 记录不可变撤销前 |
 | `POST .../{id}:submit` | `physical.job.submit` | job 的三站 | 合同/数据复核和 NVFLARE submit 前 |
 | `POST .../{id}:sync` | `physical.job.sync` | job 的三站 | 构建 Controller 和 NVFLARE status 前 |
 | `POST .../{id}:abort` | `physical.job.abort` | job 的三站 | NVFLARE abort 前 |
@@ -174,7 +175,7 @@ pytest -q \
   tests/test_physical_api.py
 ```
 
-当前全量回归基线为 **213 项测试通过**；scope 子集不能替代全仓回归。
+当前全量回归基线为 **214 项测试通过**；scope 子集不能替代全仓回归。
 
 现场验收：
 

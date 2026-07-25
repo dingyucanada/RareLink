@@ -36,6 +36,7 @@ EXPECTED_MATRIX = {
         PhysicalPermission.CONTROL_STATE_READ,
         PhysicalPermission.CONTRACT_CREATE,
         PhysicalPermission.CONTRACT_APPROVE,
+        PhysicalPermission.CONTRACT_REVOKE,
         PhysicalPermission.JOB_SUBMIT,
         PhysicalPermission.JOB_SYNC,
         PhysicalPermission.JOB_ABORT,
@@ -54,6 +55,7 @@ EXPECTED_MATRIX = {
     PhysicalRole.DATA_STEWARD: {
         PhysicalPermission.CONTROL_STATE_READ,
         PhysicalPermission.CONTRACT_APPROVE,
+        PhysicalPermission.CONTRACT_REVOKE,
         PhysicalPermission.AUDIT_READ,
     },
     PhysicalRole.REVIEWER: {
@@ -66,6 +68,7 @@ EXPECTED_MATRIX = {
         PhysicalPermission.CONTROL_STATE_READ,
         PhysicalPermission.SITE_REGISTER,
         PhysicalPermission.CONTRACT_APPROVE,
+        PhysicalPermission.CONTRACT_REVOKE,
         PhysicalPermission.JOB_SYNC,
         PhysicalPermission.JOB_ABORT,
         PhysicalPermission.AUDIT_READ,

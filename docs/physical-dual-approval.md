@@ -18,6 +18,7 @@
 - 要求不同 `sub` 的授权主体提交固定 attestation；
 - 将第二审批持久化并绑定到合同摘要；
 - 持久化审批有效期，默认 24 小时，可配置 5 分钟至 7 天；
+- 允许获授权主体以独立、不可变记录撤销尚未执行的第二审批；
 - submit、retry、resume 前重新计算摘要并核对审批记录与有效期；
 - 公开作业视图只展示审批计数、状态和合同摘要，不展示审批主体。
 
@@ -156,7 +157,21 @@ Content-Type: application/json
 | 合同字段在审批前已变化 | 409，必须新建/重批 |
 | 已有竞争审批 | 409 |
 | 审批缺少有效期、记录与 job 到期时间不一致或已过期 | 409，必须重建并重新审批 |
+| 已存在撤销记录 | 409，合同必须重建；历史审批和撤销均不覆盖 |
 | 固定 attestation 不匹配 | 422 schema error |
+
+### 4.5 审批撤销
+
+`POST /api/physical/jobs/{job_id}:revoke-approval` 要求
+`physical.contract.revoke`、完整三站 scope 和固定 attestation
+`REVOKE_PHYSICAL_CONTRACT_APPROVAL`。当前仅 `research_lead`、`data_steward`
+和 `security_admin` 拥有该权限。
+
+撤销只允许发生在 `APPROVAL_PENDING`；作业已提交或运行时必须使用 abort，避免把
+“撤销批准”误写成“训练已停止”。系统创建唯一的
+`PhysicalJobApprovalRevocation`，保存合同/审批引用、撤销主体、固定 attestation、
+理由 SHA-256 和时间。理由明文不进入数据库、响应或审计。重复的同主体同
+attestation 请求幂等返回；不同撤销竞争返回 409。
 
 ## 5. 提交、重试与恢复硬门
 
@@ -169,6 +184,7 @@ Content-Type: application/json
 5. 检查 approval approver 等于 job 的第二审批主体；
 6. 检查第二审批主体与提议人不同。
 7. 检查 approval 与 job 的到期时间一致且晚于当前 UTC 时间。
+8. 确认不存在 revocation 记录，且 job 未绑定撤销 ID。
 
 任一步失败均返回 409，不进入 FLARE。submit 还会重新检查三站 READY、心跳新鲜和数据指纹未变化。数据版本变化要求创建并重新审批新合同；旧合同不能通过 retry/resume 复活。
 
@@ -198,6 +214,8 @@ FLARE 调用前返回不枚举缺失站点的 403。规则见
 - 第二审批后：`2/2`、`SECOND_APPROVAL_RECORDED`。
 - 第二审批过期：历史计数仍为 `2/2`，但状态为 `SECOND_APPROVAL_EXPIRED`，
   `approval_valid=false`，不能提交、重试或恢复。
+- 第二审批撤销：历史计数仍保留，状态为 `SECOND_APPROVAL_REVOKED`，
+  `approval_valid=false` 并显示撤销时间。
 
 视图不返回 `proposed_by`、`second_approved_by`、审批角色、审批 note 或 note SHA-256。作业视图仍会按既有数据边界返回策略、轮次、站点和数据指纹等运行元数据；是否公开这些元数据由部署网关策略决定。
 
@@ -210,6 +228,9 @@ action = job.contract-second-approved
 actor = verified second approver sub
 payload = approval_id, contract_sha256, fixed attestation, approval_count=2, expires_at
 ```
+
+撤销另记 `job.contract-approval-revoked`，包含 approval/revocation ID、合同摘要、
+固定 attestation 和撤销时间；不包含理由明文或其摘要。
 
 事件不包含：
 
@@ -248,6 +269,7 @@ actor 仅通过受 RBAC 保护的事件 API可见，公开审计摘要不显示�
 - submit 前缺审批、合同变化、数据变化均失败；
 - submit/retry/resume 重新核验；
 - 缺失、篡改和过期的审批有效期在 NVFLARE 调用前失败；
+- 撤销权限、幂等、竞争、理由明文边界和执行阻断；
 - job view 不泄露主体；
 - isolated integration 明确显示 legacy single request。
 
@@ -258,7 +280,7 @@ pytest -q \
   tests/test_physical_rbac.py
 ```
 
-当前全量回归基线为 **213 项测试通过**；审批子集不能替代全仓回归。
+当前全量回归基线为 **214 项测试通过**；审批子集不能替代全仓回归。
 
 物理现场还需验证：
 
@@ -274,7 +296,6 @@ pytest -q \
 
 | 当前局限 | 影响 | 生产升级 |
 | --- | --- | --- |
-| 无审批撤销 | 错误审批不能通过正式状态撤回 | 撤销事件、原因、影响分析与重新审批 |
 | 无替补审批人流程 | 人员离职/停权后缺少治理路径 | replacement workflow，不覆盖历史记录 |
 | submit/retry/resume 无双人执行审批 | 合同虽双审，执行动作仍是单主体 | 高风险 action approval/intent token |
 | SQLite 并发能力有限 | 多 worker 依赖唯一约束兜底，串行语义不足 | PostgreSQL 事务、行锁/序列化和重试 |

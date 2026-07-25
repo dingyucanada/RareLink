@@ -22,6 +22,8 @@ SQLITE_ADDITIVE_COLUMNS: dict[str, dict[str, str]] = {
         "second_approval_note_sha256": "VARCHAR",
         "second_approved_at": "DATETIME",
         "second_approval_expires_at": "DATETIME",
+        "second_approval_revocation_id": "VARCHAR",
+        "second_approval_revoked_at": "DATETIME",
     },
     "physicaljobapprovalrecord": {
         "expires_at": "DATETIME",

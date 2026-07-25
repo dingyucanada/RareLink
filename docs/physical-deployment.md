@@ -254,7 +254,7 @@ resume 都会重新核验合同摘要和审批记录。公开 job view 只显示
 合同摘要，不显示提议/审批主体。受保护审计记录第二审批，但不含 note 或 token。
 
 `isolated-integration` 继续使用 `LEGACY_SINGLE_REQUEST`，不构成双人审批证据。
-当前审批已具备到期阻断，但尚无撤销、替补和提交动作双审；作业控制已强制三站 scope，
+当前审批已具备到期阻断和不可变撤销，但尚无替补和提交动作双审；作业控制已强制三站 scope，
 但公开列表/audit 过滤、组织/研究维度尚未完成。SQLite 多 worker 并发还需迁移
 PostgreSQL。详见
 [物理联邦合同锁定与双人审批](physical-dual-approval.md)。

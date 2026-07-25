@@ -53,6 +53,13 @@ ALLOWED_PAYLOAD_KEYS = {
         "approval_count",
         "expires_at",
     },
+    "job.contract-approval-revoked": {
+        "approval_id",
+        "revocation_id",
+        "contract_sha256",
+        "attestation",
+        "revoked_at",
+    },
     "job.submitted": {
         "external_job_id",
         "strategy",

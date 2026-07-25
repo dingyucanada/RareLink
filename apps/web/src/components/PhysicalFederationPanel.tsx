@@ -140,7 +140,12 @@ export default function PhysicalFederationPanel() {
             <strong className={latestJob.approval_valid ? "" : "warning"}>
               {latestJob.approval_count}/{latestJob.approval_required}
             </strong>
-            <small>{latestJob.approval_state} · {approvalDeadline(latestJob.approval_expires_at)}</small>
+            <small>
+              {latestJob.approval_state} ·{" "}
+              {latestJob.approval_revoked_at
+                ? `已于 ${new Date(latestJob.approval_revoked_at).toLocaleString()} 撤销`
+                : approvalDeadline(latestJob.approval_expires_at)}
+            </small>
           </div>
           <div><span>ROUND</span><strong>{latestJob.current_round}/{latestJob.total_rounds}</strong></div>
           <div><span>UPDATES</span><strong>{latestJob.received_updates}/{latestJob.quorum_required}</strong></div>

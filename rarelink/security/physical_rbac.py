@@ -27,6 +27,7 @@ class PhysicalPermission(StrEnum):
     SITE_REGISTER = "physical.site.register"
     CONTRACT_CREATE = "physical.contract.create"
     CONTRACT_APPROVE = "physical.contract.approve"
+    CONTRACT_REVOKE = "physical.contract.revoke"
     JOB_SUBMIT = "physical.job.submit"
     JOB_SYNC = "physical.job.sync"
     JOB_ABORT = "physical.job.abort"
@@ -41,6 +42,7 @@ _ROLE_PERMISSIONS_SOURCE: Final[dict[PhysicalRole, frozenset[PhysicalPermission]
             PhysicalPermission.CONTROL_STATE_READ,
             PhysicalPermission.CONTRACT_CREATE,
             PhysicalPermission.CONTRACT_APPROVE,
+            PhysicalPermission.CONTRACT_REVOKE,
             PhysicalPermission.JOB_SUBMIT,
             PhysicalPermission.JOB_SYNC,
             PhysicalPermission.JOB_ABORT,
@@ -63,6 +65,7 @@ _ROLE_PERMISSIONS_SOURCE: Final[dict[PhysicalRole, frozenset[PhysicalPermission]
         {
             PhysicalPermission.CONTROL_STATE_READ,
             PhysicalPermission.CONTRACT_APPROVE,
+            PhysicalPermission.CONTRACT_REVOKE,
             PhysicalPermission.AUDIT_READ,
         }
     ),
@@ -79,6 +82,7 @@ _ROLE_PERMISSIONS_SOURCE: Final[dict[PhysicalRole, frozenset[PhysicalPermission]
             PhysicalPermission.CONTROL_STATE_READ,
             PhysicalPermission.SITE_REGISTER,
             PhysicalPermission.CONTRACT_APPROVE,
+            PhysicalPermission.CONTRACT_REVOKE,
             PhysicalPermission.JOB_SYNC,
             PhysicalPermission.JOB_ABORT,
             PhysicalPermission.AUDIT_READ,

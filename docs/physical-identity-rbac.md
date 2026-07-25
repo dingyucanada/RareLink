@@ -14,7 +14,7 @@
 - 校验签名、`iss`、`aud`、`exp`、`iat`、可选 `nbf` 和 `sub`；
 - 校验可配置的角色、组织、站点 claim；
 - 将验证结果最小化为 `PhysicalPrincipal`；
-- 五个固定角色、十种固定权限，未知角色和未知动作失败关闭；
+- 五个固定角色、十一种固定权限，未知角色和未知动作失败关闭；
 - `physical` 模式强制 OIDC Bearer 身份，拒绝 legacy operator token；
 - `legacy-token` 仅保留给 `isolated-integration` 三进程/三容器验收；
 - OIDC access token、refresh token 和 raw claims 不持久化、不进入审计；
@@ -97,7 +97,7 @@ PhysicalPrincipal(
 
 Principal 不包含 JWT、refresh token、JWK、JWT header 或 raw claims。
 
-## 4. 五角色与十权限
+## 4. 五角色与十一权限
 
 | 权限 | 含义 |
 | --- | --- |
@@ -105,6 +105,7 @@ Principal 不包含 JWT、refresh token、JWK、JWT header 或 raw claims。
 | `physical.site.register` | 登记预期物理站点 |
 | `physical.contract.create` | 创建物理作业合同 |
 | `physical.contract.approve` | 合同批准能力 |
+| `physical.contract.revoke` | 以不可变记录撤销待执行合同的第二审批 |
 | `physical.job.submit` | 提交真实 NVIDIA FLARE 作业 |
 | `physical.job.sync` | 与外部 FLARE 状态对账 |
 | `physical.job.abort` | 中止作业 |
@@ -114,13 +115,13 @@ Principal 不包含 JWT、refresh token、JWK、JWT header 或 raw claims。
 
 ### 4.1 角色—权限矩阵
 
-| 角色 | 状态读取 | 站点登记 | 合同创建 | 合同批准 | 提交 | 同步 | 中止 | 重试/恢复 | 模型核验 | 审计 |
-| --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| `research_lead` | ✓ |  | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `site_admin` | ✓ | ✓ |  |  |  | ✓ | ✓ | ✓ |  | ✓ |
-| `data_steward` | ✓ |  |  | ✓ |  |  |  |  |  | ✓ |
-| `reviewer` | ✓ |  |  | ✓ |  |  |  |  | ✓ | ✓ |
-| `security_admin` | ✓ | ✓ |  | ✓ |  | ✓ | ✓ |  |  | ✓ |
+| 角色 | 状态读取 | 站点登记 | 合同创建 | 合同批准 | 撤销审批 | 提交 | 同步 | 中止 | 重试/恢复 | 模型核验 | 审计 |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| `research_lead` | ✓ |  | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `site_admin` | ✓ | ✓ |  |  |  |  | ✓ | ✓ | ✓ |  | ✓ |
+| `data_steward` | ✓ |  |  | ✓ | ✓ |  |  |  |  |  | ✓ |
+| `reviewer` | ✓ |  |  | ✓ |  |  |  |  |  | ✓ | ✓ |
+| `security_admin` | ✓ | ✓ |  | ✓ | ✓ |  | ✓ | ✓ |  |  | ✓ |
 
 矩阵在代码中只读。多角色主体获得权限并集，不存在隐含超级管理员；空角色和未知动作授予零权限。
 
@@ -131,6 +132,7 @@ Principal 不包含 JWT、refresh token、JWK、JWT header 或 raw claims。
 | `GET /api/physical/sites` / `jobs` | `physical.control_state.read`（physical 模式） |
 | `POST /api/physical/sites` | `physical.site.register` |
 | `POST /api/physical/jobs` | `physical.contract.create` |
+| `POST /api/physical/jobs/{id}:revoke-approval` | `physical.contract.revoke` |
 | `POST /api/physical/jobs/{id}:submit` | `physical.job.submit` |
 | `POST /api/physical/jobs/{id}:sync` | `physical.job.sync` |
 | `POST /api/physical/jobs/{id}:abort` | `physical.job.abort` |
@@ -138,7 +140,7 @@ Principal 不包含 JWT、refresh token、JWK、JWT header 或 raw claims。
 | `POST /api/physical/jobs/{id}:verify-model` | `physical.model.verify` |
 | `GET /api/physical/events` | `physical.audit.read` |
 
-`physical.contract.approve` 已接入 `POST /api/physical/jobs/{id}:approve`：合同摘要锁定后，由不同 `sub` 的授权主体提交固定 attestation，审批记录及有效期持久化并在 submit/retry/resume 前重新核验。审批撤销、替补流程以及提交/恢复动作本身的双人批准尚未完成，详见[物理合同双人审批](physical-dual-approval.md)。
+`physical.contract.approve` 已接入 `POST /api/physical/jobs/{id}:approve`：合同摘要锁定后，由不同 `sub` 的授权主体提交固定 attestation，审批记录及有效期持久化并在 submit/retry/resume 前重新核验。撤销通过独立不可变记录完成；替补流程以及提交/恢复动作本身的双人批准尚未完成，详见[物理合同双人审批](physical-dual-approval.md)。
 
 除动作权限外，site register、contract create/approve、submit、sync、abort、
 retry/resume 和 verify-model 均要求全部目标站点是 OIDC `site_ids` 的子集，并在
@@ -216,7 +218,7 @@ raw claims 同样不持久化。物理审计 actor 只记录已验证的 `sub`�
 - 缺失、未知和重复 `kid`；
 - issuer、audience、签名和全部时间 claim 负例；
 - subject、角色、组织和站点 claim 负例；
-- 五角色十权限逐项 allow/deny；
+- 五角色十一权限逐项 allow/deny；
 - physical 拒绝 legacy，OIDC 拒绝共享 token；
 - 配置缺失安全失败；
 - token/raw claims 不出现在响应和审计。
@@ -228,7 +230,7 @@ pytest -q \
   tests/test_physical_oidc_api.py
 ```
 
-当前全量回归基线为 **213 项测试通过**；身份子集不能替代全仓回归。
+当前全量回归基线为 **214 项测试通过**；身份子集不能替代全仓回归。
 
 医院集成还必须验证真实 issuer/audience、计划内密钥轮换、五角色治理、每角色负面 API、日志泄露检查、时钟告警和账户/密钥应急流程。
 
@@ -242,7 +244,7 @@ pytest -q \
 | 无 MFA assurance | token 不证明执行过特定 MFA | 与 IdP 约定并校验 `acr`/`amr` |
 | 无会话/主体吊销 | token 在 `exp` 前可能继续有效 | 短 TTL、introspection/deny-list、事件驱动吊销 |
 | 无 organization/study scope 强制 | 站点级读取已隔离，但同站点不同研究尚未分离 | 组织资源模型、研究成员关系与策略组合 |
-| 合同审批缺少完整生命周期 | 第二审批及到期阻断已实现，但无撤销和替补流程 | 审批状态机、撤销、替补和执行动作双审 |
+| 合同审批缺少替补流程 | 第二审批、到期和撤销已实现，但人员替补必须重建合同 | 受治理的 replacement workflow 和执行动作双审 |
 | Web 尚未接医院 OIDC 登录流程 | API 已保护 physical 读取，但正式 UI 还不能获取/续期 token | Authorization Code + PKCE、短会话与登出/吊销 |
 | legacy 主体拥有全角色 | 隔离环境一旦暴露影响大 | 仅 loopback/测试网；physical 永久禁止 |
 

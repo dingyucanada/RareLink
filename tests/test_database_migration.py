@@ -56,6 +56,8 @@ def test_additive_sqlite_migration_upgrades_existing_physical_tables(tmp_path) -
         "physicalfederationjob.second_approval_note_sha256",
         "physicalfederationjob.second_approved_at",
         "physicalfederationjob.second_approval_expires_at",
+        "physicalfederationjob.second_approval_revocation_id",
+        "physicalfederationjob.second_approval_revoked_at",
         "physicaljobapprovalrecord.expires_at",
     ]
     assert second == []
@@ -68,4 +70,6 @@ def test_additive_sqlite_migration_upgrades_existing_physical_tables(tmp_path) -
     assert "second_approval_note_sha256" in job_columns
     assert "second_approved_at" in job_columns
     assert "second_approval_expires_at" in job_columns
+    assert "second_approval_revocation_id" in job_columns
+    assert "second_approval_revoked_at" in job_columns
     assert "expires_at" in approval_columns

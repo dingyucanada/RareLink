@@ -158,6 +158,8 @@ class PhysicalFederationJob(SQLModel, table=True):
     second_approval_note_sha256: str | None = None
     second_approved_at: datetime | None = Field(default=None, index=True)
     second_approval_expires_at: datetime | None = Field(default=None, index=True)
+    second_approval_revocation_id: str | None = Field(default=None, index=True)
+    second_approval_revoked_at: datetime | None = Field(default=None, index=True)
     approved_by: str | None = None
     approval_note: str | None = None
     attempt: int = 0
@@ -185,3 +187,22 @@ class PhysicalJobApprovalRecord(SQLModel, table=True):
     note_sha256: str
     created_at: datetime = Field(default_factory=utc_now, index=True)
     expires_at: datetime | None = Field(default=None, index=True)
+
+
+class PhysicalJobApprovalRevocation(SQLModel, table=True):
+    id: str = Field(default_factory=lambda: new_id("physical-revocation"), primary_key=True)
+    job_id: str = Field(
+        foreign_key="physicalfederationjob.id",
+        index=True,
+        sa_column_kwargs={"unique": True},
+    )
+    approval_id: str = Field(
+        foreign_key="physicaljobapprovalrecord.id",
+        index=True,
+        sa_column_kwargs={"unique": True},
+    )
+    contract_sha256: str = Field(index=True)
+    revoked_by: str = Field(index=True)
+    attestation: str
+    reason_sha256: str
+    created_at: datetime = Field(default_factory=utc_now, index=True)

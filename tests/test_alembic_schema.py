@@ -59,6 +59,14 @@ EXPECTED_KEY_COLUMNS = {
         "note_sha256",
         "expires_at",
     },
+    "physicaljobapprovalrevocation": {
+        "id",
+        "job_id",
+        "approval_id",
+        "contract_sha256",
+        "revoked_by",
+        "reason_sha256",
+    },
 }
 
 

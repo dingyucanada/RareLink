@@ -59,6 +59,7 @@
 | `job.dataset-version-invalidated` | 运行绑定的数据版本变化 | 站点、旧/新指纹、错误码 |
 | `job.contract-created` | 物理作业合同建立 | 策略、bundle 摘要、三站、轮次、3/3 quorum |
 | `job.contract-second-approved` | 不同 OIDC 主体完成合同第二审批 | approval ID、contract SHA-256、固定 attestation、approval count |
+| `job.contract-approval-revoked` | 获授权主体撤销待执行审批 | approval/revocation ID、合同摘要、固定 attestation、撤销时间 |
 | `job.submitted` | NVIDIA FLARE 返回真实外部 Job ID | 外部 ID、attempt、bundle 摘要 |
 | `job.status-synchronized` | 控制面与 FLARE 对账 | 状态、轮次、收到的更新数、错误码 |
 | `job.aborted` | FLARE 中止已确认 | 外部 ID、状态、attempt |
@@ -179,6 +180,7 @@ P0 的操作员 token 是过渡身份，不是医院级 OIDC/RBAC。生产阶段
 - submit token 只保存不可逆摘要，事件不保存 token；
 - 第二审批事件只记录 approval ID、合同摘要、固定 attestation 和审批计数，
   不记录审批 note 明文或 note SHA-256；
+- 撤销事件不记录理由明文或理由 SHA-256；
 - Site Agent 心跳只包含患者信息为零的资源、数据指纹和任务状态；
 - 原始影像、标签、病例级指标、manifest、Client/Admin Kit 和私钥永不进入审计表；
 - Agent Gateway 不读取受保护事件 API。

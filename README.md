@@ -305,7 +305,7 @@ make physical-control-smoke
 威胁模型与分级验收见[正式工程开发计划](docs/engineering-development-plan.md)，
 事件链、HMAC 密钥硬门、公开摘要和生产局限见
 [物理控制面审计设计](docs/physical-audit.md)，
-OIDC 离线验证、五角色十权限、站点级读取过滤和待完成 IAM 能力见
+OIDC 离线验证、五角色十一权限、站点级读取过滤和待完成 IAM 能力见
 [物理控制面身份与 RBAC](docs/physical-identity-rbac.md)，
 合同摘要锁定、不同主体第二审批与当前局限见
 [物理合同双人审批](docs/physical-dual-approval.md)，

@@ -174,6 +174,7 @@ export interface PhysicalFederationJob {
   approval_state: string;
   approval_valid: boolean;
   approval_expires_at: string | null;
+  approval_revoked_at: string | null;
   global_model_sha256: string | null;
   metrics: Record<string, unknown> | null;
   error: string | null;

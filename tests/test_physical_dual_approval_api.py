@@ -15,7 +15,12 @@ from rarelink.api.main import app
 from rarelink.config import Settings, get_settings
 from rarelink.database import get_session
 from rarelink.domain import PhysicalJobStatus, PhysicalSiteStatus, utc_now
-from rarelink.models import PhysicalFederationJob, PhysicalJobApprovalRecord, PhysicalSite
+from rarelink.models import (
+    PhysicalFederationJob,
+    PhysicalJobApprovalRecord,
+    PhysicalJobApprovalRevocation,
+    PhysicalSite,
+)
 from rarelink.services.physical_approval import canonical_contract_sha256
 from rarelink.services.physical_controller import (
     CommandResult,
@@ -401,6 +406,113 @@ def test_expired_second_approval_blocks_submission_before_nvflare(
     assert jobs.status_code == 200
     assert jobs.json()[0]["approval_state"] == "SECOND_APPROVAL_EXPIRED"
     assert jobs.json()[0]["approval_valid"] is False
+
+
+def test_approval_revocation_is_immutable_audited_and_blocks_submission(
+    client: TestClient,
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    private_key, jwk = oidc_material()
+    app.dependency_overrides[get_settings] = lambda: physical_oidc_settings(jwk)
+    lead = oidc_token(private_key, subject="lead-subject", roles=["research_lead"])
+    reviewer = oidc_token(
+        private_key,
+        subject="reviewer-subject",
+        roles=["reviewer"],
+    )
+    security_admin = oidc_token(
+        private_key,
+        subject="security-admin-subject",
+        roles=["security_admin"],
+    )
+    job_id = insert_proposed_job("lead-subject")
+    approved = client.post(
+        f"/api/physical/jobs/{job_id}:approve",
+        headers={"Authorization": f"Bearer {reviewer}"},
+        json={
+            "attestation": "CONTRACT_DATA_AND_SECURITY_REVIEWED",
+            "note": "Approval before an emergency revocation",
+        },
+    )
+    assert approved.status_code == 200
+
+    denied = client.post(
+        f"/api/physical/jobs/{job_id}:revoke-approval",
+        headers={"Authorization": f"Bearer {reviewer}"},
+        json={
+            "attestation": "REVOKE_PHYSICAL_CONTRACT_APPROVAL",
+            "reason": "Reviewer role does not hold emergency revocation authority",
+        },
+    )
+    assert denied.status_code == 403
+
+    raw_reason = "Site security posture changed after contract approval"
+    revoked = client.post(
+        f"/api/physical/jobs/{job_id}:revoke-approval",
+        headers={"Authorization": f"Bearer {security_admin}"},
+        json={
+            "attestation": "REVOKE_PHYSICAL_CONTRACT_APPROVAL",
+            "reason": raw_reason,
+        },
+    )
+    assert revoked.status_code == 200
+    assert revoked.json()["approval_state"] == "SECOND_APPROVAL_REVOKED"
+    assert revoked.json()["approval_valid"] is False
+    assert revoked.json()["approval_revoked_at"]
+    assert raw_reason not in revoked.text
+    assert "security-admin-subject" not in revoked.text
+
+    repeated = client.post(
+        f"/api/physical/jobs/{job_id}:revoke-approval",
+        headers={"Authorization": f"Bearer {security_admin}"},
+        json={
+            "attestation": "REVOKE_PHYSICAL_CONTRACT_APPROVAL",
+            "reason": "Idempotent retry does not replace the first reason digest",
+        },
+    )
+    assert repeated.status_code == 200
+
+    session, generator = with_test_session()
+    try:
+        records = list(
+            session.exec(
+                select(PhysicalJobApprovalRevocation).where(
+                    PhysicalJobApprovalRevocation.job_id == job_id
+                )
+            ).all()
+        )
+        assert len(records) == 1
+        assert len(records[0].reason_sha256) == 64
+        assert raw_reason not in records[0].model_dump_json()
+    finally:
+        session.close()
+        generator.close()
+
+    monkeypatch.setattr(
+        api_main,
+        "build_physical_controller",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("Revoked approval reached NVIDIA FLARE")
+        ),
+    )
+    submitted = client.post(
+        f"/api/physical/jobs/{job_id}:submit",
+        headers={"Authorization": f"Bearer {lead}"},
+        json=submit_payload(),
+    )
+    assert submitted.status_code == 409
+    assert "current distinct second" in submitted.json()["detail"]
+
+    events = client.get(
+        "/api/physical/events",
+        headers={"Authorization": f"Bearer {security_admin}"},
+    )
+    assert events.status_code == 200
+    assert [event["action"] for event in events.json()["events"]] == [
+        "job.contract-second-approved",
+        "job.contract-approval-revoked",
+    ]
+    assert raw_reason not in events.text
 
 
 def test_distinct_approval_allows_real_controller_submission_boundary(

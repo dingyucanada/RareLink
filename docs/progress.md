@@ -82,6 +82,8 @@
   approval note plaintext is discarded and only its SHA-256 is retained
 - [x] Second approval expiry is persisted in the job and approval record, exposed as
   valid/expired state, and rechecked before submit/retry/resume
+- [x] Authorized approval revocation creates an immutable reason-digest record and
+  audit event; revoked contracts cannot submit/retry/resume
 - [x] Contract approval is idempotent, competing approvals conflict, and submit/retry/resume
   re-verify the frozen contract and approval before reaching NVIDIA FLARE
 - [x] OIDC `site_ids` resource scope requires every target site for registration,
@@ -140,7 +142,7 @@
   Discovery, HTTPS JWKS retrieval, automatic caching/key rotation, MFA, and session revocation
   remain outstanding.
   See [`physical-identity-rbac.md`](physical-identity-rbac.md).
-- Contract two-person approval and expiry are implemented, but approval revocation, replacement,
+- Contract two-person approval, expiry, and revocation are implemented, but approval replacement,
   two-person authorization of the submit/retry/resume action itself and PostgreSQL concurrency
   remain outstanding. `isolated-integration` retains a legacy
   single-request path and is not approval evidence. See

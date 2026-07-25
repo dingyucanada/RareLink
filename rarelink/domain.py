@@ -125,6 +125,13 @@ class PhysicalSecondApproval(BaseModel):
     note: str = Field(default="", max_length=1000)
 
 
+class PhysicalApprovalRevocation(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    attestation: Literal["REVOKE_PHYSICAL_CONTRACT_APPROVAL"]
+    reason: str = Field(min_length=8, max_length=1000)
+
+
 class PhysicalModelVerification(BaseModel):
     model_config = {"extra": "forbid"}
 
