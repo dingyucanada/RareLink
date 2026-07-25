@@ -1,7 +1,7 @@
 PYTHON ?= python3
 PROJECT_PYTHON = $(if $(wildcard .venv/bin/python),.venv/bin/python,$(PYTHON))
 
-.PHONY: install install-web dev-api dev-web test lint smoke step-models step-smoke step-team-smoke synthetic-data monai-smoke nvflare-smoke nvflare-fedprox training-job-smoke demo-seed demo-evidence spark-local-verify spark-local-benchmark physical-render physical-preflight physical-job physical-site-agent physical-control-smoke site-data-validate
+.PHONY: install install-web dev-api dev-web test lint smoke step-models step-smoke step-team-smoke synthetic-data monai-smoke nvflare-smoke nvflare-fedprox training-job-smoke demo-seed demo-evidence spark-local-verify spark-local-benchmark physical-render physical-preflight physical-job physical-site-agent physical-control-smoke physical-postgres-validate site-data-validate db-upgrade db-current db-check
 
 install:
 	$(PROJECT_PYTHON) -m pip install -e ".[dev]"
@@ -78,5 +78,19 @@ physical-site-agent:
 physical-control-smoke:
 	$(PROJECT_PYTHON) scripts/smoke_three_site_control_plane.py
 
+physical-postgres-validate:
+	$(PROJECT_PYTHON) scripts/validate_physical_postgres_compose.py
+
 site-data-validate:
 	@echo "Usage: $(PROJECT_PYTHON) scripts/validate_site_dataset.py --manifest ... --site-id ... --data-root ... --output ..."
+
+# Production schema changes are explicit operations. The API never upgrades a
+# PostgreSQL database during startup.
+db-upgrade:
+	$(PROJECT_PYTHON) -m alembic upgrade head
+
+db-current:
+	$(PROJECT_PYTHON) -m alembic current
+
+db-check:
+	$(PROJECT_PYTHON) scripts/check_database_schema.py

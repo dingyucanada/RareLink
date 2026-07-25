@@ -10,7 +10,7 @@
 
 <a href="README.en.md">English</a> · <strong>中文</strong>
 
-<strong>📘 <a href="outputs/RareLink-项目报告书.md">阅读完整项目报告书</a></strong> · <a href="#部署模型与快速开始">快速开始</a> · <a href="docs/physical-deployment.md">三物理 Spark 部署</a> · <a href="docs/physical-identity-rbac.md">OIDC/RBAC</a> · <a href="docs/physical-site-scope.md">站点授权</a> · <a href="docs/physical-dual-approval.md">双人审批</a> · <a href="docs/physical-audit.md">物理审计设计</a> · <a href="#工程验证与可信边界">工程证据</a>
+<strong>📘 <a href="outputs/RareLink-项目报告书.md">阅读完整项目报告书</a></strong> · <a href="#部署模型与快速开始">快速开始</a> · <a href="docs/physical-deployment.md">三物理 Spark 部署</a> · <a href="docs/physical-identity-rbac.md">OIDC/RBAC</a> · <a href="docs/physical-site-scope.md">站点授权</a> · <a href="docs/physical-dual-approval.md">双人审批</a> · <a href="docs/physical-audit.md">物理审计设计</a> · <a href="docs/postgresql-alembic.md">生产数据库</a> · <a href="#工程验证与可信边界">工程证据</a>
 
 <a href="https://www.nvidia.com/en-us/products/workstations/dgx-spark/"><img src="https://img.shields.io/badge/NVIDIA-DGX%20Spark-76B900?style=flat-square&logo=nvidia&logoColor=white" alt="NVIDIA DGX Spark" /></a>
 <a href="https://nvidia.github.io/NVFlare/"><img src="https://img.shields.io/badge/NVIDIA%20FLARE-2.7.2-2563EB?style=flat-square" alt="NVIDIA FLARE" /></a>
@@ -158,7 +158,7 @@ RareLink 在通用层优先采用成熟框架；项目特有代码聚焦研究�
 flowchart TB
     U["研究者 / 科室科研团队"] --> W["React 证据驾驶舱"]
     W --> A["FastAPI 控制面"]
-    A --> L["SQLModel / SQLite 审计账本"]
+    A --> L["SQLModel / PostgreSQL 控制账本\nSQLite 仅开发与隔离联调"]
     A --> P["协议、合同与策略状态机"]
     A --> G["输入 / 输出安全网关"]
     A --> R["FederationRunner"]
@@ -270,7 +270,7 @@ RareLink 在 NVIDIA DGX Spark GB10（ARM64、CUDA 13、PyTorch `2.10.0+cu130`、
 | --- | --- | --- |
 | **本地开发 / 演示** | 体验完整工作流和证据驾驶舱 | React + FastAPI + SQLite；可使用确定性模板 Agent 与演示证据快照 |
 | **单 Spark 工程验证** | 验证 CUDA、MONAI、FLARE、策略与证据链 | 一台 DGX Spark 运行三个逻辑站点，串行保护统一内存 |
-| **真实多院研究试点** | 数据不出院的独立本地计算 | 每院独立 Spark Client + 证书化 FLARE 通信 + 本地审计；需 IRB、数据使用协议和安全审查 |
+| **真实多院研究试点** | 数据不出院的独立本地计算 | 每院独立 Spark Client + 证书化 FLARE 通信 + PostgreSQL/Alembic 中心控制面 + 本地审计；需 IRB、数据使用协议和安全审查 |
 
 ### 三物理站点控制面
 

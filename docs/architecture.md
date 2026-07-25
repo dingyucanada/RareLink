@@ -3,7 +3,8 @@
 RareLink uses existing frameworks at every commodity layer:
 
 - FastAPI and Pydantic for validated HTTP contracts;
-- SQLModel/SQLAlchemy and SQLite for the persistent study and audit ledger;
+- SQLModel/SQLAlchemy with Alembic-managed PostgreSQL for the production
+  coordinator ledger; SQLite is limited to development and isolated integration;
 - the OpenAI Python client for Step 3.7's compatible API;
 - React Query for server state, Recharts for metric comparison, and React Markdown for reports;
 - MONAI and NVIDIA FLARE behind a federation adapter on DGX Spark.
@@ -53,6 +54,14 @@ Coordinator (FLARE Server + Admin Kit)
   ├─ mTLS ─ Hospital B Spark (independent FLARE Client + local MONAI + local manifest)
   └─ mTLS ─ Hospital C Spark (independent FLARE Client + local MONAI + local manifest)
 ```
+
+The physical coordinator fails closed if it is configured with SQLite. A
+non-SQLite coordinator never creates or mutates tables at application startup:
+an authorized migration job must first apply the reviewed Alembic revision, and
+the API then verifies that `alembic_version` equals the repository head. The
+database deployment contract, recovery procedure, and current unvalidated
+hospital PostgreSQL boundaries are documented in
+[postgresql-alembic.md](postgresql-alembic.md).
 
 `scripts/render_physical_federation.py` turns that central, non-sensitive contract into the project
 source that NVIDIA FLARE signs. It contains no data mount, image identifier, label, patient field,

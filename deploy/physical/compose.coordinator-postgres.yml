@@ -1,0 +1,127 @@
+# Production-oriented RareLink physical control-plane example.
+#
+# This stack contains NO hospital imaging data and NO Site Agent. It runs on the
+# approved coordinator host. Copy coordinator-postgres.env.example to a
+# root-readable file populated by the deployment secret manager, then run:
+#   docker compose --env-file /etc/rarelink/coordinator-postgres.env \
+#     -f deploy/physical/compose.coordinator-postgres.yml up -d
+#
+# The coordinator image must be immutable/pinned and include a PostgreSQL
+# SQLAlchemy driver such as psycopg 3. The current competition image is not a
+# production database image.
+name: rarelink-physical-control
+
+services:
+  postgres:
+    image: "${RARELINK_POSTGRES_IMAGE:?Pin an approved PostgreSQL image tag or digest}"
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: "${RARELINK_POSTGRES_DB:?Set a dedicated database name}"
+      POSTGRES_USER: "${RARELINK_POSTGRES_USER:?Set a dedicated database role}"
+      # Required interpolation rejects missing and empty values. Never place a
+      # password in this Compose file or commit a populated env file.
+      POSTGRES_PASSWORD: "${RARELINK_POSTGRES_PASSWORD:?Load the database password from a secret manager}"
+      POSTGRES_INITDB_ARGS: "--data-checksums --auth-host=scram-sha-256"
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - type: volume
+        source: postgres-data
+        target: /var/lib/postgresql/data
+    # PostgreSQL is intentionally not published on the host. Only the
+    # coordinator container can reach it on the internal database network.
+    networks:
+      - database
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}" -h 127.0.0.1'
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    stop_grace_period: 60s
+    security_opt:
+      - no-new-privileges:true
+
+  coordinator:
+    image: "${RARELINK_COORDINATOR_IMAGE:?Pin an approved RareLink coordinator image digest}"
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+        restart: true
+    environment:
+      APP_ENV: production
+      # Supply the complete SQLAlchemy URL through a secret manager. It must
+      # use host "postgres" and match POSTGRES_DB/USER/PASSWORD above.
+      DATABASE_URL: "${RARELINK_DATABASE_URL:?Load the PostgreSQL SQLAlchemy URL from a secret manager}"
+      ARTIFACT_ROOT: /var/lib/rarelink/coordinator-artifacts
+      DATA_ROOT: /var/empty/rarelink-no-patient-data
+      RARELINK_PHYSICAL_MODE: physical
+      RARELINK_PHYSICAL_AUTH_MODE: oidc
+      RARELINK_FL_MODE: nvflare
+      RARELINK_ALLOW_LLM: "false"
+      RARELINK_DEMO_CACHE: "false"
+      # HMAC values and the offline trusted JWKS are required at runtime but
+      # deliberately absent from source control.
+      RARELINK_PHYSICAL_SITE_SECRETS: "${RARELINK_PHYSICAL_SITE_SECRETS:?Load per-site heartbeat keys from a secret manager}"
+      RARELINK_AUDIT_HMAC_KEY: "${RARELINK_AUDIT_HMAC_KEY:?Load the audit HMAC key from a secret manager}"
+      RARELINK_OIDC_ISSUER: "${RARELINK_OIDC_ISSUER:?Set the pinned hospital OIDC issuer}"
+      RARELINK_OIDC_AUDIENCE: "${RARELINK_OIDC_AUDIENCE:?Set the RareLink OIDC audience}"
+      RARELINK_OIDC_JWKS_JSON: "${RARELINK_OIDC_JWKS_JSON:?Load the pinned trusted JWKS JSON}"
+      RARELINK_OIDC_ROLES_CLAIM: "${RARELINK_OIDC_ROLES_CLAIM:?Set the reviewed roles claim}"
+      RARELINK_OIDC_ORGANIZATION_CLAIM: "${RARELINK_OIDC_ORGANIZATION_CLAIM:?Set the reviewed organization claim}"
+      RARELINK_OIDC_SITES_CLAIM: "${RARELINK_OIDC_SITES_CLAIM:?Set the reviewed site scope claim}"
+      RARELINK_NVFLARE_ADMIN_KIT: /run/rarelink/nvflare-admin-kit
+      CORS_ORIGINS: "${RARELINK_CORS_ORIGINS:?Set the exact HTTPS control-console origin}"
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes:
+      - type: volume
+        source: coordinator-artifacts
+        target: /var/lib/rarelink/coordinator-artifacts
+      # The Admin Kit remains read-only. Its host directory must already exist
+      # with access restricted to the RareLink service administrator.
+      - type: bind
+        source: "${RARELINK_NVFLARE_ADMIN_KIT_HOST_PATH:?Set the protected NVFLARE Admin Kit host path}"
+        target: /run/rarelink/nvflare-admin-kit
+        read_only: true
+        bind:
+          create_host_path: false
+    networks:
+      - database
+      - ingress
+    ports:
+      # Default deployment guidance is a loopback bind behind an approved
+      # hospital reverse proxy. An external bind requires a reviewed firewall.
+      - "${RARELINK_COORDINATOR_BIND_IP:?Set an approved bind address}:${RARELINK_COORDINATOR_PORT:?Set the host API port}:9000"
+    healthcheck:
+      test:
+        - CMD
+        - python3
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9000/api/health', timeout=3).read()"
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 45s
+    stop_grace_period: 60s
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1770
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  database:
+    internal: true
+  ingress: {}
+
+volumes:
+  # External volumes survive `docker compose down --volumes` and must be
+  # created and included in the hospital backup policy before first startup.
+  postgres-data:
+    name: "${RARELINK_POSTGRES_VOLUME_NAME:?Set a pre-created PostgreSQL volume name}"
+    external: true
+  coordinator-artifacts:
+    name: "${RARELINK_COORDINATOR_ARTIFACT_VOLUME_NAME:?Set a pre-created artifact volume name}"
+    external: true

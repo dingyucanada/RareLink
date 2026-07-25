@@ -85,6 +85,11 @@
 - [x] OIDC `site_ids` resource scope requires every target site for registration,
   contract create/approve, submit, sync, abort, retry/resume, and model verification;
   denial happens before NVIDIA FLARE and does not enumerate missing sites
+- [x] Alembic `0001_initial_schema` covers all control-plane models, with schema
+  drift tests, explicit psycopg 3 runtime, and production startup revision verification
+- [x] Physical mode rejects SQLite; PostgreSQL deployment example keeps the database
+  off host ports, requires OIDC and managed secrets, and persists database/artifacts
+  in pre-created external volumes
 - [x] MSD real-image single-site CUDA smoke and one-round three-logical-site NVFLARE FedAvg: 3/3
   updates aggregated, global model persisted, exit code 0
 
