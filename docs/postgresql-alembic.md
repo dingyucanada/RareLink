@@ -84,6 +84,8 @@ SQLite 不允许作为真实多医院中心控制面生产数据库，原因包�
   应用在 PostgreSQL 事务内取得固定 advisory lock 后再读取链头并追加事件，避免
   多 worker 同时从同一链头分叉。已有分叉会使迁移失败并进入人工调查，不会被
   自动覆盖。
+- revision `0003_expire_physical_approvals` 持久化 job 与 approval record 的
+  第二审批到期时间。旧审批保持空值并在执行门失败，不通过迁移伪造有效期。
 
 当前自动化主要在临时 SQLite 上验证 Alembic schema 语义和前序唯一约束，并生成 PostgreSQL
 offline SQL 检查秘密边界；这不等于真实 PostgreSQL 实例的锁、事务、并发和性能

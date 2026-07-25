@@ -1,8 +1,8 @@
 """Small additive SQLite migrations for local and pilot deployments.
 
-Production PostgreSQL migrations remain a P1 deliverable. These fixed
-identifier migrations keep existing competition/pilot SQLite databases
-forward-compatible without deleting or rewriting user data.
+Production PostgreSQL uses versioned Alembic revisions. These fixed identifier
+migrations only keep existing competition/demo SQLite databases forward-compatible
+without deleting or rewriting user data.
 """
 
 from __future__ import annotations
@@ -21,6 +21,10 @@ SQLITE_ADDITIVE_COLUMNS: dict[str, dict[str, str]] = {
         "second_approved_by": "VARCHAR",
         "second_approval_note_sha256": "VARCHAR",
         "second_approved_at": "DATETIME",
+        "second_approval_expires_at": "DATETIME",
+    },
+    "physicaljobapprovalrecord": {
+        "expires_at": "DATETIME",
     },
 }
 

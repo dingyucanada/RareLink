@@ -80,6 +80,8 @@
   identities, per-site dataset fingerprints, rounds, local epochs, and fixed 3-of-3 quorum
 - [x] Physical mode persists a distinct OIDC second approval with a fixed attestation;
   approval note plaintext is discarded and only its SHA-256 is retained
+- [x] Second approval expiry is persisted in the job and approval record, exposed as
+  valid/expired state, and rechecked before submit/retry/resume
 - [x] Contract approval is idempotent, competing approvals conflict, and submit/retry/resume
   re-verify the frozen contract and approval before reaching NVIDIA FLARE
 - [x] OIDC `site_ids` resource scope requires every target site for registration,
@@ -138,7 +140,7 @@
   Discovery, HTTPS JWKS retrieval, automatic caching/key rotation, MFA, and session revocation
   remain outstanding.
   See [`physical-identity-rbac.md`](physical-identity-rbac.md).
-- Contract two-person approval is implemented, but approval revocation, expiry, replacement,
+- Contract two-person approval and expiry are implemented, but approval revocation, replacement,
   two-person authorization of the submit/retry/resume action itself and PostgreSQL concurrency
   remain outstanding. `isolated-integration` retains a legacy
   single-request path and is not approval evidence. See

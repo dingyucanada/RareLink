@@ -48,6 +48,7 @@ EXPECTED_KEY_COLUMNS = {
         "dataset_fingerprints_json",
         "proposed_by",
         "second_approved_by",
+        "second_approval_expires_at",
         "global_model_sha256",
     },
     "physicaljobapprovalrecord": {
@@ -56,6 +57,7 @@ EXPECTED_KEY_COLUMNS = {
         "contract_sha256",
         "approver_subject_id",
         "note_sha256",
+        "expires_at",
     },
 }
 

@@ -142,6 +142,7 @@ MONAI、NVFLARE、证书、manifest 和启动包。任何必要检查失败时�
 ```bash
 RARELINK_PHYSICAL_MODE=physical
 RARELINK_PHYSICAL_AUTH_MODE=oidc
+RARELINK_PHYSICAL_APPROVAL_TTL_SECONDS=86400
 RARELINK_PHYSICAL_SITE_SECRETS='{"hospital-a":"...","hospital-b":"...","hospital-c":"..."}'
 RARELINK_AUDIT_HMAC_KEY='由受控密钥系统注入的至少 32 字符随机值'
 RARELINK_OIDC_ISSUER='https://identity.hospital.example'
@@ -253,7 +254,7 @@ resume 都会重新核验合同摘要和审批记录。公开 job view 只显示
 合同摘要，不显示提议/审批主体。受保护审计记录第二审批，但不含 note 或 token。
 
 `isolated-integration` 继续使用 `LEGACY_SINGLE_REQUEST`，不构成双人审批证据。
-当前尚无审批撤销、过期、替补和提交动作双审；作业控制已强制三站 scope，
+当前审批已具备到期阻断，但尚无撤销、替补和提交动作双审；作业控制已强制三站 scope，
 但公开列表/audit 过滤、组织/研究维度尚未完成。SQLite 多 worker 并发还需迁移
 PostgreSQL。详见
 [物理联邦合同锁定与双人审批](physical-dual-approval.md)。

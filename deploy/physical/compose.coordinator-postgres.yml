@@ -59,6 +59,7 @@ services:
       DATA_ROOT: /var/empty/rarelink-no-patient-data
       RARELINK_PHYSICAL_MODE: physical
       RARELINK_PHYSICAL_AUTH_MODE: oidc
+      RARELINK_PHYSICAL_APPROVAL_TTL_SECONDS: "${RARELINK_PHYSICAL_APPROVAL_TTL_SECONDS:?Set the reviewed second-approval lifetime}"
       RARELINK_FL_MODE: nvflare
       RARELINK_ALLOW_LLM: "false"
       RARELINK_DEMO_CACHE: "false"

@@ -51,6 +51,7 @@ ALLOWED_PAYLOAD_KEYS = {
         "contract_sha256",
         "attestation",
         "approval_count",
+        "expires_at",
     },
     "job.submitted": {
         "external_job_id",

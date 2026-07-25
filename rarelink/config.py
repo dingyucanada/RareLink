@@ -3,6 +3,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -47,6 +48,11 @@ class Settings(BaseSettings):
     ] = "disabled"
     rarelink_physical_auth_mode: Literal["legacy-token", "oidc"] = "legacy-token"
     rarelink_physical_heartbeat_max_age_seconds: int = 300
+    rarelink_physical_approval_ttl_seconds: int = Field(
+        default=86400,
+        ge=300,
+        le=604800,
+    )
     rarelink_oidc_issuer: str = ""
     rarelink_oidc_audience: str = ""
     rarelink_oidc_jwks_json: str = ""

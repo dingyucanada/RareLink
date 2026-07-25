@@ -87,6 +87,10 @@ def validate(compose_path: Path, env_path: Path) -> dict[str, object]:
         raise ValueError("Coordinator must explicitly enable physical mode")
     if coordinator_environment.get("RARELINK_PHYSICAL_AUTH_MODE") != "oidc":
         raise ValueError("Coordinator must explicitly select OIDC")
+    if ":?" not in str(
+        coordinator_environment.get("RARELINK_PHYSICAL_APPROVAL_TTL_SECONDS", "")
+    ):
+        raise ValueError("Coordinator must require an explicit second-approval lifetime")
 
     volumes = _mapping(compose.get("volumes"), "volumes")
     for name in ("postgres-data", "coordinator-artifacts"):

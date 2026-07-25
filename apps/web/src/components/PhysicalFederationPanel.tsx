@@ -9,6 +9,15 @@ function ageLabel(value: string | null): string {
   return `${Math.floor(seconds / 60)} 分钟前`;
 }
 
+function approvalDeadline(value: string | null): string {
+  if (!value) return "无到期时间";
+  const remaining = new Date(value).getTime() - Date.now();
+  if (remaining <= 0) return "审批已过期";
+  const minutes = Math.ceil(remaining / 60_000);
+  if (minutes < 60) return `${minutes} 分钟后到期`;
+  return `${Math.ceil(minutes / 60)} 小时后到期`;
+}
+
 export default function PhysicalFederationPanel() {
   const sites = useQuery({
     queryKey: ["physical-sites"],
@@ -126,7 +135,13 @@ export default function PhysicalFederationPanel() {
             <strong>{latestJob.strategy.toUpperCase()} · {latestJob.status}</strong>
           </div>
           <div><span>NVFLARE JOB ID</span><strong>{latestJob.external_job_id ?? "等待人工审批提交"}</strong></div>
-          <div><span>APPROVAL</span><strong>{latestJob.approval_count}/{latestJob.approval_required}</strong></div>
+          <div>
+            <span>APPROVAL</span>
+            <strong className={latestJob.approval_valid ? "" : "warning"}>
+              {latestJob.approval_count}/{latestJob.approval_required}
+            </strong>
+            <small>{latestJob.approval_state} · {approvalDeadline(latestJob.approval_expires_at)}</small>
+          </div>
           <div><span>ROUND</span><strong>{latestJob.current_round}/{latestJob.total_rounds}</strong></div>
           <div><span>UPDATES</span><strong>{latestJob.received_updates}/{latestJob.quorum_required}</strong></div>
           {latestJob.error && <p><CircleAlert size={14} /> {latestJob.error}</p>}

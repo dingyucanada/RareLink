@@ -4,7 +4,7 @@ import json
 import secrets
 import zipfile
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from pathlib import Path
 from typing import Annotated, Any
@@ -155,6 +155,13 @@ def as_json(value: str | None, default: Any = None) -> Any:
     return json.loads(value) if value else default
 
 
+def as_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    normalized = value if value.tzinfo else value.replace(tzinfo=UTC)
+    return normalized.astimezone(UTC)
+
+
 def study_view(study: Study) -> dict[str, Any]:
     return {
         "id": study.id,
@@ -276,15 +283,24 @@ def physical_site_is_fresh(site: PhysicalSite, config: Settings) -> bool:
 def physical_job_view(job: PhysicalFederationJob, config: Settings) -> dict[str, Any]:
     approval_count = int(bool(job.proposed_by)) + int(bool(job.second_approved_by))
     if config.rarelink_physical_mode == "physical":
-        approval_state = (
-            "SECOND_APPROVAL_RECORDED"
-            if job.second_approved_by
-            else "SECOND_APPROVAL_PENDING"
+        approval_expires_at = as_utc(job.second_approval_expires_at)
+        approval_valid = bool(
+            job.second_approved_by
+            and approval_expires_at
+            and approval_expires_at > datetime.now(UTC)
         )
+        if approval_valid:
+            approval_state = "SECOND_APPROVAL_RECORDED"
+        elif job.second_approved_by:
+            approval_state = "SECOND_APPROVAL_EXPIRED"
+        else:
+            approval_state = "SECOND_APPROVAL_PENDING"
         approval_required = 2
     else:
         approval_state = "LEGACY_SINGLE_REQUEST"
         approval_required = 1
+        approval_expires_at = None
+        approval_valid = True
     return {
         "deployment_mode": config.rarelink_physical_mode,
         "id": job.id,
@@ -304,6 +320,8 @@ def physical_job_view(job: PhysicalFederationJob, config: Settings) -> dict[str,
         "approval_count": approval_count,
         "approval_required": approval_required,
         "approval_state": approval_state,
+        "approval_valid": approval_valid,
+        "approval_expires_at": approval_expires_at,
         "global_model_sha256": job.global_model_sha256,
         "metrics": as_json(job.metrics_json),
         "error": job.error,
@@ -520,15 +538,21 @@ def require_current_physical_contract(
             PhysicalJobApprovalRecord.job_id == job.id
         )
     ).first()
+    approval_expires_at = as_utc(approval.expires_at) if approval else None
+    job_approval_expires_at = as_utc(job.second_approval_expires_at)
     if (
         not approval
         or approval.contract_sha256 != job.contract_sha256
         or approval.approver_subject_id != job.second_approved_by
         or job.second_approved_by == job.proposed_by
+        or approval_expires_at is None
+        or job_approval_expires_at is None
+        or approval_expires_at != job_approval_expires_at
+        or approval_expires_at <= datetime.now(UTC)
     ):
         raise HTTPException(
             status_code=409,
-            detail="Physical mode requires a distinct second contract approval",
+            detail="Physical mode requires a current distinct second contract approval",
         )
     return 2
 
@@ -993,12 +1017,16 @@ def approve_physical_job_contract(
         )
     ).first()
     if existing:
+        existing_expires_at = as_utc(existing.expires_at)
         if (
             existing.approver_subject_id == principal.subject_id
             and existing.contract_sha256 == job.contract_sha256
             and existing.attestation == payload.attestation
             and job.second_approved_by == principal.subject_id
             and job.second_approved_at is not None
+            and existing_expires_at is not None
+            and existing_expires_at == as_utc(job.second_approval_expires_at)
+            and existing_expires_at > datetime.now(UTC)
         ):
             return physical_job_view(job, config)
         raise HTTPException(
@@ -1013,6 +1041,10 @@ def approve_physical_job_contract(
         )
     except (PhysicalApprovalServiceError, PhysicalAccessControlError) as exc:
         raise physical_approval_error(exc) from exc
+    approved_at = utc_now()
+    approval_expires_at = approved_at + timedelta(
+        seconds=config.rarelink_physical_approval_ttl_seconds
+    )
     approval = PhysicalJobApprovalRecord(
         job_id=job.id,
         contract_sha256=contract_sha256,
@@ -1023,11 +1055,14 @@ def approve_physical_job_contract(
         ),
         attestation=payload.attestation,
         note_sha256=sha256(payload.note.strip().encode("utf-8")).hexdigest(),
+        created_at=approved_at,
+        expires_at=approval_expires_at,
     )
     job.second_approved_by = principal.subject_id
     job.second_approval_note_sha256 = approval.note_sha256
-    job.second_approved_at = utc_now()
-    job.updated_at = utc_now()
+    job.second_approved_at = approved_at
+    job.second_approval_expires_at = approval_expires_at
+    job.updated_at = approved_at
     session.add(approval)
     session.add(job)
     append_physical_event(
@@ -1042,6 +1077,7 @@ def approve_physical_job_contract(
             "contract_sha256": contract_sha256,
             "attestation": approval.attestation,
             "approval_count": 2,
+            "expires_at": approval_expires_at.isoformat().replace("+00:00", "Z"),
         },
         hmac_key=config.rarelink_audit_hmac_key,
     )

@@ -25,6 +25,14 @@ def test_additive_sqlite_migration_upgrades_existing_physical_tables(tmp_path) -
             )
             """
         )
+        connection.exec_driver_sql(
+            """
+            CREATE TABLE physicaljobapprovalrecord (
+                id VARCHAR PRIMARY KEY,
+                job_id VARCHAR NOT NULL
+            )
+            """
+        )
 
     first = migrate_sqlite_schema(engine)
     second = migrate_sqlite_schema(engine)
@@ -32,6 +40,10 @@ def test_additive_sqlite_migration_upgrades_existing_physical_tables(tmp_path) -
     site_columns = {column["name"] for column in schema.get_columns("physicalsite")}
     job_columns = {
         column["name"] for column in schema.get_columns("physicalfederationjob")
+    }
+    approval_columns = {
+        column["name"]
+        for column in schema.get_columns("physicaljobapprovalrecord")
     }
 
     assert first == [
@@ -43,6 +55,8 @@ def test_additive_sqlite_migration_upgrades_existing_physical_tables(tmp_path) -
         "physicalfederationjob.second_approved_by",
         "physicalfederationjob.second_approval_note_sha256",
         "physicalfederationjob.second_approved_at",
+        "physicalfederationjob.second_approval_expires_at",
+        "physicaljobapprovalrecord.expires_at",
     ]
     assert second == []
     assert "dataset_fingerprint" in site_columns
@@ -53,3 +67,5 @@ def test_additive_sqlite_migration_upgrades_existing_physical_tables(tmp_path) -
     assert "second_approved_by" in job_columns
     assert "second_approval_note_sha256" in job_columns
     assert "second_approved_at" in job_columns
+    assert "second_approval_expires_at" in job_columns
+    assert "expires_at" in approval_columns

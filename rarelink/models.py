@@ -157,6 +157,7 @@ class PhysicalFederationJob(SQLModel, table=True):
     second_approved_by: str | None = Field(default=None, index=True)
     second_approval_note_sha256: str | None = None
     second_approved_at: datetime | None = Field(default=None, index=True)
+    second_approval_expires_at: datetime | None = Field(default=None, index=True)
     approved_by: str | None = None
     approval_note: str | None = None
     attempt: int = 0
@@ -183,3 +184,4 @@ class PhysicalJobApprovalRecord(SQLModel, table=True):
     attestation: str
     note_sha256: str
     created_at: datetime = Field(default_factory=utc_now, index=True)
+    expires_at: datetime | None = Field(default=None, index=True)

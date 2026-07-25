@@ -1,10 +1,13 @@
 import json
 import time
+from datetime import timedelta
 from typing import Any
 
 import jwt
+import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 from sqlmodel import Session, select
 
 from rarelink.api import main as api_main
@@ -74,6 +77,15 @@ def physical_oidc_settings(jwk: dict[str, Any]) -> Settings:
     )
 
 
+@pytest.mark.parametrize("ttl_seconds", [299, 604801])
+def test_physical_approval_ttl_has_bounded_configuration(ttl_seconds: int) -> None:
+    with pytest.raises(ValidationError):
+        Settings(
+            _env_file=None,
+            rarelink_physical_approval_ttl_seconds=ttl_seconds,
+        )
+
+
 def with_test_session() -> tuple[Session, Any]:
     provider = app.dependency_overrides[get_session]
     generator = provider()
@@ -141,6 +153,8 @@ def assert_approval_note_is_digest_only(job_id: str, raw_note: str) -> None:
         assert len(record.note_sha256) == 64
         assert record.note_sha256 != raw_note
         assert job.second_approval_note_sha256 == record.note_sha256
+        assert record.expires_at is not None
+        assert job.second_approval_expires_at == record.expires_at
         assert raw_note not in record.model_dump_json()
         assert raw_note not in job.model_dump_json()
     finally:
@@ -254,6 +268,8 @@ def test_physical_contract_requires_distinct_persisted_second_approval(
     assert approved.json()["approval_count"] == 2
     assert approved.json()["approval_required"] == 2
     assert approved.json()["approval_state"] == "SECOND_APPROVAL_RECORDED"
+    assert approved.json()["approval_valid"] is True
+    assert approved.json()["approval_expires_at"]
     assert approved.json()["contract_sha256"]
     assert "lead-subject" not in approved.text
     assert "reviewer-subject" not in approved.text
@@ -315,6 +331,76 @@ def test_physical_contract_requires_distinct_persisted_second_approval(
     assert changed_contract.status_code == 409
     assert "changed after proposal" in changed_contract.json()["detail"]
     assert lead not in changed_contract.text
+
+
+def test_expired_second_approval_blocks_submission_before_nvflare(
+    client: TestClient,
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    private_key, jwk = oidc_material()
+    app.dependency_overrides[get_settings] = lambda: physical_oidc_settings(jwk)
+    lead = oidc_token(
+        private_key,
+        subject="lead-subject",
+        roles=["research_lead"],
+    )
+    reviewer = oidc_token(
+        private_key,
+        subject="reviewer-subject",
+        roles=["reviewer"],
+    )
+    job_id = insert_proposed_job("lead-subject")
+    approved = client.post(
+        f"/api/physical/jobs/{job_id}:approve",
+        headers={"Authorization": f"Bearer {reviewer}"},
+        json={
+            "attestation": "CONTRACT_DATA_AND_SECURITY_REVIEWED",
+            "note": "Approval will be expired by the test",
+        },
+    )
+    assert approved.status_code == 200
+
+    session, generator = with_test_session()
+    try:
+        expired_at = utc_now() - timedelta(seconds=1)
+        job = session.get(PhysicalFederationJob, job_id)
+        record = session.exec(
+            select(PhysicalJobApprovalRecord).where(
+                PhysicalJobApprovalRecord.job_id == job_id
+            )
+        ).one()
+        assert job is not None
+        job.second_approval_expires_at = expired_at
+        record.expires_at = expired_at
+        session.add(job)
+        session.add(record)
+        session.commit()
+    finally:
+        session.close()
+        generator.close()
+
+    monkeypatch.setattr(
+        api_main,
+        "build_physical_controller",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("Expired approval reached NVIDIA FLARE")
+        ),
+    )
+    submitted = client.post(
+        f"/api/physical/jobs/{job_id}:submit",
+        headers={"Authorization": f"Bearer {lead}"},
+        json=submit_payload(),
+    )
+    assert submitted.status_code == 409
+    assert "current distinct second" in submitted.json()["detail"]
+
+    jobs = client.get(
+        "/api/physical/jobs",
+        headers={"Authorization": f"Bearer {lead}"},
+    )
+    assert jobs.status_code == 200
+    assert jobs.json()[0]["approval_state"] == "SECOND_APPROVAL_EXPIRED"
+    assert jobs.json()[0]["approval_valid"] is False
 
 
 def test_distinct_approval_allows_real_controller_submission_boundary(
