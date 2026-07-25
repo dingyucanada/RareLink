@@ -4,11 +4,13 @@ import json
 import secrets
 import zipfile
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from hashlib import sha256
+from pathlib import Path
 from typing import Annotated, Any
 
 import yaml
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from sqlmodel import Session, select
@@ -22,16 +24,43 @@ from rarelink.domain import (
     ExperimentContract,
     ExperimentCreate,
     ExperimentStatus,
+    PhysicalJobApproval,
+    PhysicalJobCreate,
+    PhysicalJobStatus,
+    PhysicalModelVerification,
+    PhysicalSiteCreate,
+    PhysicalSiteHeartbeat,
+    PhysicalSiteStatus,
     StudyCreate,
     StudyStatus,
     utc_now,
 )
 from rarelink.imaging.preview import build_synthetic_imaging_preview
-from rarelink.models import AgentArtifact, AuditEvent, Experiment, Study, TrainingJob
+from rarelink.models import (
+    AgentArtifact,
+    AuditEvent,
+    Experiment,
+    PhysicalFederationJob,
+    PhysicalHeartbeatReceipt,
+    PhysicalSite,
+    Study,
+    TrainingJob,
+)
+from rarelink.security import verify_heartbeat_signature
 from rarelink.services.agents import build_research_agent
 from rarelink.services.federation import build_federation_runner
 from rarelink.services.ledger import append_event, list_events
 from rarelink.services.local_inference import probe_spark_inference
+from rarelink.services.physical_controller import (
+    JobConflictError,
+    JobNotFoundError,
+    JobValidationError,
+    NvflareCliAdapter,
+    PhysicalControllerError,
+    PhysicalFederationController,
+    validate_exported_job,
+)
+from rarelink.services.physical_store import SqlPhysicalJobStore
 from rarelink.services.policy import sanitize_site_aggregate
 from rarelink.services.training_jobs import execute_training_job, recover_interrupted_jobs
 from rarelink.services.workflow import InvalidTransition, transition
@@ -162,6 +191,111 @@ def job_view(job: TrainingJob) -> dict[str, Any]:
     }
 
 
+def physical_site_view(site: PhysicalSite, config: Settings) -> dict[str, Any]:
+    status = site.status
+    if site.last_heartbeat_at:
+        observed_at = site.last_heartbeat_at
+        if observed_at.tzinfo is None:
+            observed_at = observed_at.replace(tzinfo=UTC)
+        age = (datetime.now(UTC) - observed_at).total_seconds()
+        if age > config.rarelink_physical_heartbeat_max_age_seconds * 2:
+            status = PhysicalSiteStatus.OFFLINE
+    return {
+        "deployment_mode": config.rarelink_physical_mode,
+        "site_id": site.site_id,
+        "display_name": site.display_name,
+        "organization": site.organization,
+        "expected": site.expected,
+        "status": status,
+        "certificate_status": site.certificate_status,
+        "data_ready": site.data_ready,
+        "gpu_ready": site.gpu_ready,
+        "monai_ready": site.monai_ready,
+        "nvflare_ready": site.nvflare_ready,
+        "current_job_id": site.current_job_id,
+        "current_round": site.current_round,
+        "total_rounds": site.total_rounds,
+        "free_memory_percent": site.free_memory_percent,
+        "free_disk_percent": site.free_disk_percent,
+        "receipt_sha256": site.receipt_sha256,
+        "last_heartbeat_at": site.last_heartbeat_at,
+        "contains_patient_data": False,
+    }
+
+
+def physical_job_view(job: PhysicalFederationJob, config: Settings) -> dict[str, Any]:
+    return {
+        "deployment_mode": config.rarelink_physical_mode,
+        "id": job.id,
+        "study_id": job.study_id,
+        "external_job_id": job.external_job_id,
+        "strategy": job.strategy,
+        "status": job.status,
+        "expected_sites": as_json(job.expected_sites_json, []),
+        "connected_sites": as_json(job.connected_sites_json, []),
+        "total_rounds": job.total_rounds,
+        "local_epochs": job.local_epochs,
+        "current_round": job.current_round,
+        "received_updates": job.received_updates,
+        "quorum_required": job.quorum_required,
+        "approved_by": job.approved_by,
+        "global_model_sha256": job.global_model_sha256,
+        "metrics": as_json(job.metrics_json),
+        "error": job.error,
+        "created_at": job.created_at,
+        "updated_at": job.updated_at,
+        "completed_at": job.completed_at,
+        "contains_patient_data": False,
+    }
+
+
+def require_physical_enabled(config: Settings) -> None:
+    if config.rarelink_physical_mode == "disabled":
+        raise HTTPException(
+            status_code=503,
+            detail="Physical federation control plane is disabled",
+        )
+
+
+def require_physical_operator(request: Request, config: Settings) -> None:
+    require_physical_enabled(config)
+    expected = config.rarelink_physical_operator_token
+    if not expected:
+        raise HTTPException(
+            status_code=503,
+            detail="Physical federation operator authentication is not configured",
+        )
+    provided = request.headers.get("X-RareLink-Operator-Token", "")
+    if not secrets.compare_digest(provided, expected):
+        raise HTTPException(status_code=401, detail="Physical federation operator token required")
+
+
+def build_physical_controller(
+    session: Session,
+    config: Settings,
+) -> tuple[PhysicalFederationController, Path]:
+    if not config.rarelink_nvflare_admin_kit:
+        raise HTTPException(status_code=503, detail="NVFLARE admin kit is not configured")
+    admin_kit = Path(config.rarelink_nvflare_admin_kit).resolve()
+    if not (admin_kit / "startup").is_dir():
+        raise HTTPException(status_code=503, detail="NVFLARE admin kit is unavailable")
+    controller = PhysicalFederationController(
+        NvflareCliAdapter(executable=config.rarelink_nvflare_executable),
+        SqlPhysicalJobStore(session),
+    )
+    return controller, admin_kit
+
+
+def physical_controller_error(exc: PhysicalControllerError) -> HTTPException:
+    if isinstance(exc, JobNotFoundError):
+        return HTTPException(status_code=404, detail=str(exc))
+    if isinstance(exc, JobConflictError):
+        return HTTPException(status_code=409, detail=str(exc))
+    if isinstance(exc, JobValidationError):
+        return HTTPException(status_code=422, detail=str(exc))
+    return HTTPException(status_code=502, detail=str(exc))
+
+
 def store_agent_artifact(
     session: Session,
     study_id: str,
@@ -225,6 +359,329 @@ def capabilities(config: SettingsDep) -> CapabilityRead:
         local_inference_endpoint=local_inference["endpoint"],
         local_inference_boundary=local_inference["data_boundary"],
     )
+
+
+@app.post("/api/physical/sites", status_code=201)
+def register_physical_site(
+    payload: PhysicalSiteCreate,
+    request: Request,
+    session: SessionDep,
+    config: SettingsDep,
+) -> dict[str, Any]:
+    require_physical_operator(request, config)
+    if session.get(PhysicalSite, payload.site_id):
+        raise HTTPException(status_code=409, detail="Physical site is already registered")
+    site = PhysicalSite(
+        site_id=payload.site_id,
+        display_name=payload.display_name,
+        organization=payload.organization,
+        expected=payload.expected,
+    )
+    session.add(site)
+    session.commit()
+    session.refresh(site)
+    return physical_site_view(site, config)
+
+
+@app.get("/api/physical/sites")
+def list_physical_sites(session: SessionDep, config: SettingsDep) -> list[dict[str, Any]]:
+    statement = select(PhysicalSite).order_by(PhysicalSite.site_id)
+    return [physical_site_view(site, config) for site in session.exec(statement).all()]
+
+
+@app.post("/api/physical/sites/{site_id}/heartbeat")
+def receive_physical_site_heartbeat(
+    site_id: str,
+    payload: PhysicalSiteHeartbeat,
+    request: Request,
+    session: SessionDep,
+    config: SettingsDep,
+) -> dict[str, Any]:
+    require_physical_enabled(config)
+    site = session.get(PhysicalSite, site_id)
+    if not site:
+        raise HTTPException(status_code=404, detail="Physical site is not registered")
+    if payload.contains_patient_data:
+        raise HTTPException(status_code=422, detail="Heartbeat must not contain patient data")
+    if session.get(PhysicalHeartbeatReceipt, payload.heartbeat_id):
+        raise HTTPException(status_code=409, detail="Heartbeat has already been accepted")
+
+    secret = config.physical_site_secret_map.get(site_id)
+    if not secret:
+        raise HTTPException(
+            status_code=503,
+            detail="Physical site authentication is not configured",
+        )
+    timestamp_header = request.headers.get("X-RareLink-Site-Timestamp", "")
+    signature = request.headers.get("X-RareLink-Site-Signature", "")
+    try:
+        timestamp = int(timestamp_header)
+        captured_at = payload.captured_at
+        if captured_at.tzinfo is None:
+            captured_at = captured_at.replace(tzinfo=UTC)
+        if (
+            abs(int(captured_at.timestamp()) - timestamp)
+            > config.rarelink_physical_heartbeat_max_age_seconds
+        ):
+            raise ValueError("Heartbeat health snapshot is outside the accepted replay window")
+        serialized = payload.model_dump(mode="json")
+        digest = verify_heartbeat_signature(
+            site_id=site_id,
+            timestamp=timestamp,
+            heartbeat_id=payload.heartbeat_id,
+            payload=serialized,
+            secret=secret,
+            signature=signature,
+            max_age_seconds=config.rarelink_physical_heartbeat_max_age_seconds,
+        )
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+
+    receipt = PhysicalHeartbeatReceipt(
+        heartbeat_id=payload.heartbeat_id,
+        site_id=site_id,
+        payload_sha256=digest,
+        captured_at=payload.captured_at,
+    )
+    site.status = payload.status
+    site.certificate_status = payload.certificate_status
+    site.data_ready = payload.data_ready
+    site.gpu_ready = payload.gpu_ready
+    site.monai_ready = payload.monai_ready
+    site.nvflare_ready = payload.nvflare_ready
+    site.current_job_id = payload.current_job_id
+    site.current_round = payload.current_round
+    site.total_rounds = payload.total_rounds
+    site.free_memory_percent = payload.free_memory_percent
+    site.free_disk_percent = payload.free_disk_percent
+    site.receipt_sha256 = payload.receipt_sha256
+    site.heartbeat_json = json.dumps(serialized, ensure_ascii=False, sort_keys=True)
+    site.last_heartbeat_at = utc_now()
+    site.updated_at = utc_now()
+    session.add(receipt)
+    session.add(site)
+    session.commit()
+    session.refresh(site)
+    return physical_site_view(site, config)
+
+
+@app.post("/api/physical/jobs", status_code=201)
+def create_physical_job(
+    payload: PhysicalJobCreate,
+    request: Request,
+    session: SessionDep,
+    config: SettingsDep,
+) -> dict[str, Any]:
+    require_physical_operator(request, config)
+    if payload.study_id and not session.get(Study, payload.study_id):
+        raise HTTPException(status_code=422, detail="Linked study does not exist")
+    expected_sites = list(dict.fromkeys(payload.expected_sites))
+    if len(expected_sites) != len(payload.expected_sites):
+        raise HTTPException(status_code=422, detail="Expected physical sites must be unique")
+    registered = {
+        site.site_id
+        for site in session.exec(
+            select(PhysicalSite).where(PhysicalSite.site_id.in_(expected_sites))
+        ).all()
+    }
+    missing = sorted(set(expected_sites) - registered)
+    if missing:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Expected physical sites are not registered: {', '.join(missing)}",
+        )
+    try:
+        bundle = validate_exported_job(Path(payload.job_directory))
+    except PhysicalControllerError as exc:
+        raise physical_controller_error(exc) from exc
+    if (
+        bundle.strategy != payload.strategy
+        or list(bundle.expected_sites) != expected_sites
+        or bundle.total_rounds != payload.total_rounds
+        or bundle.local_epochs != payload.local_epochs
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="Requested job metadata does not match the validated exported bundle",
+        )
+    job = PhysicalFederationJob(
+        study_id=payload.study_id,
+        strategy=bundle.strategy,
+        status=PhysicalJobStatus.APPROVAL_PENDING,
+        bundle_sha256=bundle.bundle_sha256,
+        expected_sites_json=json.dumps(expected_sites),
+        total_rounds=bundle.total_rounds,
+        local_epochs=bundle.local_epochs,
+        quorum_required=len(expected_sites),
+        job_directory=payload.job_directory,
+    )
+    session.add(job)
+    session.commit()
+    session.refresh(job)
+    return physical_job_view(job, config)
+
+
+@app.get("/api/physical/jobs")
+def list_physical_jobs(session: SessionDep, config: SettingsDep) -> list[dict[str, Any]]:
+    statement = select(PhysicalFederationJob).order_by(PhysicalFederationJob.created_at.desc())
+    return [physical_job_view(job, config) for job in session.exec(statement).all()]
+
+
+@app.post("/api/physical/jobs/{job_id}:submit")
+def submit_physical_job(
+    job_id: str,
+    payload: PhysicalJobApproval,
+    request: Request,
+    session: SessionDep,
+    config: SettingsDep,
+) -> dict[str, Any]:
+    require_physical_operator(request, config)
+    job = session.get(PhysicalFederationJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Physical job not found")
+    if job.status not in {"APPROVAL_PENDING", "SUBMITTED"}:
+        raise HTTPException(status_code=409, detail="Physical job is not awaiting submission")
+    job.approved_by = payload.approved_by
+    job.approval_note = payload.note
+    job.updated_at = utc_now()
+    session.add(job)
+    session.commit()
+    controller, admin_kit = build_physical_controller(session, config)
+    try:
+        controller.submit(
+            job_id,
+            admin_kit=admin_kit,
+            submit_token=payload.submit_token,
+        )
+    except PhysicalControllerError as exc:
+        raise physical_controller_error(exc) from exc
+    session.expire_all()
+    refreshed = session.get(PhysicalFederationJob, job_id)
+    if not refreshed:
+        raise HTTPException(status_code=500, detail="Physical job persistence failed")
+    return physical_job_view(refreshed, config)
+
+
+@app.post("/api/physical/jobs/{job_id}:sync")
+def sync_physical_job(
+    job_id: str,
+    request: Request,
+    session: SessionDep,
+    config: SettingsDep,
+) -> dict[str, Any]:
+    require_physical_operator(request, config)
+    controller, admin_kit = build_physical_controller(session, config)
+    try:
+        controller.status(job_id, admin_kit=admin_kit)
+    except PhysicalControllerError as exc:
+        raise physical_controller_error(exc) from exc
+    session.expire_all()
+    job = session.get(PhysicalFederationJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Physical job not found")
+    return physical_job_view(job, config)
+
+
+@app.post("/api/physical/jobs/{job_id}:abort")
+def abort_physical_job(
+    job_id: str,
+    request: Request,
+    session: SessionDep,
+    config: SettingsDep,
+) -> dict[str, Any]:
+    require_physical_operator(request, config)
+    controller, admin_kit = build_physical_controller(session, config)
+    try:
+        controller.abort(job_id, admin_kit=admin_kit)
+    except PhysicalControllerError as exc:
+        raise physical_controller_error(exc) from exc
+    session.expire_all()
+    job = session.get(PhysicalFederationJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Physical job not found")
+    return physical_job_view(job, config)
+
+
+@app.post("/api/physical/jobs/{job_id}:retry")
+def retry_physical_job(
+    job_id: str,
+    payload: PhysicalJobApproval,
+    request: Request,
+    session: SessionDep,
+    config: SettingsDep,
+) -> dict[str, Any]:
+    require_physical_operator(request, config)
+    controller, admin_kit = build_physical_controller(session, config)
+    try:
+        controller.retry(
+            job_id,
+            admin_kit=admin_kit,
+            submit_token=payload.submit_token,
+        )
+    except PhysicalControllerError as exc:
+        raise physical_controller_error(exc) from exc
+    session.expire_all()
+    job = session.get(PhysicalFederationJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Physical job not found")
+    job.approved_by = payload.approved_by
+    job.approval_note = payload.note
+    session.add(job)
+    session.commit()
+    session.refresh(job)
+    return physical_job_view(job, config)
+
+
+@app.post("/api/physical/jobs/{job_id}:resume")
+def resume_physical_job(
+    job_id: str,
+    payload: PhysicalJobApproval,
+    request: Request,
+    session: SessionDep,
+    config: SettingsDep,
+) -> dict[str, Any]:
+    require_physical_operator(request, config)
+    controller, admin_kit = build_physical_controller(session, config)
+    try:
+        controller.resume(
+            job_id,
+            admin_kit=admin_kit,
+            submit_token=payload.submit_token,
+        )
+    except PhysicalControllerError as exc:
+        raise physical_controller_error(exc) from exc
+    session.expire_all()
+    job = session.get(PhysicalFederationJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Physical job not found")
+    return physical_job_view(job, config)
+
+
+@app.post("/api/physical/jobs/{job_id}:verify-model")
+def verify_physical_global_model(
+    job_id: str,
+    payload: PhysicalModelVerification,
+    request: Request,
+    session: SessionDep,
+    config: SettingsDep,
+) -> dict[str, Any]:
+    """Bind a completed 3/3 job to a coordinator-local model digest.
+
+    The supplied path is used only inside the coordinator and is never included
+    in the response or persisted in an audit payload exposed to the browser.
+    """
+    require_physical_operator(request, config)
+    controller, _admin_kit = build_physical_controller(session, config)
+    try:
+        receipt = controller.verify_global_model(
+            job_id,
+            Path(payload.model_path),
+            expected_sha256=payload.expected_sha256,
+        )
+    except PhysicalControllerError as exc:
+        raise physical_controller_error(exc) from exc
+    session.expire_all()
+    return receipt
 
 
 def _read_json_if_present(path) -> dict[str, Any] | None:  # type: ignore[no-untyped-def]

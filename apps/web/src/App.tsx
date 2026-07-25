@@ -30,6 +30,7 @@ const MarkdownReport = lazy(() => import("./components/MarkdownReport"));
 const ImagingPreview = lazy(() => import("./components/ImagingPreview"));
 const SystemEvidence = lazy(() => import("./components/SystemEvidence"));
 const VerifiedRunConsole = lazy(() => import("./components/VerifiedRunConsole"));
+const PhysicalFederationPanel = lazy(() => import("./components/PhysicalFederationPanel"));
 
 function EmptyState({ create }: { create: () => void }) {
   return (
@@ -370,6 +371,10 @@ function App() {
 
         <Suspense fallback={<div className="run-console loading-console">正在读取 DGX Spark 实机收据…</div>}>
           <VerifiedRunConsole />
+        </Suspense>
+
+        <Suspense fallback={<div className="panel placeholder">正在读取物理站点控制面…</div>}>
+          <PhysicalFederationPanel />
         </Suspense>
 
         <StatusRail study={study} />

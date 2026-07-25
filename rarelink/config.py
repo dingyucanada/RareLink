@@ -1,5 +1,7 @@
+import json
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -34,11 +36,34 @@ class Settings(BaseSettings):
     rarelink_fl_mode: str = "mock"
     rarelink_demo_access_token: str = ""
     rarelink_simulate_training_failure: bool = False
+    # Interim P0 authentication for Site Agent heartbeats. Values are supplied
+    # only through the runtime environment as a JSON mapping. Production P1
+    # replaces this with hospital OIDC/mTLS identity and a managed secret store.
+    rarelink_physical_site_secrets: str = ""
+    rarelink_physical_operator_token: str = ""
+    rarelink_physical_mode: Literal[
+        "disabled", "isolated-integration", "physical"
+    ] = "disabled"
+    rarelink_physical_heartbeat_max_age_seconds: int = 300
+    rarelink_nvflare_admin_kit: str = ""
+    rarelink_nvflare_executable: str = "nvflare"
     cors_origins: str = "http://localhost:5173"
 
     @property
     def cors_origin_list(self) -> list[str]:
         return [item.strip() for item in self.cors_origins.split(",") if item.strip()]
+
+    @property
+    def physical_site_secret_map(self) -> dict[str, str]:
+        if not self.rarelink_physical_site_secrets:
+            return {}
+        value = json.loads(self.rarelink_physical_site_secrets)
+        if not isinstance(value, dict) or not all(
+            isinstance(key, str) and isinstance(secret, str) and secret
+            for key, secret in value.items()
+        ):
+            raise ValueError("RARELINK_PHYSICAL_SITE_SECRETS must be a JSON string map")
+        return value
 
 
 @lru_cache

@@ -1,0 +1,22 @@
+# Install beside rarelink-site-agent on one hospital Spark.
+# Tokens are read from a root-owned EnvironmentFile, not command arguments.
+[Unit]
+Description=RareLink signed Site Agent heartbeat forwarder
+After=network-online.target rarelink-site-agent.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rarelink
+Group=rarelink
+WorkingDirectory=/opt/rarelink/app
+EnvironmentFile=/etc/rarelink/site-agent.env
+ExecStart=/opt/rarelink/venv/bin/python scripts/push_site_heartbeat.py --agent-url http://127.0.0.1:9100 --coordinator-url COORDINATOR_URL --interval 15
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

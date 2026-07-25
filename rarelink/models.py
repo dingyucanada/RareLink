@@ -3,7 +3,14 @@ from uuid import uuid4
 
 from sqlmodel import Field, SQLModel
 
-from rarelink.domain import ExperimentStatus, StudyStatus, TrainingJobStatus, utc_now
+from rarelink.domain import (
+    ExperimentStatus,
+    PhysicalJobStatus,
+    PhysicalSiteStatus,
+    StudyStatus,
+    TrainingJobStatus,
+    utc_now,
+)
 
 
 def new_id(prefix: str) -> str:
@@ -72,4 +79,64 @@ class TrainingJob(SQLModel, table=True):
     error: str | None = None
     created_at: datetime = Field(default_factory=utc_now, index=True)
     started_at: datetime | None = None
+    completed_at: datetime | None = None
+
+
+class PhysicalSite(SQLModel, table=True):
+    site_id: str = Field(primary_key=True)
+    display_name: str
+    organization: str = Field(index=True)
+    expected: bool = Field(default=True, index=True)
+    status: PhysicalSiteStatus = Field(default=PhysicalSiteStatus.UNKNOWN, index=True)
+    certificate_status: str = "UNKNOWN"
+    data_ready: bool = False
+    gpu_ready: bool = False
+    monai_ready: bool = False
+    nvflare_ready: bool = False
+    current_job_id: str | None = Field(default=None, index=True)
+    current_round: int = 0
+    total_rounds: int = 0
+    free_memory_percent: float | None = None
+    free_disk_percent: float | None = None
+    receipt_sha256: str | None = None
+    heartbeat_json: str | None = None
+    last_heartbeat_at: datetime | None = Field(default=None, index=True)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
+class PhysicalHeartbeatReceipt(SQLModel, table=True):
+    heartbeat_id: str = Field(primary_key=True)
+    site_id: str = Field(index=True, foreign_key="physicalsite.site_id")
+    payload_sha256: str
+    captured_at: datetime
+    received_at: datetime = Field(default_factory=utc_now, index=True)
+
+
+class PhysicalFederationJob(SQLModel, table=True):
+    id: str = Field(default_factory=lambda: new_id("physical-job"), primary_key=True)
+    study_id: str | None = Field(default=None, index=True)
+    external_job_id: str | None = Field(default=None, index=True)
+    submit_token_sha256: str | None = Field(default=None, index=True)
+    strategy: str = Field(index=True)
+    status: PhysicalJobStatus = Field(default=PhysicalJobStatus.DRAFT, index=True)
+    bundle_sha256: str | None = None
+    expected_sites_json: str
+    connected_sites_json: str = "[]"
+    total_rounds: int
+    local_epochs: int
+    current_round: int = 0
+    received_updates: int = 0
+    quorum_required: int
+    job_directory: str
+    approved_by: str | None = None
+    approval_note: str | None = None
+    attempt: int = 0
+    previous_external_job_ids_json: str = "[]"
+    global_model_path: str | None = None
+    global_model_sha256: str | None = None
+    metrics_json: str | None = None
+    error: str | None = None
+    created_at: datetime = Field(default_factory=utc_now, index=True)
+    updated_at: datetime = Field(default_factory=utc_now, index=True)
     completed_at: datetime | None = None

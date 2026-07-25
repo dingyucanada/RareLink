@@ -122,6 +122,60 @@ export interface TrainingJob {
   error: string | null;
 }
 
+export interface PhysicalSite {
+  deployment_mode: "disabled" | "isolated-integration" | "physical";
+  site_id: string;
+  display_name: string;
+  organization: string;
+  expected: boolean;
+  status: "UNKNOWN" | "READY" | "DEGRADED" | "OFFLINE" | "TRAINING";
+  certificate_status: string;
+  data_ready: boolean;
+  gpu_ready: boolean;
+  monai_ready: boolean;
+  nvflare_ready: boolean;
+  current_job_id: string | null;
+  current_round: number;
+  total_rounds: number;
+  free_memory_percent: number | null;
+  free_disk_percent: number | null;
+  receipt_sha256: string | null;
+  last_heartbeat_at: string | null;
+  contains_patient_data: false;
+}
+
+export interface PhysicalFederationJob {
+  deployment_mode: "disabled" | "isolated-integration" | "physical";
+  id: string;
+  study_id: string | null;
+  external_job_id: string | null;
+  strategy: "fedavg" | "fedprox";
+  status:
+    | "DRAFT"
+    | "APPROVAL_PENDING"
+    | "SUBMITTED"
+    | "WAITING_FOR_SITES"
+    | "RUNNING"
+    | "COMPLETED"
+    | "FAILED"
+    | "ABORTED";
+  expected_sites: string[];
+  connected_sites: string[];
+  total_rounds: number;
+  local_epochs: number;
+  current_round: number;
+  received_updates: number;
+  quorum_required: number;
+  approved_by: string | null;
+  global_model_sha256: string | null;
+  metrics: Record<string, unknown> | null;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+  contains_patient_data: false;
+}
+
 export interface Capabilities {
   app_version: string;
   environment: string;

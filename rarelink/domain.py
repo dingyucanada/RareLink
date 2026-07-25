@@ -39,6 +39,81 @@ class TrainingJobStatus(StrEnum):
     FAILED = "FAILED"
 
 
+class PhysicalSiteStatus(StrEnum):
+    UNKNOWN = "UNKNOWN"
+    READY = "READY"
+    DEGRADED = "DEGRADED"
+    OFFLINE = "OFFLINE"
+    TRAINING = "TRAINING"
+
+
+class PhysicalJobStatus(StrEnum):
+    DRAFT = "DRAFT"
+    APPROVAL_PENDING = "APPROVAL_PENDING"
+    SUBMITTED = "SUBMITTED"
+    WAITING_FOR_SITES = "WAITING_FOR_SITES"
+    RUNNING = "RUNNING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    ABORTED = "ABORTED"
+
+
+class PhysicalSiteHeartbeat(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    heartbeat_id: str = Field(min_length=8, max_length=128)
+    agent_version: str = Field(min_length=1, max_length=64)
+    status: PhysicalSiteStatus
+    certificate_status: str = Field(min_length=2, max_length=32)
+    data_ready: bool
+    gpu_ready: bool
+    monai_ready: bool
+    nvflare_ready: bool
+    current_job_id: str | None = Field(default=None, max_length=128)
+    current_round: int = Field(default=0, ge=0, le=10_000)
+    total_rounds: int = Field(default=0, ge=0, le=10_000)
+    free_memory_percent: float = Field(ge=0, le=100)
+    free_disk_percent: float = Field(ge=0, le=100)
+    receipt_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    captured_at: datetime
+    contains_patient_data: bool = False
+
+
+class PhysicalSiteCreate(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    site_id: str = Field(pattern=r"^[a-z][a-z0-9-]{2,62}$")
+    display_name: str = Field(min_length=2, max_length=160)
+    organization: str = Field(pattern=r"^[a-z][a-z0-9_-]{2,62}$")
+    expected: bool = True
+
+
+class PhysicalJobCreate(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    study_id: str | None = None
+    strategy: str = Field(pattern=r"^(fedavg|fedprox)$")
+    expected_sites: list[str] = Field(min_length=3)
+    total_rounds: int = Field(ge=1, le=1000)
+    local_epochs: int = Field(default=1, ge=1, le=100)
+    job_directory: str = Field(min_length=1, max_length=500)
+
+
+class PhysicalJobApproval(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    approved_by: str = Field(min_length=2, max_length=100)
+    note: str = Field(min_length=2, max_length=1000)
+    submit_token: str = Field(min_length=8, max_length=128)
+
+
+class PhysicalModelVerification(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    model_path: str = Field(min_length=1, max_length=500)
+    expected_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class StudyCreate(BaseModel):
     title: str = Field(min_length=3, max_length=160)
     research_question: str = Field(min_length=10, max_length=2000)

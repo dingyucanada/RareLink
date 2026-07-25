@@ -1,7 +1,7 @@
 PYTHON ?= python3
 PROJECT_PYTHON = $(if $(wildcard .venv/bin/python),.venv/bin/python,$(PYTHON))
 
-.PHONY: install install-web dev-api dev-web test lint smoke step-models step-smoke step-team-smoke synthetic-data monai-smoke nvflare-smoke nvflare-fedprox training-job-smoke demo-seed demo-evidence spark-local-verify spark-local-benchmark physical-render physical-preflight physical-job
+.PHONY: install install-web dev-api dev-web test lint smoke step-models step-smoke step-team-smoke synthetic-data monai-smoke nvflare-smoke nvflare-fedprox training-job-smoke demo-seed demo-evidence spark-local-verify spark-local-benchmark physical-render physical-preflight physical-job physical-site-agent physical-control-smoke
 
 install:
 	$(PROJECT_PYTHON) -m pip install -e ".[dev]"
@@ -70,3 +70,10 @@ physical-preflight:
 
 physical-job:
 	@echo "Usage: $(PROJECT_PYTHON) scripts/export_physical_nvflare_job.py --topology ... --output-dir ..."
+
+physical-site-agent:
+	@echo "Requires /etc/rarelink/site-agent.env or .env.site-agent with local-only paths and secrets"
+	$(PROJECT_PYTHON) scripts/run_site_agent.py
+
+physical-control-smoke:
+	$(PROJECT_PYTHON) scripts/smoke_three_site_control_plane.py

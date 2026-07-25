@@ -272,6 +272,37 @@ RareLink 在 NVIDIA DGX Spark GB10（ARM64、CUDA 13、PyTorch `2.10.0+cu130`、
 | **单 Spark 工程验证** | 验证 CUDA、MONAI、FLARE、策略与证据链 | 一台 DGX Spark 运行三个逻辑站点，串行保护统一内存 |
 | **真实多院研究试点** | 数据不出院的独立本地计算 | 每院独立 Spark Client + 证书化 FLARE 通信 + 本地审计；需 IRB、数据使用协议和安全审查 |
 
+### 三物理站点控制面
+
+仓库已实现面向真实独立设备的 P0 控制闭环，而不再把“三个科室”硬编码为同一
+进程：每台 Spark 运行自己的 Site Agent 和 SQLite 状态库，检查 GPU、内存、
+磁盘、MONAI、NVIDIA FLARE、证书与本站 manifest；它只发送带 HMAC 签名的
+无患者信息心跳。中心 FastAPI 保存真实 NVIDIA FLARE Job ID，支持人工审批后
+提交、状态同步、停止、重试、恢复、固定 `3/3` quorum，以及完成模型的 SHA-256
+核验。Site Agent 可通过固定 unit、无 shell 的 systemd 适配器控制本站 FLARE
+Client 生命周期，默认未授权时失败关闭。前端“三物理 Spark 运行面”每 3–5 秒
+读取真实控制状态。
+
+```mermaid
+flowchart LR
+    A["Hospital A Spark\nSite Agent + FLARE Client"] -->|"签名心跳 / mTLS 更新"| C["RareLink Coordinator\nFastAPI + FLARE Admin"]
+    B["Hospital B Spark\nSite Agent + FLARE Client"] -->|"签名心跳 / mTLS 更新"| C
+    D["Hospital C Spark\nSite Agent + FLARE Client"] -->|"签名心跳 / mTLS 更新"| C
+    C --> E["物理运行面\nJob ID · Round · 3/3 Quorum · Model Hash"]
+```
+
+设备到位前可用三个独立操作系统进程验收相同协议：
+
+```bash
+make physical-control-smoke
+```
+
+该命令验证三个不同 Site ID、本地状态库、签名心跳、中心登记和 `3/3` 合同，
+但明确标记为 `isolated-integration`：不运行医学训练，也不冒充三台真实 Spark
+证据。完整接口、服务模板、密钥边界和现场步骤见
+[三物理 Spark 部署手册](docs/physical-deployment.md)；产品化 WBS、状态机、
+威胁模型与分级验收见[正式工程开发计划](docs/engineering-development-plan.md)。
+
 ### 一键体验
 
 无需医学影像、模型权重、证书或 API Key：
@@ -330,7 +361,7 @@ python scripts/run_nvflare_simulation.py \
 | 阶段 | 目标 | 前置条件 |
 | --- | --- | --- |
 | 外部工程验证 | 在合规授权的 BraTS-PEDs 等儿童公开数据上重复流程 | 数据使用政策、预处理、引用和透明报告边界 |
-| 真实多院试点 | 各院部署独立 Spark Client、证书化 FLARE 与本地审计 | IRB、数据使用协议、安全评审、网络与身份体系准备 |
+| 真实多院试点 | 将现有 Site Agent / 控制 API 部署到三台 Spark，完成 Level 2 故障与恢复验收 | IRB、数据使用协议、安全评审、网络、证书与身份体系准备 |
 | 临床研究协作 | PACS/FHIR 对接、研究治理、跨站可行性与证据包 | 医疗机构合作、独立临床验证与法规路径 |
 | 本地 Agent 升级 | 采集真实 TensorRT-LLM 回执、并发数据与安全红队证据 | 可用本地模型与合规推理资源 |
 
@@ -341,7 +372,7 @@ python scripts/run_nvflare_simulation.py \
 - [Project MONAI](https://project-monai.github.io/) · [Opacus](https://opacus.ai/)
 - [NIST：联邦学习定义](https://csrc.nist.gov/glossary/term/federated_learning) · [NIST：联邦学习隐私攻击](https://www.nist.gov/blogs/cybersecurity-insights/privacy-attacks-federated-learning)
 - [Medical Segmentation Decathlon](https://medicaldecathlon.com/dataaws/) · [BraTS-PEDs / TCIA](https://www.cancerimagingarchive.net/collection/brats-peds/)
-- 项目内资料：[部署手册](docs/deployment.md) · [架构说明](docs/architecture.md) · [MSD 实机运行报告](outputs/RareLink-2026-07-20-MSD真实影像Spark联邦运行报告.md) · [DGX Spark 实机系统报告](outputs/RareLink-2026-07-17-DGX-Spark系统移植与实机实验正式报告.md)
+- 项目内资料：[部署手册](docs/deployment.md) · [三物理 Spark 部署](docs/physical-deployment.md) · [正式工程开发计划](docs/engineering-development-plan.md) · [架构说明](docs/architecture.md) · [MSD 实机运行报告](outputs/RareLink-2026-07-20-MSD真实影像Spark联邦运行报告.md) · [DGX Spark 实机系统报告](outputs/RareLink-2026-07-17-DGX-Spark系统移植与实机实验正式报告.md)
 
 ### DGX Spark Hackathon 说明
 

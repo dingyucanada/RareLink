@@ -2,6 +2,12 @@
 
 > **研究用途软件，不是医疗器械。** 本手册把 RareLink 从“单 Spark 三逻辑站点”升级为三台独立 Spark 的真实联邦工程部署。它不替代医院网络安全评估、伦理审批、数据使用协议、DPIA/等保、渗透测试、临床验证或医疗器械注册。
 
+本文是现场部署操作手册。正式产品范围、接口、状态机、安全、测试和分级验收以 [正式工程开发计划](engineering-development-plan.md) 为准；关键不可变边界见：
+
+- [ADR-0001：物理联邦控制面与模拟路径隔离](adr/0001-physical-federation-control-plane.md)
+- [ADR-0002：站点身份、证书与院内数据边界](adr/0002-site-identity-and-data-boundary.md)
+- [ADR-0003：任务幂等、固定参与方与 Quorum](adr/0003-idempotency-and-quorum.md)
+
 ## 1. 目标拓扑与不可变边界
 
 ```mermaid
@@ -28,6 +34,10 @@ flowchart LR
 | 真实作业导出 | `scripts/export_physical_nvflare_job.py` | 导出 FedAvg/FedProx job，不打包数据、证书或私钥 |
 | 受控提交 | `scripts/submit_physical_nvflare_job.py` | 只在协调方持有 Admin Kit 的主机执行 |
 | 本地训练客户端 | `scripts/nvflare_monai_client.py` | MONAI 本地训练；物理模式拒绝包含外站病例的 manifest |
+| 医院 Site Agent | `scripts/run_site_agent.py` | 每站独立预检、幂等任务、签名心跳与本地收据 |
+| 中心心跳转发 | `scripts/push_site_heartbeat.py` | 将患者信息为零的签名状态转发到协调面 |
+| 中心物理控制 API | `/api/physical/*` | 站点登记、作业审批、提交、同步、停止、重试、恢复与模型核验 |
+| 三进程验收 | `scripts/smoke_three_site_control_plane.py` | 设备到位前验证三个独立站点进程及 3/3 合同 |
 
 ## 3. 前置治理与网络条件
 
@@ -86,6 +96,62 @@ python3 scripts/validate_physical_site.py \
 
 使用 `deploy/physical/rarelink-flare.service.template` 建立 systemd 服务，或在受控会话先启动 Server、再启动三台 Client 的 `startup/start.sh`。每台 Spark 通过相同逻辑路径 `/srv/rarelink/site-data/manifest.json` 加载数据，但路径实际指向完全不同的本地数据卷。
 
+### 5.1 启动医院本地 Site Agent
+
+每台 Spark 复制 `deploy/physical/site-agent.env.example` 到
+`/etc/rarelink/site-agent.env`，只填写本站路径和由医院密钥系统生成的随机值。
+该文件应归 `root:rarelink` 所有并设置为 `0640`，不得提交 Git 或复制到协调端。
+
+安装 `deploy/physical/rarelink-site-agent.service.template` 后，先在本机核验：
+
+```bash
+curl http://127.0.0.1:9100/health/live
+curl -H "Authorization: Bearer ${RARELINK_SITE_AGENT_API_TOKEN}" \
+  http://127.0.0.1:9100/v1/site/ready
+```
+
+`/health/live` 只说明进程存活；`/v1/site/ready` 才同时检查 GPU、磁盘、内存、
+MONAI、NVFLARE、证书、manifest 和启动包。任何必要检查失败时，站点不得被
+视为可训练。任务接口为 `/v1/tasks/start`、`/v1/tasks/stop` 和
+`/v1/tasks/recover`，以 `task_id + round_id + contract_sha256` 保证幂等；
+进程中断时采用失败关闭，必须显式恢复。
+
+### 5.2 向中心发送签名心跳
+
+协调端先设置三个 Site ID 对应的 HMAC 密钥和独立操作员凭据：
+
+```bash
+RARELINK_PHYSICAL_MODE=physical
+RARELINK_PHYSICAL_SITE_SECRETS='{"hospital-a":"...","hospital-b":"...","hospital-c":"..."}'
+RARELINK_PHYSICAL_OPERATOR_TOKEN='...'
+RARELINK_NVFLARE_ADMIN_KIT=/opt/rarelink/admin/research-admin
+```
+
+每站的 `RARELINK_SITE_AGENT_RECEIPT_HMAC_KEY` 必须与协调端该 Site ID 的值
+一致。使用
+`deploy/physical/rarelink-site-heartbeat-forwarder.service.template`
+持续转发，或先做一次人工核验：
+
+```bash
+python3 scripts/push_site_heartbeat.py \
+  --agent-url http://127.0.0.1:9100 \
+  --coordinator-url https://rarelink-coordinator.example.org
+```
+
+转发器从环境读取 Site Agent token，不把 token、HMAC 密钥、患者信息或本地
+路径放入请求体和输出。中心验证签名、时间窗口和 heartbeat ID 去重；过期或
+重复心跳被拒绝。`RARELINK_PHYSICAL_MODE` 默认为 `disabled`；三独立进程
+验收必须设置为 `isolated-integration`，只有完成现场配置与授权后才设置为
+`physical`，该模式会随站点和作业 API 一起显示在前端。
+
+Site Agent 的执行后端同样默认 `disabled`，因此未完成现场授权时，任务接口
+会失败关闭。医院 IT 可设置
+`RARELINK_SITE_AGENT_EXECUTOR_BACKEND=systemd`，并只授权 `rarelink` 服务
+账号对固定的 `rarelink-flare-client.service` 执行
+`start/stop/restart`。适配器不使用 shell，服务名经过白名单校验，API 请求不能
+传入命令或 unit 名；`systemctl` 原始输出也不会进入回执。应通过最小权限的
+polkit 规则完成授权，禁止赋予通用 sudo 或任意 systemd unit 控制权。
+
 ## 6. 导出、审阅、提交真实多站点作业
 
 在协调方导出作业；它只包含代码、模型配置和逻辑数据路径：
@@ -109,7 +175,34 @@ python3 scripts/submit_physical_nvflare_job.py \
 
 `--submit-token` 是防止网络中断时重复提交的幂等标识，不是 API 密钥；回执会脱敏它。重试应复用同一个 token，不能盲目创建第二个作业。
 
-## 7. 结果、运维与安全边界
+同一能力也已接入 FastAPI 控制面：
+
+- `POST /api/physical/sites`：由操作员登记三个预期站点；
+- `POST /api/physical/sites/{site_id}/heartbeat`：接收站点签名心跳；
+- `POST /api/physical/jobs`：校验导出包并进入人工审批；
+- `POST /api/physical/jobs/{job_id}:submit|sync|abort|retry|resume`：控制并
+  对账真实 NVIDIA FLARE Job ID；
+- `POST /api/physical/jobs/{job_id}:verify-model`：只有作业已完成且三个
+  指定站点均满足 quorum 时，才能绑定协调端全局模型 SHA-256。
+
+所有写操作默认失败关闭；未配置 `RARELINK_PHYSICAL_OPERATOR_TOKEN` 时返回
+`503`，错误响应不转发 NVFLARE 原始输出、Admin Kit 路径或凭据。
+
+## 7. 设备到位前的三独立进程验收
+
+在开发机运行：
+
+```bash
+make physical-control-smoke
+```
+
+该验收启动三个独立的操作系统进程，每个进程创建不同 Site ID、本地状态库和
+HMAC 签名心跳；协调进程逐一登记并验证心跳，再锁定一个 `3/3` 物理作业合同。
+它验证的是控制协议、站点隔离、身份签名和固定 quorum，不运行医学训练，也不
+宣称真实 NVIDIA FLARE 跨设备执行。设备到位后只替换各站地址、真实启动包和
+本地 manifest，不修改业务协议。
+
+## 8. 结果、运维与安全边界
 
 MONAI Client 通过 FLARE 的 `FLModel.metrics` 回传合同中的 Dice、HD95、训练损失；本地批次、checkpoint、病例级指标与日志均留在医院。全局模型和聚合运行记录在协调方受控工作区。
 
@@ -120,9 +213,11 @@ MONAI Client 通过 FLARE 的 `FLModel.metrics` 回传合同中的 Dice、HD95�
 - **数据治理变更：** 停止该站 Client、撤销 kit、重新审批后才可恢复。
 - **疑似泄露：** 终止作业，保全最小必要审计材料，并按各院事件响应流程处理。
 
-## 8. 与竞赛原型的关系
+## 9. 与竞赛原型的关系
 
 此前实机版本验证的是单 Spark 三逻辑站点与两设备 mTLS 演练。本目录新增三台独立 Spark 的拓扑契约、kit 生成、站点本地数据验证、作业导出与管理员提交路径。它是可执行的现场试点工程基础；在三院分别完成网络、证书、数据治理和多轮运行前，项目不宣称已完成跨医院生产部署或临床有效性验证。
+
+正式工程中的运行模式必须明确标记为 `simulation`、`isolated-integration` 或 `physical`。三容器集成可以验证控制协议，但不能作为物理跨院证据；只有通过正式工程开发计划 Level 2 验收的运行，才能声明完成三台物理 DGX Spark 工程验证。
 
 ## 参考资料
 

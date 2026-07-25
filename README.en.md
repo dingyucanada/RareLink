@@ -250,6 +250,43 @@ These results **do demonstrate** real four-modality NIfTI intake, CUDA training,
 | **Single-Spark engineering validation** | Validate CUDA, MONAI, FLARE, policy, and evidence chain | One DGX Spark runs three logical sites and serializes work to protect unified memory |
 | **Real multi-hospital research pilot** | Independent local computing without exporting source data | One Spark Client per hospital + certificate-based FLARE + local audit; requires IRB, data-use, and security review |
 
+### Three-physical-site control plane
+
+The repository now implements a P0 control loop for independently deployed
+devices instead of hard-coding three departments into one process. Each Spark
+runs its own Site Agent and SQLite state store, checks GPU, memory, disk, MONAI,
+NVIDIA FLARE, certificate, and its local manifest, and emits only an HMAC-signed,
+patient-free heartbeat. The coordinator persists the real NVIDIA FLARE Job ID
+and supports human-approved submission, status reconciliation, abort, retry,
+resume, fixed `3/3` quorum, and SHA-256 verification of a completed global model.
+The Site Agent can control the local FLARE Client lifecycle through a fixed-unit,
+shell-free systemd adapter and fails closed until explicitly authorized. The web
+console polls this physical state every 3–5 seconds.
+
+```mermaid
+flowchart LR
+    A["Hospital A Spark\nSite Agent + FLARE Client"] -->|"signed heartbeat / mTLS update"| C["RareLink Coordinator\nFastAPI + FLARE Admin"]
+    B["Hospital B Spark\nSite Agent + FLARE Client"] -->|"signed heartbeat / mTLS update"| C
+    D["Hospital C Spark\nSite Agent + FLARE Client"] -->|"signed heartbeat / mTLS update"| C
+    C --> E["Physical operations view\nJob ID · Round · 3/3 Quorum · Model Hash"]
+```
+
+Before three devices are available, exercise the same protocol with three
+independent operating-system processes:
+
+```bash
+make physical-control-smoke
+```
+
+This verifies distinct Site IDs and local stores, signed heartbeats, coordinator
+registration, and a `3/3` contract. It is explicitly
+`isolated-integration`: it runs no medical training and is not presented as
+three-Spark evidence. See the
+[physical deployment guide](docs/physical-deployment.md) for services, secrets,
+and field operations, and the
+[formal engineering plan](docs/engineering-development-plan.md) for the WBS,
+state machines, threat model, and acceptance levels.
+
 ### One-command experience
 
 No medical images, weights, certificates, or API keys are needed:
@@ -308,7 +345,7 @@ Before running, confirm `aarch64`, `nvidia-smi`, Python 3.11+, free disk, and a 
 | Stage | Goal | Prerequisites |
 | --- | --- | --- |
 | External engineering validation | Repeat the workflow with authorised paediatric public data such as BraTS-PEDs | Data-use policy, preprocessing, citation, and transparent reporting limits |
-| Real multi-hospital pilot | Independent Spark Clients, certificate-based FLARE, local audit | IRB, data-use agreement, security review, network and identity readiness |
+| Real multi-hospital pilot | Deploy the existing Site Agent and control API to three Sparks and complete Level 2 failure/recovery acceptance | IRB, data-use agreement, security review, network, certificate, and identity readiness |
 | Clinical research collaboration | PACS/FHIR integration, governance, cross-site feasibility, evidence packages | Institutional partners, independent clinical validation, regulatory pathway |
 | Local-Agent upgrade | Capture real TensorRT-LLM receipts, concurrency data, and security red-team evidence | Available local model and compliant inference resources |
 
@@ -319,7 +356,7 @@ Before running, confirm `aarch64`, `nvidia-smi`, Python 3.11+, free disk, and a 
 - [Project MONAI](https://project-monai.github.io/) · [Opacus](https://opacus.ai/)
 - [NIST federated-learning glossary](https://csrc.nist.gov/glossary/term/federated_learning) · [NIST privacy-attack overview](https://www.nist.gov/blogs/cybersecurity-insights/privacy-attacks-federated-learning)
 - [Medical Segmentation Decathlon](https://medicaldecathlon.com/dataaws/) · [BraTS-PEDs / TCIA](https://www.cancerimagingarchive.net/collection/brats-peds/)
-- Project records: [deployment guide](docs/deployment.md) · [architecture](docs/architecture.md) · [MSD hardware run report](outputs/RareLink-2026-07-20-MSD真实影像Spark联邦运行报告.md) · [DGX Spark system report](outputs/RareLink-2026-07-17-DGX-Spark系统移植与实机实验正式报告.md)
+- Project records: [deployment guide](docs/deployment.md) · [physical Spark deployment](docs/physical-deployment.md) · [formal engineering plan](docs/engineering-development-plan.md) · [architecture](docs/architecture.md) · [MSD hardware run report](outputs/RareLink-2026-07-20-MSD真实影像Spark联邦运行报告.md) · [DGX Spark system report](outputs/RareLink-2026-07-17-DGX-Spark系统移植与实机实验正式报告.md)
 
 ### DGX Spark Hackathon note
 

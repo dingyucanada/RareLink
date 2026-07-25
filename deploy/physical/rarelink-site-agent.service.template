@@ -1,0 +1,23 @@
+# Install once per hospital Spark and keep the environment file root-readable.
+[Unit]
+Description=RareLink hospital-local Site Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rarelink
+Group=rarelink
+WorkingDirectory=/opt/rarelink/app
+EnvironmentFile=/etc/rarelink/site-agent.env
+ExecStart=/opt/rarelink/venv/bin/python scripts/run_site_agent.py
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/rarelink
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
