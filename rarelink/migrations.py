@@ -15,6 +15,12 @@ SQLITE_ADDITIVE_COLUMNS: dict[str, dict[str, str]] = {
     },
     "physicalfederationjob": {
         "dataset_fingerprints_json": "VARCHAR NOT NULL DEFAULT '{}'",
+        "contract_sha256": "VARCHAR",
+        "proposed_by": "VARCHAR",
+        "proposer_roles_json": "VARCHAR NOT NULL DEFAULT '[]'",
+        "second_approved_by": "VARCHAR",
+        "second_approval_note_sha256": "VARCHAR",
+        "second_approved_at": "DATETIME",
     },
 }
 

@@ -76,6 +76,12 @@
 - [x] Fail-closed physical RBAC with five roles and nine permissions; physical mode
   rejects legacy operator tokens, while legacy compatibility remains isolated-integration only
 - [x] OIDC tokens and raw claims are not persisted or appended to the physical audit chain
+- [x] Canonical physical contract v1 SHA-256 binds study, strategy, bundle, sorted three-site
+  identities, per-site dataset fingerprints, rounds, local epochs, and fixed 3-of-3 quorum
+- [x] Physical mode persists a distinct OIDC second approval with a fixed attestation;
+  approval note plaintext is discarded and only its SHA-256 is retained
+- [x] Contract approval is idempotent, competing approvals conflict, and submit/retry/resume
+  re-verify the frozen contract and approval before reaching NVIDIA FLARE
 - [x] MSD real-image single-site CUDA smoke and one-round three-logical-site NVFLARE FedAvg: 3/3
   updates aggregated, global model persisted, exit code 0
 
@@ -116,8 +122,13 @@
   [`physical-audit.md`](physical-audit.md).
 - Physical operator OIDC currently consumes trusted JWKS supplied as environment JSON.
   Discovery, HTTPS JWKS retrieval, automatic caching/key rotation, MFA, session revocation,
-  resource-level `site_ids` enforcement, and durable two-person approvals remain outstanding.
+  resource-level `site_ids` enforcement remain outstanding.
   See [`physical-identity-rbac.md`](physical-identity-rbac.md).
+- Contract two-person approval is implemented, but approval revocation, expiry, replacement,
+  two-person authorization of the submit/retry/resume action itself, PostgreSQL concurrency,
+  and resource-level scope remain outstanding. `isolated-integration` retains a legacy
+  single-request path and is not approval evidence. See
+  [`physical-dual-approval.md`](physical-dual-approval.md).
 # 2026-07-20 · 组织方 OpenClaw + ComfyUI 参考 Workshop 基础完赛
 
 - 在 DGX Spark GB10 上执行组织方预置的 `workshop.ipynb`，输出独立 `workshop-executed.ipynb`；26 个代码单元无错误完成。

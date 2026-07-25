@@ -10,6 +10,7 @@
 - [医院本地 NIfTI 数据规范](site-data-manifest.md)
 - [物理控制面防篡改审计设计与验收](physical-audit.md)
 - [物理控制面 OIDC 身份与 RBAC 设计](physical-identity-rbac.md)
+- [物理联邦合同锁定与双人审批](physical-dual-approval.md)
 
 ## 1. 目标拓扑与不可变边界
 
@@ -181,7 +182,7 @@ sub、角色、组织和站点 claims。JWT/raw claims 不持久化、不写审�
 
 `legacy-token` 仅允许 `isolated-integration`，不能用于真实医院或公网。当前
 尚无 discovery/HTTPS JWKS 拉取、自动缓存轮换、MFA、会话吊销、资源级站点
-范围和持久化双人审批，见
+范围；OIDC/JWKS 详情见
 [物理控制面 OIDC/RBAC 文档](physical-identity-rbac.md)。
 
 Site Agent 的执行后端同样默认 `disabled`，因此未完成现场授权时，任务接口
@@ -220,6 +221,8 @@ python3 scripts/submit_physical_nvflare_job.py \
 - `POST /api/physical/sites`：由操作员登记三个预期站点；
 - `POST /api/physical/sites/{site_id}/heartbeat`：接收站点签名心跳；
 - `POST /api/physical/jobs`：校验导出包并进入人工审批；
+- `POST /api/physical/jobs/{job_id}:approve`：由不同 OIDC `sub`、具有
+  `physical.contract.approve` 的第二审批人确认固定 attestation；
 - `POST /api/physical/jobs/{job_id}:submit|sync|abort|retry|resume`：控制并
   对账真实 NVIDIA FLARE Job ID；
 - `POST /api/physical/jobs/{job_id}:verify-model`：只有作业已完成且三个
@@ -230,7 +233,24 @@ token 无效返回 `401`，角色无权返回 `403`；错误响应不转发 toke
 NVFLARE 原始输出、Admin Kit 路径或凭据。`isolated-integration` 的 legacy
 模式未配置 `RARELINK_PHYSICAL_OPERATOR_TOKEN` 时返回 `503`。
 
-### 6.1 物理控制面审计
+### 6.1 合同锁定与第二审批
+
+`physical` 作业创建时计算 contract v1 SHA-256，覆盖 study、strategy、bundle、
+排序后的三个站点、逐站数据指纹、rounds、local epochs 和固定 3-of-3 quorum。
+提议人必须有 `physical.contract.create`；第二审批人必须有
+`physical.contract.approve` 且 OIDC `sub` 不同。审批 attestation 固定为
+`CONTRACT_DATA_AND_SECURITY_REVIEWED`，note 只保存 SHA-256，不保存明文。
+
+同一主体、合同摘要和 attestation 的重试幂等；竞争审批返回 409。submit、retry、
+resume 都会重新核验合同摘要和审批记录。公开 job view 只显示审批计数、状态和
+合同摘要，不显示提议/审批主体。受保护审计记录第二审批，但不含 note 或 token。
+
+`isolated-integration` 继续使用 `LEGACY_SINGLE_REQUEST`，不构成双人审批证据。
+当前尚无审批撤销、过期、替补、提交动作双审和资源级 site scope；SQLite 多
+worker 并发还需迁移 PostgreSQL。详见
+[物理联邦合同锁定与双人审批](physical-dual-approval.md)。
+
+### 6.2 物理控制面审计
 
 每个已接受的站点登记、心跳、作业合同、提交、状态同步、停止、重试、恢复、
 数据版本失效和模型核验操作都会追加规范化事件。事件通过 `previous_hash`

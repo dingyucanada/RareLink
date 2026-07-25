@@ -13,6 +13,7 @@ import yaml
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from rarelink import __version__
@@ -28,6 +29,7 @@ from rarelink.domain import (
     PhysicalJobCreate,
     PhysicalJobStatus,
     PhysicalModelVerification,
+    PhysicalSecondApproval,
     PhysicalSiteCreate,
     PhysicalSiteHeartbeat,
     PhysicalSiteStatus,
@@ -43,6 +45,7 @@ from rarelink.models import (
     PhysicalControlEvent,
     PhysicalFederationJob,
     PhysicalHeartbeatReceipt,
+    PhysicalJobApprovalRecord,
     PhysicalSite,
     Study,
     TrainingJob,
@@ -58,10 +61,17 @@ from rarelink.security import (
     require_permission,
     verify_heartbeat_signature,
 )
+from rarelink.security.physical_rbac import PhysicalAccessControlError
 from rarelink.services.agents import build_research_agent
 from rarelink.services.federation import build_federation_runner
 from rarelink.services.ledger import append_event, list_events
 from rarelink.services.local_inference import probe_spark_inference
+from rarelink.services.physical_approval import (
+    PhysicalApprovalServiceError,
+    canonical_contract_sha256,
+    ensure_job_second_approval,
+    verify_contract_unchanged,
+)
 from rarelink.services.physical_audit import (
     append_physical_event,
     verify_physical_event_chain,
@@ -250,6 +260,17 @@ def physical_site_is_fresh(site: PhysicalSite, config: Settings) -> bool:
 
 
 def physical_job_view(job: PhysicalFederationJob, config: Settings) -> dict[str, Any]:
+    approval_count = int(bool(job.proposed_by)) + int(bool(job.second_approved_by))
+    if config.rarelink_physical_mode == "physical":
+        approval_state = (
+            "SECOND_APPROVAL_RECORDED"
+            if job.second_approved_by
+            else "SECOND_APPROVAL_PENDING"
+        )
+        approval_required = 2
+    else:
+        approval_state = "LEGACY_SINGLE_REQUEST"
+        approval_required = 1
     return {
         "deployment_mode": config.rarelink_physical_mode,
         "id": job.id,
@@ -257,6 +278,7 @@ def physical_job_view(job: PhysicalFederationJob, config: Settings) -> dict[str,
         "external_job_id": job.external_job_id,
         "strategy": job.strategy,
         "status": job.status,
+        "contract_sha256": job.contract_sha256,
         "expected_sites": as_json(job.expected_sites_json, []),
         "dataset_fingerprints": as_json(job.dataset_fingerprints_json, {}),
         "connected_sites": as_json(job.connected_sites_json, []),
@@ -265,7 +287,9 @@ def physical_job_view(job: PhysicalFederationJob, config: Settings) -> dict[str,
         "current_round": job.current_round,
         "received_updates": job.received_updates,
         "quorum_required": job.quorum_required,
-        "approved_by": job.approved_by,
+        "approval_count": approval_count,
+        "approval_required": approval_required,
+        "approval_state": approval_state,
         "global_model_sha256": job.global_model_sha256,
         "metrics": as_json(job.metrics_json),
         "error": job.error,
@@ -402,6 +426,47 @@ def physical_controller_error(exc: PhysicalControllerError) -> HTTPException:
     if isinstance(exc, JobValidationError):
         return HTTPException(status_code=422, detail=str(exc))
     return HTTPException(status_code=502, detail=str(exc))
+
+
+def physical_approval_error(
+    exc: PhysicalApprovalServiceError | PhysicalAccessControlError,
+) -> HTTPException:
+    return HTTPException(status_code=exc.status_code, detail=str(exc))
+
+
+def require_current_physical_contract(
+    session: Session,
+    job: PhysicalFederationJob,
+    config: Settings,
+) -> int:
+    if not job.contract_sha256:
+        raise HTTPException(
+            status_code=409,
+            detail="Physical job predates contract locking and must be recreated",
+        )
+    try:
+        verify_contract_unchanged(job, job.contract_sha256)
+    except PhysicalApprovalServiceError as exc:
+        raise physical_approval_error(exc) from exc
+    approval_count = int(bool(job.proposed_by)) + int(bool(job.second_approved_by))
+    if config.rarelink_physical_mode != "physical":
+        return approval_count
+    approval = session.exec(
+        select(PhysicalJobApprovalRecord).where(
+            PhysicalJobApprovalRecord.job_id == job.id
+        )
+    ).first()
+    if (
+        not approval
+        or approval.contract_sha256 != job.contract_sha256
+        or approval.approver_subject_id != job.second_approved_by
+        or job.second_approved_by == job.proposed_by
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Physical mode requires a distinct second contract approval",
+        )
+    return 2
 
 
 def store_agent_artifact(
@@ -722,7 +787,16 @@ def create_physical_job(
         local_epochs=bundle.local_epochs,
         quorum_required=len(expected_sites),
         job_directory=payload.job_directory,
+        proposed_by=principal.subject_id,
+        proposer_roles_json=json.dumps(
+            sorted(role.value for role in principal.roles),
+            separators=(",", ":"),
+        ),
     )
+    try:
+        job.contract_sha256 = canonical_contract_sha256(job)
+    except PhysicalApprovalServiceError as exc:
+        raise physical_approval_error(exc) from exc
     session.add(job)
     append_physical_event(
         session,
@@ -734,6 +808,7 @@ def create_physical_job(
         payload={
             "strategy": job.strategy,
             "bundle_sha256": job.bundle_sha256,
+            "contract_sha256": job.contract_sha256,
             "expected_sites": expected_sites,
             "dataset_fingerprints": dataset_fingerprints,
             "total_rounds": job.total_rounds,
@@ -751,6 +826,106 @@ def create_physical_job(
 def list_physical_jobs(session: SessionDep, config: SettingsDep) -> list[dict[str, Any]]:
     statement = select(PhysicalFederationJob).order_by(PhysicalFederationJob.created_at.desc())
     return [physical_job_view(job, config) for job in session.exec(statement).all()]
+
+
+@app.post("/api/physical/jobs/{job_id}:approve")
+def approve_physical_job_contract(
+    job_id: str,
+    payload: PhysicalSecondApproval,
+    request: Request,
+    session: SessionDep,
+    config: SettingsDep,
+) -> dict[str, Any]:
+    principal = require_physical_principal(
+        request,
+        config,
+        PhysicalPermission.CONTRACT_APPROVE,
+    )
+    job = session.get(PhysicalFederationJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Physical job not found")
+    if job.status != PhysicalJobStatus.APPROVAL_PENDING:
+        raise HTTPException(
+            status_code=409,
+            detail="Physical job is not awaiting contract approval",
+        )
+    if not job.contract_sha256:
+        raise HTTPException(
+            status_code=409,
+            detail="Physical job predates contract locking and must be recreated",
+        )
+    try:
+        verify_contract_unchanged(job, job.contract_sha256)
+    except PhysicalApprovalServiceError as exc:
+        raise physical_approval_error(exc) from exc
+    existing = session.exec(
+        select(PhysicalJobApprovalRecord).where(
+            PhysicalJobApprovalRecord.job_id == job_id
+        )
+    ).first()
+    if existing:
+        if (
+            existing.approver_subject_id == principal.subject_id
+            and existing.contract_sha256 == job.contract_sha256
+            and existing.attestation == payload.attestation
+            and job.second_approved_by == principal.subject_id
+            and job.second_approved_at is not None
+        ):
+            return physical_job_view(job, config)
+        raise HTTPException(
+            status_code=409,
+            detail="Physical job already has a distinct second approval",
+        )
+    try:
+        contract_sha256 = ensure_job_second_approval(
+            job,
+            principal,
+            expected_contract_sha256=job.contract_sha256,
+        )
+    except (PhysicalApprovalServiceError, PhysicalAccessControlError) as exc:
+        raise physical_approval_error(exc) from exc
+    approval = PhysicalJobApprovalRecord(
+        job_id=job.id,
+        contract_sha256=contract_sha256,
+        approver_subject_id=principal.subject_id,
+        approver_roles_json=json.dumps(
+            sorted(role.value for role in principal.roles),
+            separators=(",", ":"),
+        ),
+        attestation=payload.attestation,
+        note_sha256=sha256(payload.note.strip().encode("utf-8")).hexdigest(),
+    )
+    job.second_approved_by = principal.subject_id
+    job.second_approval_note_sha256 = approval.note_sha256
+    job.second_approved_at = utc_now()
+    job.updated_at = utc_now()
+    session.add(approval)
+    session.add(job)
+    append_physical_event(
+        session,
+        action="job.contract-second-approved",
+        actor=principal.subject_id,
+        resource_type="physical-job",
+        resource_id=job.id,
+        outcome="accepted",
+        payload={
+            "approval_id": approval.id,
+            "contract_sha256": contract_sha256,
+            "attestation": approval.attestation,
+            "approval_count": 2,
+        },
+        hmac_key=config.rarelink_audit_hmac_key,
+    )
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Physical job approval was recorded concurrently",
+        ) from None
+    session.refresh(job)
+    return physical_job_view(job, config)
 
 
 @app.post("/api/physical/jobs/{job_id}:submit")
@@ -771,6 +946,7 @@ def submit_physical_job(
         raise HTTPException(status_code=404, detail="Physical job not found")
     if job.status not in {"APPROVAL_PENDING", "SUBMITTED"}:
         raise HTTPException(status_code=409, detail="Physical job is not awaiting submission")
+    approval_count = require_current_physical_contract(session, job, config)
     expected_fingerprints = as_json(job.dataset_fingerprints_json, {})
     current_sites = session.exec(
         select(PhysicalSite).where(
@@ -824,6 +1000,8 @@ def submit_physical_job(
             "strategy": refreshed.strategy,
             "attempt": refreshed.attempt,
             "bundle_sha256": refreshed.bundle_sha256,
+            "contract_sha256": refreshed.contract_sha256,
+            "approval_count": approval_count,
         },
         hmac_key=config.rarelink_audit_hmac_key,
     )
@@ -928,11 +1106,14 @@ def retry_physical_job(
         PhysicalPermission.JOB_RETRY_RESUME,
     )
     existing = session.get(PhysicalFederationJob, job_id)
-    if existing and existing.error and existing.error.startswith("DATASET_VERSION_CHANGED"):
+    if not existing:
+        raise HTTPException(status_code=404, detail="Physical job not found")
+    if existing.error and existing.error.startswith("DATASET_VERSION_CHANGED"):
         raise HTTPException(
             status_code=409,
             detail="Dataset version changed; create and approve a new physical job contract",
         )
+    require_current_physical_contract(session, existing, config)
     controller, admin_kit = build_physical_controller(session, config)
     try:
         controller.retry(
@@ -982,11 +1163,14 @@ def resume_physical_job(
         PhysicalPermission.JOB_RETRY_RESUME,
     )
     existing = session.get(PhysicalFederationJob, job_id)
-    if existing and existing.error and existing.error.startswith("DATASET_VERSION_CHANGED"):
+    if not existing:
+        raise HTTPException(status_code=404, detail="Physical job not found")
+    if existing.error and existing.error.startswith("DATASET_VERSION_CHANGED"):
         raise HTTPException(
             status_code=409,
             detail="Dataset version changed; create and approve a new physical job contract",
         )
+    require_current_physical_contract(session, existing, config)
     controller, admin_kit = build_physical_controller(session, config)
     try:
         controller.resume(

@@ -58,6 +58,7 @@
 | `site.heartbeat-accepted` | 签名心跳通过 | heartbeat ID、站点状态、数据指纹、回执摘要、轮次 |
 | `job.dataset-version-invalidated` | 运行绑定的数据版本变化 | 站点、旧/新指纹、错误码 |
 | `job.contract-created` | 物理作业合同建立 | 策略、bundle 摘要、三站、轮次、3/3 quorum |
+| `job.contract-second-approved` | 不同 OIDC 主体完成合同第二审批 | approval ID、contract SHA-256、固定 attestation、approval count |
 | `job.submitted` | NVIDIA FLARE 返回真实外部 Job ID | 外部 ID、attempt、bundle 摘要 |
 | `job.status-synchronized` | 控制面与 FLARE 对账 | 状态、轮次、收到的更新数、错误码 |
 | `job.aborted` | FLARE 中止已确认 | 外部 ID、状态、attempt |
@@ -176,6 +177,8 @@ P0 的操作员 token 是过渡身份，不是医院级 OIDC/RBAC。生产阶段
 - 记录摘要、状态码、轮次和不透明 ID，不记录原始值；
 - 本地模型只记录安全文件名和核验 SHA-256，不公开协调端绝对路径；
 - submit token 只保存不可逆摘要，事件不保存 token；
+- 第二审批事件只记录 approval ID、合同摘要、固定 attestation 和审批计数，
+  不记录审批 note 明文或 note SHA-256；
 - Site Agent 心跳只包含患者信息为零的资源、数据指纹和任务状态；
 - 原始影像、标签、病例级指标、manifest、Client/Admin Kit 和私钥永不进入审计表；
 - Agent Gateway 不读取受保护事件 API。
@@ -256,7 +259,7 @@ pytest -q tests/test_physical_audit.py tests/test_physical_api.py
 | 尚未记录全部拒绝操作 | 认证失败、schema 422、策略拒绝等可能没有物理事件 | 建立不含攻击原文的拒绝事件 taxonomy，并避免认证洪泛污染主链 |
 | 没有旧 HMAC key-ring 轮换 | 更换 key 后无法仅用当前 key 验证多个历史 HMAC key ID | Vault/KMS key-ring、版本化 key ID、轮换仪式和历史验证服务 |
 | 多 worker 并发需 PostgreSQL 序列化 | SQLite 中“读取链头→追加”可能并发分叉 | PostgreSQL 行/顾问锁、唯一前序约束、事务重试或单写入器 |
-| 操作员 token 是 P0 过渡身份 | 无用户级 RBAC、短期会话和双人审批 | OIDC、RBAC、MFA、审批流和访问审计 |
+| legacy 操作员 token 仍保留在隔离验收模式 | 该路径无用户级身份且不能作为双人审批证据 | `physical` 已强制 OIDC/RBAC；继续补 MFA、会话吊销和资源级作用域 |
 | 应用时间不是可信时间 | 有主机权限者可影响事件时间 | NTP 监控、可信时间源、外部时间戳/签名锚定 |
 | 禁用字段基于 key 名 | 良性字段名下仍可能误放敏感值 | 固定 Pydantic 事件 schema、DLP 测试、代码审查和出口扫描 |
 | 最近 200 条不是完整导出 | 不能作为长期审计证据包 | 受保护分页/流式导出、签名清单和保留策略 |

@@ -142,6 +142,7 @@ class PhysicalFederationJob(SQLModel, table=True):
     strategy: str = Field(index=True)
     status: PhysicalJobStatus = Field(default=PhysicalJobStatus.DRAFT, index=True)
     bundle_sha256: str | None = None
+    contract_sha256: str | None = Field(default=None, index=True)
     expected_sites_json: str
     dataset_fingerprints_json: str = "{}"
     connected_sites_json: str = "[]"
@@ -151,6 +152,11 @@ class PhysicalFederationJob(SQLModel, table=True):
     received_updates: int = 0
     quorum_required: int
     job_directory: str
+    proposed_by: str | None = Field(default=None, index=True)
+    proposer_roles_json: str = "[]"
+    second_approved_by: str | None = Field(default=None, index=True)
+    second_approval_note_sha256: str | None = None
+    second_approved_at: datetime | None = Field(default=None, index=True)
     approved_by: str | None = None
     approval_note: str | None = None
     attempt: int = 0
@@ -162,3 +168,18 @@ class PhysicalFederationJob(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utc_now, index=True)
     updated_at: datetime = Field(default_factory=utc_now, index=True)
     completed_at: datetime | None = None
+
+
+class PhysicalJobApprovalRecord(SQLModel, table=True):
+    id: str = Field(default_factory=lambda: new_id("physical-approval"), primary_key=True)
+    job_id: str = Field(
+        foreign_key="physicalfederationjob.id",
+        index=True,
+        sa_column_kwargs={"unique": True},
+    )
+    contract_sha256: str = Field(index=True)
+    approver_subject_id: str = Field(index=True)
+    approver_roles_json: str
+    attestation: str
+    note_sha256: str
+    created_at: datetime = Field(default_factory=utc_now, index=True)

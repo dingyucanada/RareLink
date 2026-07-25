@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -106,9 +106,23 @@ class PhysicalJobCreate(BaseModel):
 class PhysicalJobApproval(BaseModel):
     model_config = {"extra": "forbid"}
 
-    approved_by: str = Field(min_length=2, max_length=100)
+    approved_by: str | None = Field(
+        default=None,
+        min_length=2,
+        max_length=100,
+        description=(
+            "Deprecated compatibility field; the authenticated principal is authoritative"
+        ),
+    )
     note: str = Field(min_length=2, max_length=1000)
     submit_token: str = Field(min_length=8, max_length=128)
+
+
+class PhysicalSecondApproval(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    attestation: Literal["CONTRACT_DATA_AND_SECURITY_REVIEWED"]
+    note: str = Field(default="", max_length=1000)
 
 
 class PhysicalModelVerification(BaseModel):

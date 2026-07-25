@@ -10,7 +10,7 @@
 
 <a href="README.md">中文</a> · <strong>English</strong>
 
-<strong>📘 <a href="outputs/RareLink-项目报告书.md">Project report (Chinese)</a></strong> · <a href="#deployment-and-quick-start">Quick start</a> · <a href="docs/physical-deployment.md">Physical Spark deployment</a> · <a href="docs/physical-identity-rbac.md">OIDC/RBAC</a> · <a href="docs/physical-audit.md">Physical audit design</a> · <a href="#engineering-evidence-and-claim-boundaries">Engineering evidence</a>
+<strong>📘 <a href="outputs/RareLink-项目报告书.md">Project report (Chinese)</a></strong> · <a href="#deployment-and-quick-start">Quick start</a> · <a href="docs/physical-deployment.md">Physical Spark deployment</a> · <a href="docs/physical-identity-rbac.md">OIDC/RBAC</a> · <a href="docs/physical-dual-approval.md">Dual approval</a> · <a href="docs/physical-audit.md">Physical audit design</a> · <a href="#engineering-evidence-and-claim-boundaries">Engineering evidence</a>
 
 <a href="https://www.nvidia.com/en-us/products/workstations/dgx-spark/"><img src="https://img.shields.io/badge/NVIDIA-DGX%20Spark-76B900?style=flat-square&logo=nvidia&logoColor=white" alt="NVIDIA DGX Spark" /></a>
 <a href="https://nvidia.github.io/NVFlare/"><img src="https://img.shields.io/badge/NVIDIA%20FLARE-2.7.2-2563EB?style=flat-square" alt="NVIDIA FLARE" /></a>
@@ -294,7 +294,10 @@ HMAC key gate, public/protected API boundary, verification method, and explicit
 production limitations; and the
 [physical identity and RBAC design](docs/physical-identity-rbac.md) for offline
 OIDC validation, the five-role/nine-permission matrix, and remaining hospital
-IAM work. The
+IAM work; and the
+[physical contract dual-approval design](docs/physical-dual-approval.md) for
+canonical contract locking, distinct-subject approval, revalidation, and
+remaining approval-lifecycle work. The
 [hospital-local NIfTI specification](docs/site-data-manifest.md) defines the
 manifest, validation, and version-invalidation contract.
 

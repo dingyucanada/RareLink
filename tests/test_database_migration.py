@@ -37,7 +37,19 @@ def test_additive_sqlite_migration_upgrades_existing_physical_tables(tmp_path) -
     assert first == [
         "physicalsite.dataset_fingerprint",
         "physicalfederationjob.dataset_fingerprints_json",
+        "physicalfederationjob.contract_sha256",
+        "physicalfederationjob.proposed_by",
+        "physicalfederationjob.proposer_roles_json",
+        "physicalfederationjob.second_approved_by",
+        "physicalfederationjob.second_approval_note_sha256",
+        "physicalfederationjob.second_approved_at",
     ]
     assert second == []
     assert "dataset_fingerprint" in site_columns
     assert "dataset_fingerprints_json" in job_columns
+    assert "contract_sha256" in job_columns
+    assert "proposed_by" in job_columns
+    assert "proposer_roles_json" in job_columns
+    assert "second_approved_by" in job_columns
+    assert "second_approval_note_sha256" in job_columns
+    assert "second_approved_at" in job_columns

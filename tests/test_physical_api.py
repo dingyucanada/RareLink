@@ -232,6 +232,10 @@ def test_physical_job_requires_three_registered_unique_sites(
         "hospital-b": "b" * 64,
         "hospital-c": "c" * 64,
     }
+    assert payload["contract_sha256"]
+    assert payload["approval_count"] == 1
+    assert payload["approval_state"] == "LEGACY_SINGLE_REQUEST"
+    assert "approved_by" not in payload
     audit = client.get("/api/physical/events", headers=OPERATOR_HEADERS)
     assert audit.status_code == 200
     assert audit.json()["verified"] is True

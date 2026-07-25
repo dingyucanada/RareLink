@@ -160,6 +160,7 @@ export interface PhysicalFederationJob {
     | "COMPLETED"
     | "FAILED"
     | "ABORTED";
+  contract_sha256: string | null;
   expected_sites: string[];
   dataset_fingerprints: Record<string, string>;
   connected_sites: string[];
@@ -168,7 +169,9 @@ export interface PhysicalFederationJob {
   current_round: number;
   received_updates: number;
   quorum_required: number;
-  approved_by: string | null;
+  approval_count: number;
+  approval_required: number;
+  approval_state: string;
   global_model_sha256: string | null;
   metrics: Record<string, unknown> | null;
   error: string | null;

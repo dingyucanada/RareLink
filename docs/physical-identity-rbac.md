@@ -5,7 +5,7 @@
 **实现：** `rarelink/security/oidc.py`、`rarelink/security/physical_rbac.py`  
 **定位：** 受信内存 JWKS 的离线 JWT 验证和动作级 RBAC；尚不是完整医院 IAM 集成
 
-> 当前实现能够验证由预先信任密钥签发的 OIDC JWT，并按固定角色—权限矩阵失败关闭。它不提供 OIDC discovery、远程 JWKS 生命周期、MFA、会话吊销、完整站点级资源授权或持久化双人审批。真实医院部署仍需 IAM、安全和合规验收。
+> 当前实现能够验证由预先信任密钥签发的 OIDC JWT，并按固定角色—权限矩阵失败关闭。物理合同的独立第二审批已持久化，但 OIDC discovery、远程 JWKS 生命周期、MFA、会话吊销、完整站点级资源授权，以及提交/恢复动作本身的双人批准仍未完成。真实医院部署仍需 IAM、安全和合规验收。
 
 ## 1. 已实现范围
 
@@ -136,7 +136,7 @@ Principal 不包含 JWT、refresh token、JWK、JWT header 或 raw claims。
 | `POST /api/physical/jobs/{id}:verify-model` | `physical.model.verify` |
 | `GET /api/physical/events` | `physical.audit.read` |
 
-`physical.contract.approve` 和“提议人与第二审批人必须是不同 `sub`”已有领域规则与单元测试，但当前 API 尚未形成独立、持久化、可恢复的双人审批记录。当前 `:submit` 仍是单请求边界，不能宣称生产级双人审批已经完成。
+`physical.contract.approve` 已接入 `POST /api/physical/jobs/{id}:approve`：合同摘要锁定后，由不同 `sub` 的授权主体提交固定 attestation，审批记录持久化并在 submit/retry/resume 前重新核验。审批撤销、过期、替补流程以及提交/恢复动作本身的双人批准尚未完成，详见[物理合同双人审批](physical-dual-approval.md)。
 
 只读站点、作业和公开审计摘要用于运行面展示，目前不套用上述动作权限矩阵；如果目标医院将这些元数据判定为敏感，应由网关或后续资源级读取权限保护。
 
@@ -220,7 +220,7 @@ pytest -q \
   tests/test_physical_oidc_api.py
 ```
 
-当前全量回归基线为 **160 项测试通过**；身份子集不能替代全仓回归。
+当前全量回归基线为 **192 项测试通过**；身份子集不能替代全仓回归。
 
 医院集成还必须验证真实 issuer/audience、计划内密钥轮换、五角色治理、每角色负面 API、日志泄露检查、时钟告警和账户/密钥应急流程。
 
@@ -234,7 +234,7 @@ pytest -q \
 | 无 MFA assurance | token 不证明执行过特定 MFA | 与 IdP 约定并校验 `acr`/`amr` |
 | 无会话/主体吊销 | token 在 `exp` 前可能继续有效 | 短 TTL、introspection/deny-list、事件驱动吊销 |
 | `site_ids` 未资源级强制 | 有动作权限者可能操作非所属站点 | endpoint 级 site/organization/study policy |
-| 双人审批未持久化 | helper 存在，但无可恢复审批链 | Approval 表、状态机、不同 `sub`、过期/撤销 |
+| 合同审批缺少完整生命周期 | 第二审批已持久化，但无撤销、过期和替补流程 | 审批状态机、撤销/到期、替补和执行动作双审 |
 | 只读运行元数据未纳入 RBAC | 公共 UI 可见运行摘要 | 医院分级、网关或读取权限 |
 | legacy 主体拥有全角色 | 隔离环境一旦暴露影响大 | 仅 loopback/测试网；physical 永久禁止 |
 
@@ -243,5 +243,5 @@ pytest -q \
 - [正式工程开发计划](engineering-development-plan.md)
 - [三物理 DGX Spark 联邦部署手册](physical-deployment.md)
 - [物理控制面防篡改审计](physical-audit.md)
+- [物理联邦合同锁定与双人审批](physical-dual-approval.md)
 - [ADR-0002：站点身份、证书与院内数据边界](adr/0002-site-identity-and-data-boundary.md)
-

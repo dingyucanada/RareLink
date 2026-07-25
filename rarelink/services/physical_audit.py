@@ -33,17 +33,26 @@ ALLOWED_PAYLOAD_KEYS = {
     "job.contract-created": {
         "strategy",
         "bundle_sha256",
+        "contract_sha256",
         "expected_sites",
         "dataset_fingerprints",
         "total_rounds",
         "local_epochs",
         "quorum_required",
     },
+    "job.contract-second-approved": {
+        "approval_id",
+        "contract_sha256",
+        "attestation",
+        "approval_count",
+    },
     "job.submitted": {
         "external_job_id",
         "strategy",
         "attempt",
         "bundle_sha256",
+        "contract_sha256",
+        "approval_count",
     },
     "job.status-synchronized": {
         "status",

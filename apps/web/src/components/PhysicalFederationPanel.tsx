@@ -126,6 +126,7 @@ export default function PhysicalFederationPanel() {
             <strong>{latestJob.strategy.toUpperCase()} · {latestJob.status}</strong>
           </div>
           <div><span>NVFLARE JOB ID</span><strong>{latestJob.external_job_id ?? "等待人工审批提交"}</strong></div>
+          <div><span>APPROVAL</span><strong>{latestJob.approval_count}/{latestJob.approval_required}</strong></div>
           <div><span>ROUND</span><strong>{latestJob.current_round}/{latestJob.total_rounds}</strong></div>
           <div><span>UPDATES</span><strong>{latestJob.received_updates}/{latestJob.quorum_required}</strong></div>
           {latestJob.error && <p><CircleAlert size={14} /> {latestJob.error}</p>}
