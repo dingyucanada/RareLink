@@ -40,6 +40,7 @@ def oidc_token(
     *,
     subject: str,
     roles: list[str],
+    site_ids: list[str] | None = None,
 ) -> str:
     now = int(time.time())
     return jwt.encode(
@@ -51,7 +52,8 @@ def oidc_token(
             "iat": now - 5,
             "roles": roles,
             "organization": "hospital-research",
-            "site_ids": [],
+            "site_ids": site_ids
+            or ["hospital-a", "hospital-b", "hospital-c"],
         },
         private_key,
         algorithm="RS256",
@@ -200,6 +202,12 @@ def test_physical_contract_requires_distinct_persisted_second_approval(
         subject="other-reviewer-subject",
         roles=["reviewer"],
     )
+    narrow_reviewer = oidc_token(
+        private_key,
+        subject="narrow-reviewer-subject",
+        roles=["reviewer"],
+        site_ids=["hospital-a", "hospital-b"],
+    )
     job_id = insert_proposed_job("lead-subject")
 
     before_approval = client.post(
@@ -209,6 +217,18 @@ def test_physical_contract_requires_distinct_persisted_second_approval(
     )
     assert before_approval.status_code == 409
     assert "distinct second" in before_approval.json()["detail"]
+
+    out_of_scope = client.post(
+        f"/api/physical/jobs/{job_id}:approve",
+        headers={"Authorization": f"Bearer {narrow_reviewer}"},
+        json={
+            "attestation": "CONTRACT_DATA_AND_SECURITY_REVIEWED",
+            "note": "Missing one site scope must fail before approval",
+        },
+    )
+    assert out_of_scope.status_code == 403
+    assert "every target physical site" in out_of_scope.json()["detail"]
+    assert "hospital-c" not in out_of_scope.json()["detail"]
 
     self_approval = client.post(
         f"/api/physical/jobs/{job_id}:approve",
@@ -367,3 +387,89 @@ def test_distinct_approval_allows_real_controller_submission_boundary(
         "job.submitted",
     ]
     assert events["events"][1]["payload"]["approval_count"] == 2
+
+
+def test_out_of_scope_job_actions_never_reach_nvflare_controller(
+    client: TestClient,
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    private_key, jwk = oidc_material()
+    app.dependency_overrides[get_settings] = lambda: physical_oidc_settings(jwk)
+    narrow_sites = ["hospital-a", "hospital-b"]
+    narrow_lead = oidc_token(
+        private_key,
+        subject="narrow-lead",
+        roles=["research_lead"],
+        site_ids=narrow_sites,
+    )
+    narrow_site_admin = oidc_token(
+        private_key,
+        subject="narrow-site-admin",
+        roles=["site_admin"],
+        site_ids=narrow_sites,
+    )
+    narrow_reviewer = oidc_token(
+        private_key,
+        subject="narrow-reviewer",
+        roles=["reviewer"],
+        site_ids=narrow_sites,
+    )
+    job_id = insert_proposed_job("narrow-lead")
+
+    def forbidden_controller(*_args, **_kwargs):  # type: ignore[no-untyped-def]
+        raise AssertionError("Out-of-scope request reached the NVFLARE controller")
+
+    monkeypatch.setattr(api_main, "build_physical_controller", forbidden_controller)
+    create = client.post(
+        "/api/physical/jobs",
+        headers={"Authorization": f"Bearer {narrow_lead}"},
+        json={
+            "strategy": "fedavg",
+            "expected_sites": ["hospital-a", "hospital-b", "hospital-c"],
+            "total_rounds": 5,
+            "local_epochs": 1,
+            "job_directory": "/must-not-be-read",
+        },
+    )
+    assert create.status_code == 403
+
+    requests = [
+        client.post(
+            f"/api/physical/jobs/{job_id}:submit",
+            headers={"Authorization": f"Bearer {narrow_lead}"},
+            json=submit_payload(),
+        ),
+        client.post(
+            f"/api/physical/jobs/{job_id}:sync",
+            headers={"Authorization": f"Bearer {narrow_site_admin}"},
+        ),
+        client.post(
+            f"/api/physical/jobs/{job_id}:abort",
+            headers={"Authorization": f"Bearer {narrow_site_admin}"},
+        ),
+        client.post(
+            f"/api/physical/jobs/{job_id}:retry",
+            headers={"Authorization": f"Bearer {narrow_site_admin}"},
+            json=submit_payload(),
+        ),
+        client.post(
+            f"/api/physical/jobs/{job_id}:resume",
+            headers={"Authorization": f"Bearer {narrow_site_admin}"},
+            json=submit_payload(),
+        ),
+        client.post(
+            f"/api/physical/jobs/{job_id}:verify-model",
+            headers={"Authorization": f"Bearer {narrow_reviewer}"},
+            json={
+                "model_path": "/must-not-be-read/global-model.pt",
+                "expected_sha256": "f" * 64,
+            },
+        ),
+    ]
+    assert all(response.status_code == 403 for response in requests)
+    assert all(
+        "every target physical site" in response.json()["detail"]
+        for response in requests
+    )
+    assert all("hospital-c" not in response.text for response in requests)
+    assert all("must-not-be-read" not in response.text for response in requests)

@@ -82,6 +82,9 @@
   approval note plaintext is discarded and only its SHA-256 is retained
 - [x] Contract approval is idempotent, competing approvals conflict, and submit/retry/resume
   re-verify the frozen contract and approval before reaching NVIDIA FLARE
+- [x] OIDC `site_ids` resource scope requires every target site for registration,
+  contract create/approve, submit, sync, abort, retry/resume, and model verification;
+  denial happens before NVIDIA FLARE and does not enumerate missing sites
 - [x] MSD real-image single-site CUDA smoke and one-round three-logical-site NVFLARE FedAvg: 3/3
   updates aggregated, global model persisted, exit code 0
 
@@ -121,14 +124,19 @@
   complete low-risk rejection-event taxonomy. See
   [`physical-audit.md`](physical-audit.md).
 - Physical operator OIDC currently consumes trusted JWKS supplied as environment JSON.
-  Discovery, HTTPS JWKS retrieval, automatic caching/key rotation, MFA, session revocation,
-  resource-level `site_ids` enforcement remain outstanding.
+  Discovery, HTTPS JWKS retrieval, automatic caching/key rotation, MFA, and session revocation
+  remain outstanding.
   See [`physical-identity-rbac.md`](physical-identity-rbac.md).
 - Contract two-person approval is implemented, but approval revocation, expiry, replacement,
-  two-person authorization of the submit/retry/resume action itself, PostgreSQL concurrency,
-  and resource-level scope remain outstanding. `isolated-integration` retains a legacy
+  two-person authorization of the submit/retry/resume action itself and PostgreSQL concurrency
+  remain outstanding. `isolated-integration` retains a legacy
   single-request path and is not approval evidence. See
   [`physical-dual-approval.md`](physical-dual-approval.md).
+- Resource scope protects target-specific control operations. Public site/job lists and global
+  audit read are not site-filtered; organization/study scope, wildcard-like coordinator
+  governance, and cross-organization delegation remain future work. Legacy isolated integration
+  bypasses scope and is not scope evidence. See
+  [`physical-site-scope.md`](physical-site-scope.md).
 # 2026-07-20 · 组织方 OpenClaw + ComfyUI 参考 Workshop 基础完赛
 
 - 在 DGX Spark GB10 上执行组织方预置的 `workshop.ipynb`，输出独立 `workshop-executed.ipynb`；26 个代码单元无错误完成。

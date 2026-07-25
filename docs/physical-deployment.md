@@ -11,6 +11,7 @@
 - [物理控制面防篡改审计设计与验收](physical-audit.md)
 - [物理控制面 OIDC 身份与 RBAC 设计](physical-identity-rbac.md)
 - [物理联邦合同锁定与双人审批](physical-dual-approval.md)
+- [物理控制面站点资源级授权](physical-site-scope.md)
 
 ## 1. 目标拓扑与不可变边界
 
@@ -181,9 +182,15 @@ JSON 注入的受信内存 JWKS，支持 RS256/ES256，并校验 issuer、audien
 sub、角色、组织和站点 claims。JWT/raw claims 不持久化、不写审计。
 
 `legacy-token` 仅允许 `isolated-integration`，不能用于真实医院或公网。当前
-尚无 discovery/HTTPS JWKS 拉取、自动缓存轮换、MFA、会话吊销、资源级站点
-范围；OIDC/JWKS 详情见
+尚无 discovery/HTTPS JWKS 拉取、自动缓存轮换、MFA 和会话吊销；OIDC/JWKS 详情见
 [物理控制面 OIDC/RBAC 文档](physical-identity-rbac.md)。
+
+OIDC 主体的 `site_ids` 是资源级硬门：站点登记检查目标站点；合同创建、第二
+审批、submit、sync、abort、retry/resume 和 verify-model 要求作业全部三站均
+为 claims 子集。检查发生在 NVIDIA FLARE/模型操作之前；403 不回显缺失站点。
+`isolated-integration` 的 legacy 路径会绕过该检查，不能作为 scope 证据。公开
+site/job list 和全局 audit read 当前未按站点过滤，见
+[站点资源级授权](physical-site-scope.md)。
 
 Site Agent 的执行后端同样默认 `disabled`，因此未完成现场授权时，任务接口
 会失败关闭。医院 IT 可设置
@@ -246,8 +253,9 @@ resume 都会重新核验合同摘要和审批记录。公开 job view 只显示
 合同摘要，不显示提议/审批主体。受保护审计记录第二审批，但不含 note 或 token。
 
 `isolated-integration` 继续使用 `LEGACY_SINGLE_REQUEST`，不构成双人审批证据。
-当前尚无审批撤销、过期、替补、提交动作双审和资源级 site scope；SQLite 多
-worker 并发还需迁移 PostgreSQL。详见
+当前尚无审批撤销、过期、替补和提交动作双审；作业控制已强制三站 scope，
+但公开列表/audit 过滤、组织/研究维度尚未完成。SQLite 多 worker 并发还需迁移
+PostgreSQL。详见
 [物理联邦合同锁定与双人审批](physical-dual-approval.md)。
 
 ### 6.2 物理控制面审计

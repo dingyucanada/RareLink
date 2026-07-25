@@ -12,7 +12,9 @@ from rarelink.security.physical_rbac import (
     PhysicalPermissionDenied,
     PhysicalPrincipal,
     PhysicalRole,
+    PhysicalSiteScopeDenied,
     require_permission,
+    require_site_scope,
 )
 from rarelink.security.site_auth import (
     heartbeat_signature,
@@ -32,6 +34,8 @@ __all__ = [
     "PhysicalPermissionDenied",
     "PhysicalPrincipal",
     "PhysicalRole",
+    "PhysicalSiteScopeDenied",
     "require_permission",
+    "require_site_scope",
     "verify_heartbeat_signature",
 ]

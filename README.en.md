@@ -10,7 +10,7 @@
 
 <a href="README.md">中文</a> · <strong>English</strong>
 
-<strong>📘 <a href="outputs/RareLink-项目报告书.md">Project report (Chinese)</a></strong> · <a href="#deployment-and-quick-start">Quick start</a> · <a href="docs/physical-deployment.md">Physical Spark deployment</a> · <a href="docs/physical-identity-rbac.md">OIDC/RBAC</a> · <a href="docs/physical-dual-approval.md">Dual approval</a> · <a href="docs/physical-audit.md">Physical audit design</a> · <a href="#engineering-evidence-and-claim-boundaries">Engineering evidence</a>
+<strong>📘 <a href="outputs/RareLink-项目报告书.md">Project report (Chinese)</a></strong> · <a href="#deployment-and-quick-start">Quick start</a> · <a href="docs/physical-deployment.md">Physical Spark deployment</a> · <a href="docs/physical-identity-rbac.md">OIDC/RBAC</a> · <a href="docs/physical-site-scope.md">Site scope</a> · <a href="docs/physical-dual-approval.md">Dual approval</a> · <a href="docs/physical-audit.md">Physical audit design</a> · <a href="#engineering-evidence-and-claim-boundaries">Engineering evidence</a>
 
 <a href="https://www.nvidia.com/en-us/products/workstations/dgx-spark/"><img src="https://img.shields.io/badge/NVIDIA-DGX%20Spark-76B900?style=flat-square&logo=nvidia&logoColor=white" alt="NVIDIA DGX Spark" /></a>
 <a href="https://nvidia.github.io/NVFlare/"><img src="https://img.shields.io/badge/NVIDIA%20FLARE-2.7.2-2563EB?style=flat-square" alt="NVIDIA FLARE" /></a>

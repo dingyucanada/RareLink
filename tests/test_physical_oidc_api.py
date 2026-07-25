@@ -28,6 +28,7 @@ def oidc_token(
     *,
     subject: str,
     roles: list[str],
+    site_ids: list[str] | None = None,
 ) -> str:
     now = int(time.time())
     return jwt.encode(
@@ -39,7 +40,7 @@ def oidc_token(
             "iat": now - 5,
             "roles": roles,
             "organization": "hospital-research",
-            "site_ids": ["hospital-a"],
+            "site_ids": site_ids or ["hospital-a"],
         },
         private_key,
         algorithm="RS256",
@@ -107,6 +108,19 @@ def test_physical_oidc_identity_and_rbac_protect_operator_api(
     assert events.json()["verified"] is True
     assert events.json()["events"][0]["actor"] == "site-admin-subject"
     assert site_admin not in events.text
+
+    out_of_scope = client.post(
+        "/api/physical/sites",
+        headers={"Authorization": f"Bearer {site_admin}"},
+        json={
+            "site_id": "hospital-b",
+            "display_name": "Hospital B Spark",
+            "organization": "hospital_b",
+        },
+    )
+    assert out_of_scope.status_code == 403
+    assert "every target physical site" in out_of_scope.json()["detail"]
+    assert "hospital-b" not in out_of_scope.json()["detail"]
 
 
 def test_physical_oidc_rejects_legacy_and_invalid_bearer_credentials(

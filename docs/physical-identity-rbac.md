@@ -5,7 +5,7 @@
 **实现：** `rarelink/security/oidc.py`、`rarelink/security/physical_rbac.py`  
 **定位：** 受信内存 JWKS 的离线 JWT 验证和动作级 RBAC；尚不是完整医院 IAM 集成
 
-> 当前实现能够验证由预先信任密钥签发的 OIDC JWT，并按固定角色—权限矩阵失败关闭。物理合同的独立第二审批已持久化，但 OIDC discovery、远程 JWKS 生命周期、MFA、会话吊销、完整站点级资源授权，以及提交/恢复动作本身的双人批准仍未完成。真实医院部署仍需 IAM、安全和合规验收。
+> 当前实现能够验证由预先信任密钥签发的 OIDC JWT，并按固定角色—权限矩阵失败关闭。物理合同的独立第二审批已持久化，目标明确的控制操作也已强制 `site_ids` 全目标站点子集；但 OIDC discovery、远程 JWKS 生命周期、MFA、会话吊销、读取列表/审计过滤，以及提交/恢复动作本身的双人批准仍未完成。真实医院部署仍需 IAM、安全和合规验收。
 
 ## 1. 已实现范围
 
@@ -123,7 +123,7 @@ Principal 不包含 JWT、refresh token、JWK、JWT header 或 raw claims。
 
 矩阵在代码中只读。多角色主体获得权限并集，不存在隐含超级管理员；空角色和未知动作授予零权限。
 
-### 4.2 当前 API 映射
+### 4.2 当前 API 与资源范围
 
 | API | 权限 |
 | --- | --- |
@@ -138,7 +138,11 @@ Principal 不包含 JWT、refresh token、JWK、JWT header 或 raw claims。
 
 `physical.contract.approve` 已接入 `POST /api/physical/jobs/{id}:approve`：合同摘要锁定后，由不同 `sub` 的授权主体提交固定 attestation，审批记录持久化并在 submit/retry/resume 前重新核验。审批撤销、过期、替补流程以及提交/恢复动作本身的双人批准尚未完成，详见[物理合同双人审批](physical-dual-approval.md)。
 
-只读站点、作业和公开审计摘要用于运行面展示，目前不套用上述动作权限矩阵；如果目标医院将这些元数据判定为敏感，应由网关或后续资源级读取权限保护。
+除动作权限外，site register、contract create/approve、submit、sync、abort、
+retry/resume 和 verify-model 均要求全部目标站点是 OIDC `site_ids` 的子集，并在
+调用 NVIDIA FLARE 前检查。scope 不足返回不枚举缺失站点的 403。只读站点、作业
+列表和公开摘要仍未按站点过滤；`audit.read` 也是协调方全局读取权限。完整边界见
+[站点资源级授权](physical-site-scope.md)。
 
 ## 5. 模式硬门
 
@@ -220,7 +224,7 @@ pytest -q \
   tests/test_physical_oidc_api.py
 ```
 
-当前全量回归基线为 **192 项测试通过**；身份子集不能替代全仓回归。
+当前全量回归基线为 **194 项测试通过**；身份子集不能替代全仓回归。
 
 医院集成还必须验证真实 issuer/audience、计划内密钥轮换、五角色治理、每角色负面 API、日志泄露检查、时钟告警和账户/密钥应急流程。
 
@@ -233,7 +237,7 @@ pytest -q \
 | 无自动缓存/轮换 | key 轮换需手工重启/重载 | bounded cache、后台刷新、旧 key 宽限和告警 |
 | 无 MFA assurance | token 不证明执行过特定 MFA | 与 IdP 约定并校验 `acr`/`amr` |
 | 无会话/主体吊销 | token 在 `exp` 前可能继续有效 | 短 TTL、introspection/deny-list、事件驱动吊销 |
-| `site_ids` 未资源级强制 | 有动作权限者可能操作非所属站点 | endpoint 级 site/organization/study policy |
+| 读取接口未按 `site_ids` 过滤 | 控制操作已 scope 化，但列表/审计仍可能跨站可见 | 站点/组织/研究级读取 policy |
 | 合同审批缺少完整生命周期 | 第二审批已持久化，但无撤销、过期和替补流程 | 审批状态机、撤销/到期、替补和执行动作双审 |
 | 只读运行元数据未纳入 RBAC | 公共 UI 可见运行摘要 | 医院分级、网关或读取权限 |
 | legacy 主体拥有全角色 | 隔离环境一旦暴露影响大 | 仅 loopback/测试网；physical 永久禁止 |
@@ -244,4 +248,5 @@ pytest -q \
 - [三物理 DGX Spark 联邦部署手册](physical-deployment.md)
 - [物理控制面防篡改审计](physical-audit.md)
 - [物理联邦合同锁定与双人审批](physical-dual-approval.md)
+- [物理控制面站点资源级授权](physical-site-scope.md)
 - [ADR-0002：站点身份、证书与院内数据边界](adr/0002-site-identity-and-data-boundary.md)

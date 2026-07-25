@@ -10,9 +10,11 @@ from rarelink.security.physical_rbac import (
     PhysicalPermissionDenied,
     PhysicalPrincipal,
     PhysicalRole,
+    PhysicalSiteScopeDenied,
     ensure_distinct_approvers,
     permissions_for,
     require_permission,
+    require_site_scope,
 )
 
 
@@ -197,3 +199,22 @@ def test_permission_matrix_is_read_only() -> None:
         ROLE_PERMISSIONS[PhysicalRole.SITE_ADMIN] = frozenset(  # type: ignore[index]
             {PhysicalPermission.JOB_SUBMIT}
         )
+
+
+def test_site_scope_requires_every_target_site_and_fails_closed() -> None:
+    actor = principal(
+        "scoped-subject",
+        PhysicalRole.RESEARCH_LEAD,
+        site_ids=frozenset({"hospital-a", "hospital-b", "hospital-c"}),
+    )
+    require_site_scope(actor, frozenset({"hospital-a"}))
+    require_site_scope(actor, frozenset({"hospital-a", "hospital-c"}))
+
+    with pytest.raises(PhysicalSiteScopeDenied) as missing:
+        require_site_scope(actor, frozenset({"hospital-a", "hospital-d"}))
+    assert missing.value.status_code == 403
+    assert missing.value.error_code == "PHYSICAL_SITE_SCOPE_DENIED"
+    with pytest.raises(PhysicalSiteScopeDenied):
+        require_site_scope(actor, frozenset())
+    with pytest.raises(PhysicalSiteScopeDenied):
+        require_site_scope(object(), frozenset({"hospital-a"}))  # type: ignore[arg-type]

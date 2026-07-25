@@ -107,6 +107,11 @@ class PhysicalPermissionDenied(PhysicalAccessControlError):
     error_code = "PHYSICAL_PERMISSION_DENIED"
 
 
+class PhysicalSiteScopeDenied(PhysicalAccessControlError):
+    status_code = 403
+    error_code = "PHYSICAL_SITE_SCOPE_DENIED"
+
+
 class PhysicalApprovalConflict(PhysicalAccessControlError):
     status_code = 409
     error_code = "PHYSICAL_APPROVER_NOT_DISTINCT"
@@ -183,6 +188,30 @@ def require_permission(
     if permission not in permissions_for(principal):
         raise PhysicalPermissionDenied(
             f"Principal is not authorized for action {permission.value}"
+        )
+
+
+def require_site_scope(
+    principal: PhysicalPrincipal,
+    required_site_ids: frozenset[str],
+) -> None:
+    """Require every target physical site to be present in verified OIDC scope."""
+    if not isinstance(principal, PhysicalPrincipal):
+        raise PhysicalSiteScopeDenied(
+            "A verified physical federation principal is required"
+        )
+    if (
+        not isinstance(required_site_ids, frozenset)
+        or not required_site_ids
+        or any(
+            not isinstance(site_id, str) or not site_id.strip()
+            for site_id in required_site_ids
+        )
+    ):
+        raise PhysicalSiteScopeDenied("Physical federation site scope is invalid")
+    if not required_site_ids.issubset(principal.site_ids):
+        raise PhysicalSiteScopeDenied(
+            "Principal is not authorized for every target physical site"
         )
 
 

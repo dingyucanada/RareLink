@@ -8,7 +8,9 @@ from fastapi.testclient import TestClient
 from rarelink.api import main as api_main
 from rarelink.api.main import app
 from rarelink.config import Settings, get_settings
+from rarelink.database import get_session
 from rarelink.domain import PhysicalSiteHeartbeat
+from rarelink.models import PhysicalFederationJob
 from rarelink.security import heartbeat_signature
 from rarelink.services.physical_controller import (
     CommandResult,
@@ -447,6 +449,26 @@ def test_model_verification_route_never_exposes_coordinator_path(
         "build_physical_controller",
         lambda _session, _config: (Verifier(), tmp_path / "admin-kit"),
     )
+    session_provider = app.dependency_overrides[get_session]()
+    session = next(session_provider)
+    try:
+        session.add(
+            PhysicalFederationJob(
+                id="physical-job-001",
+                strategy="fedavg",
+                expected_sites_json=json.dumps(
+                    ["hospital-a", "hospital-b", "hospital-c"]
+                ),
+                total_rounds=5,
+                local_epochs=1,
+                quorum_required=3,
+                job_directory=str(tmp_path / "coordinator-job"),
+            )
+        )
+        session.commit()
+    finally:
+        session.close()
+        session_provider.close()
     response = client.post(
         "/api/physical/jobs/physical-job-001:verify-model",
         headers=OPERATOR_HEADERS,

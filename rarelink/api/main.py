@@ -58,7 +58,9 @@ from rarelink.security import (
     PhysicalPermissionDenied,
     PhysicalPrincipal,
     PhysicalRole,
+    PhysicalSiteScopeDenied,
     require_permission,
+    require_site_scope,
     verify_heartbeat_signature,
 )
 from rarelink.security.physical_rbac import PhysicalAccessControlError
@@ -402,6 +404,32 @@ def require_physical_principal(
     return principal
 
 
+def require_physical_site_scope(
+    principal: PhysicalPrincipal,
+    site_ids: list[str],
+    config: Settings,
+) -> None:
+    if config.rarelink_physical_auth_mode == "legacy-token":
+        return
+    if not site_ids or any(not isinstance(site_id, str) for site_id in site_ids):
+        raise HTTPException(status_code=409, detail="Physical site scope is invalid")
+    try:
+        require_site_scope(principal, frozenset(site_ids))
+    except PhysicalSiteScopeDenied as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
+
+
+def require_physical_job_scope(
+    principal: PhysicalPrincipal,
+    job: PhysicalFederationJob,
+    config: Settings,
+) -> None:
+    expected_sites = as_json(job.expected_sites_json, [])
+    if not isinstance(expected_sites, list):
+        raise HTTPException(status_code=409, detail="Physical job site scope is invalid")
+    require_physical_site_scope(principal, expected_sites, config)
+
+
 def build_physical_controller(
     session: Session,
     config: Settings,
@@ -546,6 +574,7 @@ def register_physical_site(
         config,
         PhysicalPermission.SITE_REGISTER,
     )
+    require_physical_site_scope(principal, [payload.site_id], config)
     if session.get(PhysicalSite, payload.site_id):
         raise HTTPException(status_code=409, detail="Physical site is already registered")
     site = PhysicalSite(
@@ -730,6 +759,7 @@ def create_physical_job(
     expected_sites = list(dict.fromkeys(payload.expected_sites))
     if len(expected_sites) != len(payload.expected_sites):
         raise HTTPException(status_code=422, detail="Expected physical sites must be unique")
+    require_physical_site_scope(principal, expected_sites, config)
     registered_sites = session.exec(
         select(PhysicalSite).where(PhysicalSite.site_id.in_(expected_sites))
     ).all()
@@ -844,6 +874,7 @@ def approve_physical_job_contract(
     job = session.get(PhysicalFederationJob, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Physical job not found")
+    require_physical_job_scope(principal, job, config)
     if job.status != PhysicalJobStatus.APPROVAL_PENDING:
         raise HTTPException(
             status_code=409,
@@ -944,6 +975,7 @@ def submit_physical_job(
     job = session.get(PhysicalFederationJob, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Physical job not found")
+    require_physical_job_scope(principal, job, config)
     if job.status not in {"APPROVAL_PENDING", "SUBMITTED"}:
         raise HTTPException(status_code=409, detail="Physical job is not awaiting submission")
     approval_count = require_current_physical_contract(session, job, config)
@@ -1022,6 +1054,10 @@ def sync_physical_job(
         config,
         PhysicalPermission.JOB_SYNC,
     )
+    job = session.get(PhysicalFederationJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Physical job not found")
+    require_physical_job_scope(principal, job, config)
     controller, admin_kit = build_physical_controller(session, config)
     try:
         controller.status(job_id, admin_kit=admin_kit)
@@ -1064,6 +1100,10 @@ def abort_physical_job(
         config,
         PhysicalPermission.JOB_ABORT,
     )
+    job = session.get(PhysicalFederationJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Physical job not found")
+    require_physical_job_scope(principal, job, config)
     controller, admin_kit = build_physical_controller(session, config)
     try:
         controller.abort(job_id, admin_kit=admin_kit)
@@ -1108,6 +1148,7 @@ def retry_physical_job(
     existing = session.get(PhysicalFederationJob, job_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Physical job not found")
+    require_physical_job_scope(principal, existing, config)
     if existing.error and existing.error.startswith("DATASET_VERSION_CHANGED"):
         raise HTTPException(
             status_code=409,
@@ -1165,6 +1206,7 @@ def resume_physical_job(
     existing = session.get(PhysicalFederationJob, job_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Physical job not found")
+    require_physical_job_scope(principal, existing, config)
     if existing.error and existing.error.startswith("DATASET_VERSION_CHANGED"):
         raise HTTPException(
             status_code=409,
@@ -1221,6 +1263,10 @@ def verify_physical_global_model(
         config,
         PhysicalPermission.MODEL_VERIFY,
     )
+    job = session.get(PhysicalFederationJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Physical job not found")
+    require_physical_job_scope(principal, job, config)
     controller, _admin_kit = build_physical_controller(session, config)
     try:
         receipt = controller.verify_global_model(

@@ -170,6 +170,11 @@ Content-Type: application/json
 
 这实现的是“合同双人审批”。当前 submit/retry/resume 操作本身仍由一个具有对应 action permission 的主体发起，并没有第二个独立的“执行批准”记录；双人提交、双人恢复仍是生产待办。
 
+提议人、第二审批人和 submit/retry/resume 执行者还必须分别通过同一合同三站的
+OIDC `site_ids` 子集检查；任一主体缺少一个目标站点都会在审批记录或 NVIDIA
+FLARE 调用前返回不枚举缺失站点的 403。规则见
+[站点资源级授权](physical-site-scope.md)。
+
 ## 6. 公开视图与审计边界
 
 ### 6.1 公开 job view
@@ -244,7 +249,7 @@ pytest -q \
   tests/test_physical_rbac.py
 ```
 
-当前全量回归基线为 **192 项测试通过**；审批子集不能替代全仓回归。
+当前全量回归基线为 **194 项测试通过**；审批子集不能替代全仓回归。
 
 物理现场还需验证：
 
@@ -265,7 +270,7 @@ pytest -q \
 | 无替补审批人流程 | 人员离职/停权后缺少治理路径 | replacement workflow，不覆盖历史记录 |
 | submit/retry/resume 无双人执行审批 | 合同虽双审，执行动作仍是单主体 | 高风险 action approval/intent token |
 | SQLite 并发能力有限 | 多 worker 依赖唯一约束兜底，串行语义不足 | PostgreSQL 事务、行锁/序列化和重试 |
-| 无资源级 site scope | approver 的 `site_ids` 尚未约束具体合同 | 组织/站点/研究级 policy |
+| 读取与跨组织 scope 尚不完整 | 控制操作已要求三站子集，但列表/audit 和组织/研究维度未覆盖 | 读取过滤、组织/研究 policy、受治理的协调方 scope |
 | 无审批理由原文治理 | 只保存摘要，无法在 RareLink 内复核原文 | 受控文档系统引用和签名摘要 |
 | 无外部签名/公证 | 数据库和应用密钥同时失陷时保护有限 | HSM/非对称签名、WORM 和外部锚定 |
 
@@ -275,3 +280,4 @@ pytest -q \
 - [物理控制面防篡改审计](physical-audit.md)
 - [三物理 DGX Spark 联邦部署](physical-deployment.md)
 - [正式工程开发计划](engineering-development-plan.md)
+- [物理控制面站点资源级授权](physical-site-scope.md)
