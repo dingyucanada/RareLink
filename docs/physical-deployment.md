@@ -143,6 +143,7 @@ MONAI、NVFLARE、证书、manifest 和启动包。任何必要检查失败时�
 RARELINK_PHYSICAL_MODE=physical
 RARELINK_PHYSICAL_AUTH_MODE=oidc
 RARELINK_PHYSICAL_APPROVAL_TTL_SECONDS=86400
+CORS_ORIGINS=https://rarelink-control.hospital.example
 RARELINK_PHYSICAL_SITE_SECRETS='{"hospital-a":"...","hospital-b":"...","hospital-c":"..."}'
 RARELINK_AUDIT_HMAC_KEY='由受控密钥系统注入的至少 32 字符随机值'
 RARELINK_OIDC_ISSUER='https://identity.hospital.example'

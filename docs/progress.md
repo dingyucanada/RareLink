@@ -100,6 +100,8 @@
   reading the chain head; a unique predecessor index rejects any concurrent fork
 - [x] Separate liveness/readiness probes; readiness queries the database and verifies
   Alembic head, while failures expose no database host, URL, credential, or exception
+- [x] Physical CORS accepts exact HTTPS origins only; control responses use no-store,
+  anti-frame, nosniff, CSP/Permissions Policy, and production HTTPS HSTS headers
 - [x] MSD real-image single-site CUDA smoke and one-round three-logical-site NVFLARE FedAvg: 3/3
   updates aggregated, global model persisted, exit code 0
 

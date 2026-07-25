@@ -35,6 +35,7 @@
 | 结果入账 | 全局模型文件与可信 SHA-256 核验，路径不出协调端 | 模型篡改负面对照 | 模型签名、模型卡和发布双人审批 |
 | 物理运行面 | 真实 Site/Job API 轮询，显示站点、轮次、Job ID、quorum 与回执 | TypeScript 生产构建 | SSE 和操作按钮审批流 |
 | OIDC/RBAC | 受信内存 JWKS 离线验证 RS256/ES256；校验 issuer/audience/time/sub/角色/组织/站点 claims；五角色十一权限；physical 拒绝 legacy token，site/job/event read 按站点 scope 过滤 | JWT 正反例、权限矩阵、读取过滤与 API 硬门测试 | discovery/HTTPS JWKS、自动缓存轮换、MFA、会话吊销、组织/研究 scope |
+| HTTP 安全边界 | physical CORS 只接受精确 HTTPS origin；物理 API no-store、反 iframe、nosniff、CSP/Permissions Policy，生产 HTTPS HSTS | Origin 负例、响应头与构建回归 | 分布式限流、API Gateway/WAF、代理可信链和渗透测试 |
 | 合同双人审批 | Contract v1 锁定关键语义；不同 OIDC `sub` 持久化第二审批、有效期与不可变撤销记录 | 摘要变化、自批、幂等、竞争、过期、撤销、明文 note/reason 泄露和提交硬门测试 | 替补、执行动作双审和 PostgreSQL 并发 |
 | 站点资源 scope | 所有目标站点必须为 OIDC `site_ids` 子集；覆盖写操作及 physical 站点/作业/审计明细读取，NVFLARE 前失败关闭 | 逐端点越界负例、读取过滤和错误信息最小化 | 组织/研究 scope、分页和跨组织治理 |
 | PostgreSQL/Alembic | 生产 schema 以版本化 Alembic revision 管理；SQLite 仅演示/单机开发；定义备份、升级、验证和恢复门 | 空库/旧版升级、迁移一致性和 PostgreSQL 专项回归 | 真实医院级压测、HA、PITR 与灾备演练 |
@@ -44,7 +45,7 @@
 | 医院 NIfTI 数据层 | 四模态、几何、标签、路径和直接标识质控；生成脱敏内容指纹 | 数据证明、篡改/外站/标识/几何负面对照 | DICOM/PACS、MONAI 缓存服务和医院数据治理审批 |
 | 数据版本合同 | 物理作业固定三站数据指纹；变化时自动失败且禁止 retry/resume | API 失效测试与训练前内容复核 | 合同修订 UI、双人复核和 PostgreSQL 事务 |
 
-当前全量回归为 **214 项测试通过**；Python lint、前端 TypeScript/Vite 生产构建和
+当前全量回归为 **221 项测试通过**；Python lint、前端 TypeScript/Vite 生产构建和
 Git diff 完整性检查通过。这些是软件回归证据，不是医学性能或临床验证证据。
 当前 Site Agent 心跳仍使用每站独立 HMAC，NVIDIA FLARE 数据面使用证书化通信；
 操作员 API 已增加离线 OIDC JWT 验证与固定 RBAC，`physical` 模式拒绝 legacy

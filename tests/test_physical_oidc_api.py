@@ -108,6 +108,12 @@ def test_physical_oidc_identity_and_rbac_protect_operator_api(
         headers={"Authorization": f"Bearer {site_admin}"},
     )
     assert events.status_code == 200
+    assert events.headers["cache-control"] == "no-store, max-age=0"
+    assert events.headers["x-frame-options"] == "DENY"
+    assert events.headers["x-content-type-options"] == "nosniff"
+    assert events.headers["content-security-policy"] == (
+        "default-src 'none'; frame-ancestors 'none'"
+    )
     assert events.json()["verified"] is True
     assert events.json()["events"][0]["actor"] == "site-admin-subject"
     assert site_admin not in events.text

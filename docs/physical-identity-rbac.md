@@ -163,9 +163,15 @@ RARELINK_AUDIT_HMAC_KEY='<managed random value, at least 32 characters>'
 RARELINK_OIDC_ISSUER='https://identity.hospital.example'
 RARELINK_OIDC_AUDIENCE='rarelink-physical-control'
 RARELINK_OIDC_JWKS_JSON='{"keys":[...]}'
+CORS_ORIGINS='https://rarelink-control.hospital.example'
 ```
 
 若 `physical` 使用 `legacy-token`，受保护操作返回 `503 Physical mode requires OIDC operator authentication`。即使共享 token 和审计 HMAC 已配置，也不会降级接受 legacy 身份。
+
+physical 启动同时校验每个 CORS origin：必须是精确 HTTPS origin，禁止 `*`、
+HTTP、URL 凭据、路径、query 和 fragment。物理 API 响应设置 `no-store`、
+`nosniff`、`DENY` frame、最小 Permissions Policy 与 CSP；生产 HTTPS 请求另带
+HSTS。这些头不替代医院 API Gateway、WAF、速率限制或渗透测试。
 
 ### 5.2 Isolated integration
 
@@ -230,7 +236,7 @@ pytest -q \
   tests/test_physical_oidc_api.py
 ```
 
-当前全量回归基线为 **214 项测试通过**；身份子集不能替代全仓回归。
+当前全量回归基线为 **221 项测试通过**；身份子集不能替代全仓回归。
 
 医院集成还必须验证真实 issuer/audience、计划内密钥轮换、五角色治理、每角色负面 API、日志泄露检查、时钟告警和账户/密钥应急流程。
 

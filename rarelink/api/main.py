@@ -71,6 +71,7 @@ from rarelink.security import (
     require_site_scope,
     verify_heartbeat_signature,
 )
+from rarelink.security.http_boundary import validate_physical_cors
 from rarelink.security.physical_rbac import PhysicalAccessControlError
 from rarelink.services.agents import build_research_agent
 from rarelink.services.federation import build_federation_runner
@@ -103,6 +104,7 @@ from rarelink.services.workflow import InvalidTransition, transition
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    validate_physical_cors(settings)
     create_db_and_tables()
     recover_interrupted_jobs()
     yield
@@ -123,6 +125,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def physical_security_headers(request, call_next):  # type: ignore[no-untyped-def]
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    if request.url.path.startswith("/api/physical"):
+        response.headers["Cache-Control"] = "no-store, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
+    if settings.app_env == "production" and request.url.scheme == "https":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
 
 
 @app.middleware("http")
