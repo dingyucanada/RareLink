@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     # replaces this with hospital OIDC/mTLS identity and a managed secret store.
     rarelink_physical_site_secrets: str = ""
     rarelink_physical_operator_token: str = ""
+    rarelink_audit_hmac_key: str = ""
     rarelink_physical_mode: Literal[
         "disabled", "isolated-integration", "physical"
     ] = "disabled"

@@ -232,6 +232,20 @@ def test_physical_job_requires_three_registered_unique_sites(
         "hospital-b": "b" * 64,
         "hospital-c": "c" * 64,
     }
+    audit = client.get("/api/physical/events", headers=OPERATOR_HEADERS)
+    assert audit.status_code == 200
+    assert audit.json()["verified"] is True
+    assert audit.json()["event_count"] >= 7
+    assert str(tmp_path) not in audit.text
+    assert "operator-secret" not in audit.text
+    summary = client.get("/api/physical/audit-summary")
+    assert summary.status_code == 200
+    assert summary.json()["verified"] is True
+    assert summary.json()["event_count"] == audit.json()["event_count"]
+    assert summary.json()["head_event_hash"]
+    assert summary.json()["events_exported"] is False
+    assert summary.json()["actors_exported"] is False
+    assert "physical-operator" not in summary.text
 
     invalid = client.post(
         "/api/physical/jobs",
@@ -259,6 +273,36 @@ def test_physical_mutations_are_closed_when_operator_identity_is_unconfigured(
     )
 
     assert response.status_code == 503
+
+
+def test_empty_physical_audit_summary_remains_pending(client: TestClient) -> None:
+    response = client.get("/api/physical/audit-summary")
+
+    assert response.status_code == 200
+    assert response.json()["verified"] is False
+    assert response.json()["event_count"] == 0
+    assert response.json()["head_event_hash"] is None
+
+
+def test_physical_mode_requires_managed_audit_hmac_key(client: TestClient) -> None:
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        _env_file=None,
+        rarelink_allow_llm=False,
+        rarelink_physical_mode="physical",
+        rarelink_physical_operator_token="operator-secret",
+    )
+    response = client.post(
+        "/api/physical/sites",
+        headers=OPERATOR_HEADERS,
+        json={
+            "site_id": "hospital-a",
+            "display_name": "Hospital A Spark",
+            "organization": "hospital_a",
+        },
+    )
+
+    assert response.status_code == 503
+    assert "audit HMAC key" in response.json()["detail"]
 
 
 def test_approved_physical_job_persists_real_external_job_id(

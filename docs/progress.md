@@ -65,6 +65,12 @@
   label contract, path confinement and direct-identifier rejection
 - [x] De-identified dataset receipt and three-site dataset-version binding; stale data
   automatically invalidates a pending/running physical job contract
+- [x] Physical-control tamper-evident event chain with canonical SHA-256 history,
+  HMAC-SHA256 events, recursive sensitive-field rejection, a public aggregate summary,
+  and an operator-protected recent-event API
+- [x] Physical mode fails closed when a managed audit HMAC key is absent or shorter than
+  the P0 minimum; model verification, site heartbeats, job lifecycle and dataset-version
+  invalidation enter the same chained ledger
 - [x] MSD real-image single-site CUDA smoke and one-round three-logical-site NVFLARE FedAvg: 3/3
   updates aggregated, global model persisted, exit code 0
 
@@ -97,6 +103,12 @@
   external NIfTI I/O check. The Spark release host could not be reached directly, so the 1.4 MiB
   official asset pair was transparently transferred through encrypted SSH after source verification.
   This is not claimed as an MSD benchmark, federated training result, tumour result, or clinical evidence.
+- The physical-control audit chain is a tamper-evident P0 pilot, not a WORM or
+  non-repudiation system. SQLite does not serialize multi-worker append operations; not every
+  rejected request is recorded; historical HMAC key-ring rotation is not implemented. Production
+  requires PostgreSQL serialization, managed key rotation, protected external anchoring, and a
+  complete low-risk rejection-event taxonomy. See
+  [`physical-audit.md`](physical-audit.md).
 # 2026-07-20 · 组织方 OpenClaw + ComfyUI 参考 Workshop 基础完赛
 
 - 在 DGX Spark GB10 上执行组织方预置的 `workshop.ipynb`，输出独立 `workshop-executed.ipynb`；26 个代码单元无错误完成。

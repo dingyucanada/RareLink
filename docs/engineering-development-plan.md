@@ -34,16 +34,20 @@
 | 固定参与方 | 严格三个指定 Site ID、`3/3` quorum，2/3 不得完成 | 不完整 quorum 失败测试 | 安全聚合和迟到更新的 FLARE 侧插件 |
 | 结果入账 | 全局模型文件与可信 SHA-256 核验，路径不出协调端 | 模型篡改负面对照 | 模型签名、模型卡和发布双人审批 |
 | 物理运行面 | 真实 Site/Job API 轮询，显示站点、轮次、Job ID、quorum 与回执 | TypeScript 生产构建 | SSE、OIDC/RBAC 和操作按钮审批流 |
+| 物理审计链 | 规范化事件、前序摘要、SHA256 历史兼容、HMAC-SHA256 新事件、公开摘要/受保护明细分离 | 篡改、敏感字段、密钥硬门和 API 边界测试 | PostgreSQL 串行写入、WORM 锚定、拒绝事件全集和 HMAC key-ring |
 | 模式隔离 | `disabled / isolated-integration / physical` 进入 API 和 UI | 默认失败关闭、模式测试 | 生产策略中心 |
 | 设备前验收 | 三个独立 OS 进程生成各自签名心跳，中心接受 3/3 并创建合同 | `make physical-control-smoke` 返回 `passed=true` | 三容器网络故障矩阵和三 Spark Level 2 |
 | 医院 NIfTI 数据层 | 四模态、几何、标签、路径和直接标识质控；生成脱敏内容指纹 | 数据证明、篡改/外站/标识/几何负面对照 | DICOM/PACS、MONAI 缓存服务和医院数据治理审批 |
 | 数据版本合同 | 物理作业固定三站数据指纹；变化时自动失败且禁止 retry/resume | API 失效测试与训练前内容复核 | 合同修订 UI、双人复核和 PostgreSQL 事务 |
 
-当前自动回归为 **105 项测试通过**，Python lint、前端 TypeScript/Vite 生产构建和
+当前自动回归为 **111 项测试通过**，Python lint、前端 TypeScript/Vite 生产构建和
 Git diff 完整性检查通过。该数字是软件回归证据，不是医学性能或临床验证证据。
 当前 Site Agent 到控制 API 的 P0 身份为每站独立 HMAC；NVIDIA FLARE 数据面
-仍使用其证书化通信。医院级 mTLS/OIDC 身份、PostgreSQL、连续审计链、PACS/FHIR、
-安全聚合和真实三设备运行仍按下文 P1/P2 与 Level 2 推进。
+仍使用其证书化通信。物理事件链已能检测历史修改并在 `physical` 模式强制配置
+HMAC 密钥，但 SQLite pilot 不是 WORM，尚未覆盖全部拒绝操作，也没有旧 HMAC
+key-ring 轮换；多 worker 串行写入仍需 PostgreSQL。医院级 mTLS/OIDC 身份、
+PACS/FHIR、安全聚合和真实三设备运行仍按下文 P1/P2 与 Level 2 推进。完整设计、
+API 边界与验收见[物理控制面审计文档](physical-audit.md)。
 
 ## 2. 产品范围与非目标
 
@@ -619,4 +623,5 @@ Level 2 表明“完成三物理站点工程验证”，仍不等于完成临床
 - [ADR-0002：站点身份、证书与院内数据边界](adr/0002-site-identity-and-data-boundary.md)
 - [ADR-0003：任务幂等、固定参与方与 Quorum](adr/0003-idempotency-and-quorum.md)
 - [三物理 DGX Spark 联邦部署手册](physical-deployment.md)
+- [物理控制面防篡改审计设计与验收](physical-audit.md)
 - [医院本地 NIfTI 数据规范](site-data-manifest.md)

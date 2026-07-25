@@ -40,6 +40,7 @@ from rarelink.models import (
     AgentArtifact,
     AuditEvent,
     Experiment,
+    PhysicalControlEvent,
     PhysicalFederationJob,
     PhysicalHeartbeatReceipt,
     PhysicalSite,
@@ -51,6 +52,10 @@ from rarelink.services.agents import build_research_agent
 from rarelink.services.federation import build_federation_runner
 from rarelink.services.ledger import append_event, list_events
 from rarelink.services.local_inference import probe_spark_inference
+from rarelink.services.physical_audit import (
+    append_physical_event,
+    verify_physical_event_chain,
+)
 from rarelink.services.physical_controller import (
     JobConflictError,
     JobNotFoundError,
@@ -261,11 +266,39 @@ def physical_job_view(job: PhysicalFederationJob, config: Settings) -> dict[str,
     }
 
 
+def physical_event_view(event: PhysicalControlEvent) -> dict[str, Any]:
+    return {
+        "event_id": event.event_id,
+        "action": event.action,
+        "actor": event.actor,
+        "resource_type": event.resource_type,
+        "resource_id": event.resource_id,
+        "outcome": event.outcome,
+        "payload": as_json(event.payload_json, {}),
+        "previous_hash": event.previous_hash,
+        "event_hash": event.event_hash,
+        "algorithm": event.algorithm,
+        "key_id": event.key_id,
+        "created_at": event.created_at,
+        "contains_patient_data": False,
+        "contains_secret": False,
+        "contains_local_path": False,
+    }
+
+
 def require_physical_enabled(config: Settings) -> None:
     if config.rarelink_physical_mode == "disabled":
         raise HTTPException(
             status_code=503,
             detail="Physical federation control plane is disabled",
+        )
+    if (
+        config.rarelink_physical_mode == "physical"
+        and len(config.rarelink_audit_hmac_key) < 32
+    ):
+        raise HTTPException(
+            status_code=503,
+            detail="Physical mode requires a managed audit HMAC key",
         )
 
 
@@ -390,6 +423,19 @@ def register_physical_site(
         expected=payload.expected,
     )
     session.add(site)
+    append_physical_event(
+        session,
+        action="site.register",
+        actor="physical-operator",
+        resource_type="physical-site",
+        resource_id=site.site_id,
+        outcome="accepted",
+        payload={
+            "organization": site.organization,
+            "expected": site.expected,
+        },
+        hmac_key=config.rarelink_audit_hmac_key,
+    )
     session.commit()
     session.refresh(site)
     return physical_site_view(site, config)
@@ -496,8 +542,40 @@ def receive_physical_site_heartbeat(
             job.updated_at = utc_now()
             site.status = PhysicalSiteStatus.DEGRADED
             session.add(job)
+            append_physical_event(
+                session,
+                action="job.dataset-version-invalidated",
+                actor=site_id,
+                resource_type="physical-job",
+                resource_id=job.id,
+                outcome="failed",
+                payload={
+                    "error_code": "DATASET_VERSION_CHANGED",
+                    "site_id": site_id,
+                    "new_dataset_fingerprint": payload.dataset_fingerprint,
+                    "expected_dataset_fingerprint": expected_fingerprint,
+                },
+                hmac_key=config.rarelink_audit_hmac_key,
+            )
     session.add(receipt)
     session.add(site)
+    append_physical_event(
+        session,
+        action="site.heartbeat-accepted",
+        actor=site_id,
+        resource_type="physical-site",
+        resource_id=site_id,
+        outcome="accepted",
+        payload={
+            "heartbeat_id": payload.heartbeat_id,
+            "status": site.status,
+            "dataset_fingerprint": payload.dataset_fingerprint,
+            "receipt_sha256": payload.receipt_sha256,
+            "current_job_id": payload.current_job_id,
+            "current_round": payload.current_round,
+        },
+        hmac_key=config.rarelink_audit_hmac_key,
+    )
     session.commit()
     session.refresh(site)
     return physical_site_view(site, config)
@@ -575,6 +653,24 @@ def create_physical_job(
         job_directory=payload.job_directory,
     )
     session.add(job)
+    append_physical_event(
+        session,
+        action="job.contract-created",
+        actor="physical-operator",
+        resource_type="physical-job",
+        resource_id=job.id,
+        outcome="approval-pending",
+        payload={
+            "strategy": job.strategy,
+            "bundle_sha256": job.bundle_sha256,
+            "expected_sites": expected_sites,
+            "dataset_fingerprints": dataset_fingerprints,
+            "total_rounds": job.total_rounds,
+            "local_epochs": job.local_epochs,
+            "quorum_required": job.quorum_required,
+        },
+        hmac_key=config.rarelink_audit_hmac_key,
+    )
     session.commit()
     session.refresh(job)
     return physical_job_view(job, config)
@@ -641,6 +737,23 @@ def submit_physical_job(
     refreshed = session.get(PhysicalFederationJob, job_id)
     if not refreshed:
         raise HTTPException(status_code=500, detail="Physical job persistence failed")
+    append_physical_event(
+        session,
+        action="job.submitted",
+        actor=payload.approved_by,
+        resource_type="physical-job",
+        resource_id=job_id,
+        outcome="accepted",
+        payload={
+            "external_job_id": refreshed.external_job_id,
+            "strategy": refreshed.strategy,
+            "attempt": refreshed.attempt,
+            "bundle_sha256": refreshed.bundle_sha256,
+        },
+        hmac_key=config.rarelink_audit_hmac_key,
+    )
+    session.commit()
+    session.refresh(refreshed)
     return physical_job_view(refreshed, config)
 
 
@@ -661,6 +774,24 @@ def sync_physical_job(
     job = session.get(PhysicalFederationJob, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Physical job not found")
+    append_physical_event(
+        session,
+        action="job.status-synchronized",
+        actor="physical-operator",
+        resource_type="physical-job",
+        resource_id=job_id,
+        outcome="accepted",
+        payload={
+            "status": job.status,
+            "external_job_id": job.external_job_id,
+            "current_round": job.current_round,
+            "received_updates": job.received_updates,
+            "error_code": job.error,
+        },
+        hmac_key=config.rarelink_audit_hmac_key,
+    )
+    session.commit()
+    session.refresh(job)
     return physical_job_view(job, config)
 
 
@@ -681,6 +812,22 @@ def abort_physical_job(
     job = session.get(PhysicalFederationJob, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Physical job not found")
+    append_physical_event(
+        session,
+        action="job.aborted",
+        actor="physical-operator",
+        resource_type="physical-job",
+        resource_id=job_id,
+        outcome="accepted",
+        payload={
+            "external_job_id": job.external_job_id,
+            "status": job.status,
+            "attempt": job.attempt,
+        },
+        hmac_key=config.rarelink_audit_hmac_key,
+    )
+    session.commit()
+    session.refresh(job)
     return physical_job_view(job, config)
 
 
@@ -715,6 +862,20 @@ def retry_physical_job(
     job.approved_by = payload.approved_by
     job.approval_note = payload.note
     session.add(job)
+    append_physical_event(
+        session,
+        action="job.retried",
+        actor=payload.approved_by,
+        resource_type="physical-job",
+        resource_id=job_id,
+        outcome="accepted",
+        payload={
+            "external_job_id": job.external_job_id,
+            "status": job.status,
+            "attempt": job.attempt,
+        },
+        hmac_key=config.rarelink_audit_hmac_key,
+    )
     session.commit()
     session.refresh(job)
     return physical_job_view(job, config)
@@ -748,6 +909,22 @@ def resume_physical_job(
     job = session.get(PhysicalFederationJob, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Physical job not found")
+    append_physical_event(
+        session,
+        action="job.resumed",
+        actor=payload.approved_by,
+        resource_type="physical-job",
+        resource_id=job_id,
+        outcome="accepted",
+        payload={
+            "external_job_id": job.external_job_id,
+            "status": job.status,
+            "attempt": job.attempt,
+        },
+        hmac_key=config.rarelink_audit_hmac_key,
+    )
+    session.commit()
+    session.refresh(job)
     return physical_job_view(job, config)
 
 
@@ -775,7 +952,79 @@ def verify_physical_global_model(
     except PhysicalControllerError as exc:
         raise physical_controller_error(exc) from exc
     session.expire_all()
+    append_physical_event(
+        session,
+        action="job.global-model-verified",
+        actor="physical-operator",
+        resource_type="physical-job",
+        resource_id=job_id,
+        outcome="accepted",
+        payload={
+            "model_file_name": receipt["model_file_name"],
+            "global_model_sha256": receipt["global_model_sha256"],
+            "verified": receipt["verified"],
+        },
+        hmac_key=config.rarelink_audit_hmac_key,
+    )
+    session.commit()
     return receipt
+
+
+@app.get("/api/physical/events")
+def list_physical_events(
+    request: Request,
+    session: SessionDep,
+    config: SettingsDep,
+) -> dict[str, Any]:
+    require_physical_operator(request, config)
+    events = list(
+        session.exec(
+            select(PhysicalControlEvent).order_by(PhysicalControlEvent.id)
+        ).all()
+    )
+    return {
+        "schema_version": "rarelink-physical-audit-chain-v1",
+        "verified": verify_physical_event_chain(
+            events,
+            hmac_key=config.rarelink_audit_hmac_key,
+        ),
+        "event_count": len(events),
+        "events": [physical_event_view(event) for event in events[-200:]],
+        "truncated": len(events) > 200,
+        "contains_patient_data": False,
+        "contains_secret": False,
+        "contains_local_path": False,
+    }
+
+
+@app.get("/api/physical/audit-summary")
+def physical_audit_summary(
+    session: SessionDep,
+    config: SettingsDep,
+) -> dict[str, Any]:
+    events = list(
+        session.exec(
+            select(PhysicalControlEvent).order_by(PhysicalControlEvent.id)
+        ).all()
+    )
+    head = events[-1] if events else None
+    return {
+        "schema_version": "rarelink-physical-audit-summary-v1",
+        "verified": bool(events)
+        and verify_physical_event_chain(
+            events,
+            hmac_key=config.rarelink_audit_hmac_key,
+        ),
+        "event_count": len(events),
+        "head_event_hash": head.event_hash if head else None,
+        "head_algorithm": head.algorithm if head else None,
+        "updated_at": head.created_at if head else None,
+        "events_exported": False,
+        "actors_exported": False,
+        "contains_patient_data": False,
+        "contains_secret": False,
+        "contains_local_path": False,
+    }
 
 
 def _read_json_if_present(path) -> dict[str, Any] | None:  # type: ignore[no-untyped-def]

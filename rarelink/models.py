@@ -114,6 +114,26 @@ class PhysicalHeartbeatReceipt(SQLModel, table=True):
     received_at: datetime = Field(default_factory=utc_now, index=True)
 
 
+class PhysicalControlEvent(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    event_id: str = Field(
+        default_factory=lambda: new_id("physical-event"),
+        index=True,
+        sa_column_kwargs={"unique": True},
+    )
+    action: str = Field(index=True)
+    actor: str = Field(index=True)
+    resource_type: str = Field(index=True)
+    resource_id: str = Field(index=True)
+    outcome: str = Field(index=True)
+    payload_json: str = "{}"
+    previous_hash: str
+    event_hash: str = Field(index=True)
+    algorithm: str
+    key_id: str | None = Field(default=None, index=True)
+    created_at: datetime = Field(default_factory=utc_now, index=True)
+
+
 class PhysicalFederationJob(SQLModel, table=True):
     id: str = Field(default_factory=lambda: new_id("physical-job"), primary_key=True)
     study_id: str | None = Field(default=None, index=True)

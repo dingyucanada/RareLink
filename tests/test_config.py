@@ -22,3 +22,4 @@ def test_physical_control_plane_is_fail_closed_by_default() -> None:
     settings = Settings(_env_file=None)
 
     assert settings.rarelink_physical_mode == "disabled"
+    assert settings.rarelink_audit_hmac_key == ""

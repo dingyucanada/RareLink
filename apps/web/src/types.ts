@@ -178,6 +178,18 @@ export interface PhysicalFederationJob {
   contains_patient_data: false;
 }
 
+export interface PhysicalAuditSummary {
+  schema_version: string;
+  verified: boolean;
+  event_count: number;
+  head_event_hash: string | null;
+  head_algorithm: string | null;
+  updated_at: string | null;
+  events_exported: false;
+  actors_exported: false;
+  contains_patient_data: false;
+}
+
 export interface Capabilities {
   app_version: string;
   environment: string;

@@ -1,4 +1,4 @@
-import type { AgentArtifact, AuditEvent, Capabilities, Experiment, ImagingPreview, MsdRunReceipt, MsdRunVerification, PhysicalFederationJob, PhysicalSite, Study, SystemEvidence, TrainingJob } from "./types";
+import type { AgentArtifact, AuditEvent, Capabilities, Experiment, ImagingPreview, MsdRunReceipt, MsdRunVerification, PhysicalAuditSummary, PhysicalFederationJob, PhysicalSite, Study, SystemEvidence, TrainingJob } from "./types";
 
 const DEMO_TOKEN = import.meta.env.VITE_RARELINK_DEMO_TOKEN as string | undefined;
 const JSON_HEADERS = { "Content-Type": "application/json" };
@@ -95,6 +95,8 @@ export const api = {
     request<TrainingJob[]>(`/api/studies/${studyId}/training-jobs`),
   physicalSites: () => request<PhysicalSite[]>("/api/physical/sites"),
   physicalJobs: () => request<PhysicalFederationJob[]>("/api/physical/jobs"),
+  physicalAuditSummary: () =>
+    request<PhysicalAuditSummary>("/api/physical/audit-summary"),
   exportUrl: (studyId: string) => {
     const query = DEMO_TOKEN ? `?access_token=${encodeURIComponent(DEMO_TOKEN)}` : "";
     return `/api/studies/${studyId}/export${query}`;

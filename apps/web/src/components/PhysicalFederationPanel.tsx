@@ -20,9 +20,14 @@ export default function PhysicalFederationPanel() {
     queryFn: api.physicalJobs,
     refetchInterval: 3000,
   });
+  const audit = useQuery({
+    queryKey: ["physical-audit-summary"],
+    queryFn: api.physicalAuditSummary,
+    refetchInterval: 5000,
+  });
   const physicalSites = sites.data ?? [];
   const latestJob = jobs.data?.[0];
-  const unavailable = sites.isError || jobs.isError;
+  const unavailable = sites.isError || jobs.isError || audit.isError;
   const mode = physicalSites[0]?.deployment_mode ?? latestJob?.deployment_mode ?? "disabled";
   const readyCount = physicalSites.filter(
     (site) =>
@@ -49,9 +54,15 @@ export default function PhysicalFederationPanel() {
             {" "}不读取影像、标签、病例 ID 或本地路径。
           </p>
         </div>
-        <div className={`physical-quorum ${readyCount === 3 ? "ready" : ""}`}>
-          <span>{readyCount}/{physicalSites.length || 3}</span>
-          <small>站点就绪</small>
+        <div className="physical-heading-badges">
+          <div className={`physical-audit ${audit.data?.verified ? "ready" : ""}`}>
+            <span><ShieldCheck size={12} /> {audit.data?.event_count ?? 0}</span>
+            <small>{audit.data?.verified ? "审计链通过" : "审计链待核验"}</small>
+          </div>
+          <div className={`physical-quorum ${readyCount === 3 ? "ready" : ""}`}>
+            <span>{readyCount}/{physicalSites.length || 3}</span>
+            <small>站点就绪</small>
+          </div>
         </div>
       </div>
 

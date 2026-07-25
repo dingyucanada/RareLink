@@ -8,6 +8,7 @@
 - [ADR-0002：站点身份、证书与院内数据边界](adr/0002-site-identity-and-data-boundary.md)
 - [ADR-0003：任务幂等、固定参与方与 Quorum](adr/0003-idempotency-and-quorum.md)
 - [医院本地 NIfTI 数据规范](site-data-manifest.md)
+- [物理控制面防篡改审计设计与验收](physical-audit.md)
 
 ## 1. 目标拓扑与不可变边界
 
@@ -139,6 +140,7 @@ MONAI、NVFLARE、证书、manifest 和启动包。任何必要检查失败时�
 RARELINK_PHYSICAL_MODE=physical
 RARELINK_PHYSICAL_SITE_SECRETS='{"hospital-a":"...","hospital-b":"...","hospital-c":"..."}'
 RARELINK_PHYSICAL_OPERATOR_TOKEN='...'
+RARELINK_AUDIT_HMAC_KEY='由受控密钥系统注入的至少 32 字符随机值'
 RARELINK_NVFLARE_ADMIN_KIT=/opt/rarelink/admin/research-admin
 ```
 
@@ -158,6 +160,11 @@ python3 scripts/push_site_heartbeat.py \
 重复心跳被拒绝。`RARELINK_PHYSICAL_MODE` 默认为 `disabled`；三独立进程
 验收必须设置为 `isolated-integration`，只有完成现场配置与授权后才设置为
 `physical`，该模式会随站点和作业 API 一起显示在前端。
+
+`physical` 模式对审计密钥执行硬门：未配置至少 32 字符的
+`RARELINK_AUDIT_HMAC_KEY` 时，受保护物理写操作返回 `503`，不会回退为无密钥
+SHA-256 事件。长度门不验证随机熵；真实部署必须由 Vault/KMS 等受控密钥系统
+生成和注入，并与数据库、备份和日志分离。
 
 Site Agent 的执行后端同样默认 `disabled`，因此未完成现场授权时，任务接口
 会失败关闭。医院 IT 可设置
@@ -202,6 +209,23 @@ python3 scripts/submit_physical_nvflare_job.py \
 
 所有写操作默认失败关闭；未配置 `RARELINK_PHYSICAL_OPERATOR_TOKEN` 时返回
 `503`，错误响应不转发 NVFLARE 原始输出、Admin Kit 路径或凭据。
+
+### 6.1 物理控制面审计
+
+每个已接受的站点登记、心跳、作业合同、提交、状态同步、停止、重试、恢复、
+数据版本失效和模型核验操作都会追加规范化事件。事件通过 `previous_hash`
+串联；试点历史可使用 SHA-256，配置密钥后的新事件使用 HMAC-SHA256。
+
+- `GET /api/physical/audit-summary` 是公开最小摘要，只返回验证结论、事件总数、
+  链头摘要、算法和更新时间，不返回 actor 或事件 payload；
+- `GET /api/physical/events` 需要物理操作员身份，最多返回最近 200 条并明确
+  `truncated`，不能作为长期审计归档；
+- 任一链验证失败都应阻断正式作业提交、模型发布和研究报告导出。
+
+当前 SQLite 审计链能检测篡改，但不是 WORM；尚未记录全部拒绝操作，没有旧
+HMAC key-ring 轮换，多 worker 并发追加仍需 PostgreSQL 序列化。安全语义、
+敏感字段边界、异常处置和完整验收方法见
+[物理控制面审计文档](physical-audit.md)。
 
 ## 7. 设备到位前的三独立进程验收
 
