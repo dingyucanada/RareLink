@@ -77,6 +77,8 @@ SQLite 不允许作为真实多医院中心控制面生产数据库，原因包�
 - `RARELINK_PHYSICAL_MODE=physical` 使用 SQLite 时启动失败；
 - 非 SQLite 运行时不会调用 `SQLModel.metadata.create_all()` 或 additive SQLite migration；
 - PostgreSQL 应用启动前检查 `alembic_version`，数据库未托管、revision 落后或存在非预期 head 时失败关闭；
+- `/api/health/live` 只证明进程存活；`/api/health/ready` 执行数据库查询并再次
+  核对 Alembic head。物理协调端容器只使用 readiness 作为流量健康门；
 - 初始 schema 的 upgrade/downgrade、表列/外键/唯一索引和离线 SQL 秘密不泄露测试。
 - revision `0002_serialize_physical_audit_chain` 为审计链前序摘要增加唯一索引；
   应用在 PostgreSQL 事务内取得固定 advisory lock 后再读取链头并追加事件，避免
@@ -86,6 +88,9 @@ SQLite 不允许作为真实多医院中心控制面生产数据库，原因包�
 当前自动化主要在临时 SQLite 上验证 Alembic schema 语义和前序唯一约束，并生成 PostgreSQL
 offline SQL 检查秘密边界；这不等于真实 PostgreSQL 实例的锁、事务、并发和性能
 验证。真实 PostgreSQL 集成测试与现场验收仍是发布门。
+
+Readiness 失败只返回 `database=unavailable_or_stale`，不把数据库 URL、主机、用户、
+revision 差异或底层异常暴露给未认证探针。详细错误应进入脱敏后的内部运维日志。
 
 ## 3. 连接与权限
 

@@ -44,7 +44,7 @@
 | 医院 NIfTI 数据层 | 四模态、几何、标签、路径和直接标识质控；生成脱敏内容指纹 | 数据证明、篡改/外站/标识/几何负面对照 | DICOM/PACS、MONAI 缓存服务和医院数据治理审批 |
 | 数据版本合同 | 物理作业固定三站数据指纹；变化时自动失败且禁止 retry/resume | API 失效测试与训练前内容复核 | 合同修订 UI、双人复核和 PostgreSQL 事务 |
 
-当前全量回归为 **208 项测试通过**；Python lint、前端 TypeScript/Vite 生产构建和
+当前全量回归为 **210 项测试通过**；Python lint、前端 TypeScript/Vite 生产构建和
 Git diff 完整性检查通过。这些是软件回归证据，不是医学性能或临床验证证据。
 当前 Site Agent 心跳仍使用每站独立 HMAC，NVIDIA FLARE 数据面使用证书化通信；
 操作员 API 已增加离线 OIDC JWT 验证与固定 RBAC，`physical` 模式拒绝 legacy

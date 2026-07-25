@@ -21,6 +21,9 @@ def test_physical_postgres_deployment_policy() -> None:
         "schema_version": "rarelink-postgres-compose-validation-v1",
         "services": ["coordinator", "postgres"],
     }
+    compose = COMPOSE_PATH.read_text(encoding="utf-8")
+    assert "/api/health/ready" in compose
+    assert "urlopen('http://127.0.0.1:9000/api/health'," not in compose
 
 
 def test_spark_image_contains_migration_runtime() -> None:

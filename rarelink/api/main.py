@@ -13,12 +13,18 @@ import yaml
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlmodel import Session, select
 
 from rarelink import __version__
 from rarelink.config import Settings, get_settings
-from rarelink.database import create_db_and_tables, get_session
+from rarelink.database import (
+    DatabaseSchemaError,
+    create_db_and_tables,
+    get_session,
+    verify_production_schema,
+)
 from rarelink.domain import (
     ApprovalRequest,
     CapabilityRead,
@@ -126,7 +132,13 @@ async def demo_access_gate(request, call_next):  # type: ignore[no-untyped-def]
     can send it as a header while evaluators use the same access code.
     """
     expected = settings.rarelink_demo_access_token
-    if not expected or request.url.path in {"/api/health", "/docs", "/openapi.json"}:
+    if not expected or request.url.path in {
+        "/api/health",
+        "/api/health/live",
+        "/api/health/ready",
+        "/docs",
+        "/openapi.json",
+    }:
         return await call_next(request)
     provided = request.headers.get("X-RareLink-Demo-Token") or request.query_params.get(
         "access_token", ""
@@ -558,6 +570,43 @@ def move(study: Study, target: StudyStatus) -> None:
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "service": "rarelink"}
+
+
+@app.get("/api/health/live")
+def liveness() -> dict[str, str]:
+    return {"status": "alive", "service": "rarelink"}
+
+
+@app.get("/api/health/ready")
+def readiness(
+    session: SessionDep,
+    config: SettingsDep,
+) -> Any:
+    try:
+        session.execute(text("SELECT 1"))
+        database_engine = session.get_bind()
+        backend = database_engine.dialect.name
+        if backend == "sqlite":
+            if config.rarelink_physical_mode == "physical":
+                raise DatabaseSchemaError("Physical mode cannot use SQLite")
+            revision = "development-sqlite"
+        else:
+            revision = verify_production_schema(database_engine)
+    except (DatabaseSchemaError, SQLAlchemyError):
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "not_ready",
+                "service": "rarelink",
+                "database": "unavailable_or_stale",
+            },
+        )
+    return {
+        "status": "ready",
+        "service": "rarelink",
+        "database": backend,
+        "schema_revision": revision,
+    }
 
 
 @app.get("/api/system/capabilities", response_model=CapabilityRead)

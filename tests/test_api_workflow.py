@@ -21,6 +21,41 @@ def test_optional_demo_access_gate(client: TestClient, monkeypatch) -> None:  # 
     ).status_code == 200
 
 
+def test_health_separates_liveness_and_database_readiness(client: TestClient) -> None:
+    live = client.get("/api/health/live")
+    ready = client.get("/api/health/ready")
+
+    assert live.status_code == 200
+    assert live.json() == {"status": "alive", "service": "rarelink"}
+    assert ready.status_code == 200
+    assert ready.json() == {
+        "status": "ready",
+        "service": "rarelink",
+        "database": "sqlite",
+        "schema_revision": "development-sqlite",
+    }
+
+
+def test_physical_readiness_fails_closed_without_exposing_database_details(
+    client: TestClient,
+) -> None:
+    api_main.app.dependency_overrides[get_settings] = lambda: Settings(
+        _env_file=None,
+        rarelink_physical_mode="physical",
+    )
+
+    response = client.get("/api/health/ready")
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "status": "not_ready",
+        "service": "rarelink",
+        "database": "unavailable_or_stale",
+    }
+    assert "sqlite" not in response.text.lower()
+    assert "password" not in response.text.lower()
+
+
 def test_capabilities_show_local_inference_as_not_claimed(client: TestClient) -> None:  # type: ignore[no-untyped-def]
     response = client.get("/api/system/capabilities")
 

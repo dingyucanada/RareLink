@@ -275,6 +275,16 @@ HMAC key-ring 轮换，多 worker 并发追加仍需 PostgreSQL 序列化。安�
 敏感字段边界、异常处置和完整验收方法见
 [物理控制面审计文档](physical-audit.md)。
 
+### 协调端存活与就绪
+
+协调端应分别检查：
+
+- `GET /api/health/live`：进程事件循环可响应；
+- `GET /api/health/ready`：数据库可查询，且生产 schema 位于仓库 Alembic head。
+
+负载均衡器和容器编排只应以 readiness 决定是否接收流量。readiness 返回 503 时，
+不要把 liveness 成功误判为控制面可用。
+
 ## 7. 设备到位前的三独立进程验收
 
 在开发机运行：

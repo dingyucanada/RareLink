@@ -67,6 +67,9 @@ def validate(compose_path: Path, env_path: Path) -> dict[str, object]:
         raise ValueError("PostgreSQL requires a healthcheck")
     if not coordinator.get("healthcheck"):
         raise ValueError("Coordinator requires a healthcheck")
+    coordinator_healthcheck = json.dumps(coordinator["healthcheck"], sort_keys=True)
+    if "/api/health/ready" not in coordinator_healthcheck:
+        raise ValueError("Coordinator healthcheck must use the database readiness endpoint")
     dependency = _mapping(coordinator.get("depends_on"), "coordinator.depends_on")
     postgres_dependency = _mapping(dependency.get("postgres"), "depends_on.postgres")
     if postgres_dependency.get("condition") != "service_healthy":
