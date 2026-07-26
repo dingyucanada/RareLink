@@ -7,4 +7,14 @@ dataset_root: /srv/rarelink/site-data
 dataset_receipt: /var/lib/rarelink/site-agent/dataset-receipt.json
 artifact_root: /var/lib/rarelink/artifacts
 startup_kit: /opt/rarelink/flare/hospital-a
+certificate_file: /opt/rarelink/flare/hospital-a/startup/client.crt
+certificate_ca_bundle: /opt/rarelink/flare/hospital-a/startup/rootCA.pem
+certificate_crl_file: /opt/rarelink/flare/hospital-a/startup/client.crl
+certificate_expected_identity: hospital-a
+checkpoint_root: /var/lib/rarelink/checkpoints
+checkpoint_receipt: /var/lib/rarelink/site-agent/checkpoint-receipt.json
 required_free_memory_percent: 15
+required_free_disk_percent: 10
+required_gpu_free_memory_mib: 1024
+maximum_gpu_temperature_c: 85
+maximum_cpu_load_percent: 90

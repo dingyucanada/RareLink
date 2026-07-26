@@ -58,6 +58,7 @@ def healthy() -> HealthSnapshot:
         checks={
             "gpu": CheckResult(ok=True, status="available", details={"device_count": 1}),
             "memory": CheckResult(ok=True, status="sufficient", details={"free_percent": 80}),
+            "cpu": CheckResult(ok=True, status="sufficient"),
             "disk": CheckResult(ok=True, status="sufficient", details={"free_percent": 70}),
             "certificate": CheckResult(ok=True, status="valid"),
             "dataset_manifest": CheckResult(

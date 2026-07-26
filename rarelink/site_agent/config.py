@@ -33,9 +33,18 @@ class SiteAgentSettings(BaseSettings):
     artifact_root: Path
     startup_kit: Path
     certificate_file: Path | None = None
+    certificate_ca_bundle: Path | None = None
+    certificate_crl_file: Path | None = None
+    certificate_expected_identity: str | None = None
+    require_certificate_chain: bool = False
+    require_certificate_crl: bool = False
     certificate_min_valid_days: int = Field(default=14, ge=1, le=180)
     require_certificate_under_startup_kit: bool = True
     state_database: Path = Path("/var/lib/rarelink/site-agent/state.sqlite3")
+    checkpoint_root: Path | None = None
+    checkpoint_receipt: Path | None = None
+    require_checkpoint_for_pause: bool = False
+    require_checkpoint_for_recover: bool = False
     api_token: SecretStr = Field(min_length=24)
     receipt_hmac_key: SecretStr = Field(min_length=32)
     bind_host: str = "127.0.0.1"
@@ -43,6 +52,8 @@ class SiteAgentSettings(BaseSettings):
     required_free_memory_percent: float = Field(default=15, ge=5, le=80)
     required_free_disk_percent: float = Field(default=10, ge=2, le=80)
     required_gpu_free_memory_mib: int = Field(default=1024, ge=256, le=131_072)
+    maximum_gpu_temperature_c: int = Field(default=85, ge=50, le=100)
+    maximum_cpu_load_percent: float = Field(default=90, ge=10, le=200)
     required_modules: str = "torch,monai,nvflare"
     executor_backend: Literal["disabled", "systemd"] = "disabled"
     nvflare_service_name: str = "rarelink-flare-client.service"
@@ -85,11 +96,21 @@ class SiteAgentSettings(BaseSettings):
             "dataset_receipt_required": self.require_dataset_receipt,
             "dataset_receipt_configured": self.dataset_receipt is not None,
             "artifact_store_configured": bool(str(self.artifact_root)),
+            "checkpoint_store_configured": self.checkpoint_root is not None,
+            "checkpoint_receipt_configured": self.checkpoint_receipt is not None,
+            "checkpoint_required_for_pause": self.require_checkpoint_for_pause,
+            "checkpoint_required_for_recover": self.require_checkpoint_for_recover,
             "startup_kit_configured": bool(str(self.startup_kit)),
             "certificate_configured": self.certificate_file is not None,
+            "certificate_chain_required": self.require_certificate_chain,
+            "certificate_crl_required": self.require_certificate_crl,
+            "certificate_identity_bound": True,
             "certificate_min_valid_days": self.certificate_min_valid_days,
             "certificate_path_restricted": self.require_certificate_under_startup_kit,
             "required_modules": list(self.module_names),
+            "required_gpu_free_memory_mib": self.required_gpu_free_memory_mib,
+            "maximum_gpu_temperature_c": self.maximum_gpu_temperature_c,
+            "maximum_cpu_load_percent": self.maximum_cpu_load_percent,
             "executor_backend": self.executor_backend,
             "local_paths_exported": False,
             "secrets_exported": False,

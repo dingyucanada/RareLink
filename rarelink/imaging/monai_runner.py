@@ -1,8 +1,11 @@
+import hashlib
 import json
 import math
 import time
 from pathlib import Path
 from typing import Any
+
+from rarelink.site_data.split import deterministic_dataset_split
 
 # The lightweight three-level SegResNet downsamples twice, so every spatial
 # dimension must be divisible by four for encoder/decoder skip connections to
@@ -73,16 +76,22 @@ def run_monai_smoke(
     if site_id == "centralized":
         train_cases: list[dict[str, Any]] = []
         validation_cases: list[dict[str, Any]] = []
+        split_receipts: list[dict[str, Any]] = []
         for declared_site in manifest.get("sites", []):
             cases = [case for case in manifest["cases"] if case["site_id"] == declared_site]
             if len(cases) < 2:
                 raise ValueError(f"Site {declared_site!r} needs at least two cases")
-            train_cases.extend(cases[:-1])
-            validation_cases.append(cases[-1])
+            site_split = deterministic_dataset_split(cases, seed=seed)
+            train_cases.extend(site_split.train_cases)
+            validation_cases.extend(site_split.validation_cases)
+            split_receipts.append(site_split.receipt)
         if not validation_cases:
             raise ValueError("Manifest does not declare any sites for centralized evaluation")
     else:
-        train_cases, validation_cases = site_cases[:-1], site_cases[-1:]
+        site_split = deterministic_dataset_split(site_cases, seed=seed)
+        train_cases = list(site_split.train_cases)
+        validation_cases = list(site_split.validation_cases)
+        split_receipts = [site_split.receipt]
 
     items = [
         case_item(case)
@@ -189,6 +198,16 @@ def run_monai_smoke(
         "epochs": epochs,
         "train_cases": len(train_items),
         "validation_cases": len(validation_items),
+        "split_algorithm": "seeded-sha256-rank-v1",
+        "split_seed": seed,
+        "split_proof_sha256": hashlib.sha256(
+            json.dumps(
+                split_receipts,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest(),
+        "split_case_identifiers_exported": False,
         "epoch_losses": epoch_losses,
         "mean_foreground_dice": round(dice, 6),
         "hd95": hd95,

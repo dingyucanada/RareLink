@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import math
+from pathlib import Path
 
 import pytest
 
 from rarelink.security.update_guard import (
     MemoryReplayRegistry,
     ModelUpdateEnvelope,
+    SQLiteReplayRegistry,
     UpdateGuardError,
     UpdateGuardPolicy,
     guard_model_update,
@@ -94,6 +96,25 @@ def test_guard_atomically_rejects_replayed_nonce() -> None:
             policy=policy(),
             replay_registry=registry,
         )
+
+
+def test_sqlite_replay_registry_survives_process_reconstruction(tmp_path: Path) -> None:
+    path = tmp_path / "replay.sqlite"
+    replay_key = "a" * 64
+
+    assert SQLiteReplayRegistry(path).claim(replay_key) is True
+    assert SQLiteReplayRegistry(path).claim(replay_key) is False
+    assert path.stat().st_mode & 0o777 == 0o600
+
+
+def test_sqlite_replay_registry_rejects_symlink(tmp_path: Path) -> None:
+    target = tmp_path / "target.sqlite"
+    target.touch()
+    link = tmp_path / "replay.sqlite"
+    link.symlink_to(target)
+
+    with pytest.raises(UpdateGuardError, match="symbolic link"):
+        SQLiteReplayRegistry(link)
 
 
 def test_guard_rejects_opposing_update_against_reference() -> None:

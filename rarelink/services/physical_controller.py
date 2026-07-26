@@ -15,8 +15,11 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import math
 import re
+import shutil
 import subprocess
+import tempfile
 import threading
 from collections.abc import Callable, Iterable, Sequence
 from copy import deepcopy
@@ -35,9 +38,7 @@ JOB_ID_PATTERNS = (
         r"(?im)\b(?:external[ _-]?)?job[ _-]?id\b\s*(?:is|=|:)\s*"
         r"['\"]?([A-Za-z0-9][A-Za-z0-9._:-]{2,127})"
     ),
-    re.compile(
-        r"(?im)\bsubmitted\s+(?:job\s+)?['\"]?([A-Za-z0-9][A-Za-z0-9._:-]{2,127})"
-    ),
+    re.compile(r"(?im)\bsubmitted\s+(?:job\s+)?['\"]?([A-Za-z0-9][A-Za-z0-9._:-]{2,127})"),
 )
 SENSITIVE_FILE_SUFFIXES = {
     ".dcm",
@@ -77,6 +78,10 @@ SENSITIVE_JSON_KEYS = {
     "admin_kit_path",
     "submit_token",
 }
+CLIENT_ONLINE_STATES = frozenset({"ONLINE", "CONNECTED", "READY", "RUNNING", "IDLE", "AVAILABLE"})
+CLIENT_OFFLINE_STATES = frozenset({"OFFLINE", "DISCONNECTED", "UNAVAILABLE", "DOWN", "UNKNOWN"})
+SAFE_MODEL_SUFFIXES = frozenset({".pt", ".pth", ".ckpt", ".bin", ".safetensors"})
+MAX_GLOBAL_MODEL_BYTES = 64 * 1024 * 1024 * 1024
 
 
 def _utc_now() -> datetime:
@@ -188,7 +193,7 @@ def _find_job_id_in_json(value: Any) -> str | None:
         normalized = {str(key).lower().replace("-", "_"): item for key, item in value.items()}
         for key in ("external_job_id", "job_id", "jobid"):
             candidate = normalized.get(key)
-            if isinstance(candidate, (str, int)) and EXTERNAL_JOB_ID_RE.fullmatch(str(candidate)):
+            if isinstance(candidate, str | int) and EXTERNAL_JOB_ID_RE.fullmatch(str(candidate)):
                 return str(candidate)
         for child in value.values():
             found = _find_job_id_in_json(child)
@@ -226,8 +231,13 @@ class NvflareCliAdapter:
         self._runner = runner
         self._executable = executable
 
-    def _run(self, operation: str, arguments: Sequence[str]) -> NvflareOperationResult:
-        completed = self._runner([self._executable, "job", *arguments])
+    def _run_group(
+        self,
+        group: str,
+        operation: str,
+        arguments: Sequence[str],
+    ) -> NvflareOperationResult:
+        completed = self._runner([self._executable, group, *arguments])
         stdout = str(completed.stdout or "")
         stderr = str(completed.stderr or "")
         output_sha256 = _sha256_text(f"{stdout}\n{stderr}")
@@ -241,6 +251,9 @@ class NvflareCliAdapter:
             payload=payload,
             raw_stdout=stdout,
         )
+
+    def _run(self, operation: str, arguments: Sequence[str]) -> NvflareOperationResult:
+        return self._run_group("job", operation, arguments)
 
     def submit(self, job_directory: Path, admin_kit: Path) -> NvflareOperationResult:
         result = self._run(
@@ -287,13 +300,52 @@ class NvflareCliAdapter:
             ],
         )
 
+    def client_registry(
+        self,
+        admin_kit: Path,
+        expected_sites: Sequence[str],
+    ) -> NvflareOperationResult:
+        return self._run_group(
+            "system",
+            "client-registry",
+            [
+                "status",
+                "client",
+                *expected_sites,
+                "--startup-kit",
+                str(admin_kit.resolve()),
+                "--format",
+                "json",
+            ],
+        )
+
+    def download(
+        self,
+        external_job_id: str,
+        admin_kit: Path,
+        output_directory: Path,
+    ) -> NvflareOperationResult:
+        return self._run(
+            "download",
+            [
+                "download",
+                external_job_id,
+                "-o",
+                str(output_directory.resolve()),
+                "--startup-kit",
+                str(admin_kit.resolve()),
+                "--format",
+                "json",
+            ],
+        )
+
 
 def _walk_json(value: Any) -> Iterable[tuple[str, Any]]:
     if isinstance(value, dict):
         for key, child in value.items():
             yield str(key).lower(), child
             yield from _walk_json(child)
-    elif isinstance(value, (list, tuple)):
+    elif isinstance(value, list | tuple):
         for child in value:
             yield from _walk_json(child)
 
@@ -388,12 +440,42 @@ def validate_exported_job(job_directory: Path) -> ValidatedJobBundle:
         raise JobValidationError(
             "Physical jobs must require a validated hospital-local dataset receipt"
         )
+    update_guard = receipt.get("update_guard")
+    required_update_guard_fields = {
+        "schema_version",
+        "transfer_type",
+        "max_l2_norm",
+        "minimum_cosine_similarity",
+        "late_round_updates_rejected",
+        "duplicate_site_round_updates_rejected",
+        "durable_replay_registry_required",
+        "raw_update_receipts_exported",
+    }
+    if not isinstance(update_guard, dict) or set(update_guard) != required_update_guard_fields:
+        raise JobValidationError("Physical jobs require a complete update-guard contract")
+    max_l2_norm = update_guard.get("max_l2_norm")
+    minimum_cosine_similarity = update_guard.get("minimum_cosine_similarity")
+    if (
+        update_guard.get("schema_version") != "rarelink-update-guard-contract-v1"
+        or update_guard.get("transfer_type") != "DIFF"
+        or isinstance(max_l2_norm, bool)
+        or not isinstance(max_l2_norm, (int, float))
+        or not math.isfinite(max_l2_norm)
+        or max_l2_norm <= 0
+        or isinstance(minimum_cosine_similarity, bool)
+        or not isinstance(minimum_cosine_similarity, (int, float))
+        or not math.isfinite(minimum_cosine_similarity)
+        or not -1 <= minimum_cosine_similarity <= 1
+        or update_guard.get("late_round_updates_rejected") is not True
+        or update_guard.get("duplicate_site_round_updates_rejected") is not True
+        or update_guard.get("durable_replay_registry_required") is not True
+        or update_guard.get("raw_update_receipts_exported") is not False
+    ):
+        raise JobValidationError("Physical update-guard contract is invalid")
 
     strategy = str(receipt.get("strategy", "")).lower()
     if strategy not in {"fedavg", "fedprox", "fedavg_dpsgd"}:
-        raise JobValidationError(
-            "Physical job strategy must be fedavg or fedprox, or fedavg_dpsgd"
-        )
+        raise JobValidationError("Physical job strategy must be fedavg or fedprox, or fedavg_dpsgd")
     expected_sites = receipt.get("expected_sites")
     if (
         not isinstance(expected_sites, list)
@@ -505,6 +587,7 @@ class PhysicalJobRecord:
     previous_external_job_ids: tuple[str, ...] = ()
     global_model_path: Path | None = field(default=None, repr=False)
     global_model_sha256: str | None = None
+    aggregate_metrics: dict[str, Any] | None = None
     error_code: str | None = None
 
     def public_receipt(self) -> dict[str, Any]:
@@ -526,6 +609,7 @@ class PhysicalJobRecord:
             "attempt": self.attempt,
             "quorum": quorum.public_receipt(),
             "global_model_sha256": self.global_model_sha256,
+            "metrics": deepcopy(self.aggregate_metrics),
             "error_code": self.error_code,
             "admin_kit_path_exported": False,
             "submit_token_exported": False,
@@ -573,12 +657,9 @@ class InMemoryPhysicalJobStore:
     ) -> PhysicalJobRecord | None:
         with self._lock:
             for record in self._records.values():
-                if (
-                    record.submit_token_sha256
-                    and hmac.compare_digest(
-                        record.submit_token_sha256,
-                        submit_token_sha256,
-                    )
+                if record.submit_token_sha256 and hmac.compare_digest(
+                    record.submit_token_sha256,
+                    submit_token_sha256,
                 ):
                     return deepcopy(record)
         return None
@@ -708,11 +789,7 @@ def reconcile_remote_snapshot(
         return _failed_closed(record, "RECONCILIATION_UNKNOWN_REMOTE_STATE")
 
     payload_job_id = _find_job_id_in_json(payload)
-    if (
-        payload_job_id
-        and record.external_job_id
-        and payload_job_id != record.external_job_id
-    ):
+    if payload_job_id and record.external_job_id and payload_job_id != record.external_job_id:
         return _failed_closed(record, "RECONCILIATION_EXTERNAL_JOB_ID_MISMATCH")
 
     if record.state in {PhysicalJobState.COMPLETED, PhysicalJobState.ABORTED}:
@@ -788,10 +865,7 @@ def reconcile_remote_snapshot(
     )
     if received_updates is None:
         received_updates = len(remote_sites)
-    if (
-        remote_state is PhysicalJobState.COMPLETED
-        and set(remote_sites) != expected
-    ):
+    if remote_state is PhysicalJobState.COMPLETED and set(remote_sites) != expected:
         record.current_round = current_round
         record.reported_sites = remote_sites
         record.received_updates = min(received_updates, 3)
@@ -799,9 +873,8 @@ def reconcile_remote_snapshot(
     if received_updates > 3 or received_updates != len(remote_sites):
         return _failed_closed(record, "RECONCILIATION_UPDATE_COUNT_MISMATCH")
 
-    stale_same_round = (
-        current_round == record.current_round
-        and not set(remote_sites).issuperset(record.reported_sites)
+    stale_same_round = current_round == record.current_round and not set(remote_sites).issuperset(
+        record.reported_sites
     )
     if current_round > record.current_round:
         record.current_round = current_round
@@ -896,13 +969,10 @@ class PhysicalFederationController:
         token_sha256 = _sha256_text(submit_token)
         token_owner = self.store.find_by_submit_token_sha256(token_sha256)
         if token_owner and token_owner.job_id != job_id:
-            raise JobConflictError(
-                "Idempotency token is already bound to another physical job"
-            )
+            raise JobConflictError("Idempotency token is already bound to another physical job")
         if record.external_job_id:
-            if (
-                record.submit_token_sha256
-                and hmac.compare_digest(record.submit_token_sha256, token_sha256)
+            if record.submit_token_sha256 and hmac.compare_digest(
+                record.submit_token_sha256, token_sha256
             ):
                 receipt = record.public_receipt()
                 receipt["idempotent"] = True
@@ -955,6 +1025,8 @@ class PhysicalFederationController:
         return receipt
 
     def status(self, job_id: str, *, admin_kit: Path) -> dict[str, Any]:
+        from rarelink.services.physical_results import parse_aggregate_metrics
+
         record = self._require(job_id)
         if record.error_code and record.error_code.startswith("DATASET_VERSION_CHANGED"):
             receipt = record.public_receipt()
@@ -965,11 +1037,33 @@ class PhysicalFederationController:
             return record.public_receipt()
         result = self.adapter.status(record.external_job_id, admin_kit)
         decision = reconcile_remote_snapshot(record, result.payload)
+        remote_payload = _remote_status_mapping(result.payload)
+        if (
+            record.state is PhysicalJobState.COMPLETED
+            and isinstance(remote_payload, dict)
+            and "aggregate_metrics" in remote_payload
+        ):
+            record.aggregate_metrics = parse_aggregate_metrics(
+                remote_payload["aggregate_metrics"],
+                record.bundle.expected_sites,
+            )
         record.updated_at = _utc_now()
         self.store.save(record)
         receipt = record.public_receipt()
         receipt["operation"] = result.public_receipt()
         receipt["reconciliation"] = decision.public_receipt()
+        return receipt
+
+    def client_registry(self, job_id: str, *, admin_kit: Path) -> dict[str, Any]:
+        """Query the real FLARE client registry and export only safe site state."""
+        from rarelink.services.physical_results import parse_client_registry
+
+        record = self._require(job_id)
+        result = self.adapter.client_registry(admin_kit, record.bundle.expected_sites)
+        receipt = parse_client_registry(result.payload, record.bundle.expected_sites)
+        receipt["job_id"] = record.job_id
+        receipt["external_job_id"] = record.external_job_id
+        receipt["operation"] = result.public_receipt()
         return receipt
 
     def reconcile_submission(
@@ -1031,12 +1125,9 @@ class PhysicalFederationController:
                     ):
                         bundle_sha256 = metadata["bundle_sha256"]
                         break
-            if (
-                isinstance(bundle_sha256, str)
-                and hmac.compare_digest(
-                    bundle_sha256,
-                    record.bundle.bundle_sha256,
-                )
+            if isinstance(bundle_sha256, str) and hmac.compare_digest(
+                bundle_sha256,
+                record.bundle.bundle_sha256,
             ):
                 matches.append(item)
 
@@ -1065,11 +1156,7 @@ class PhysicalFederationController:
         self.store.save(record)
         receipt = record.public_receipt()
         receipt["reconciliation"] = {
-            "outcome": (
-                "SUBMISSION_RECONCILED"
-                if resolved
-                else record.error_code
-            ),
+            "outcome": ("SUBMISSION_RECONCILED" if resolved else record.error_code),
             "resolved": resolved,
             "external_match_count": len(matches),
         }
@@ -1259,6 +1346,231 @@ class PhysicalFederationController:
             "verified": True,
             "model_path_exported": False,
             "admin_kit_path_exported": False,
+            "secret_exported": False,
+            "patient_data_exported": False,
+        }
+
+    def download_and_archive_results(
+        self,
+        job_id: str,
+        *,
+        admin_kit: Path,
+        artifact_root: Path,
+        expected_sha256: str,
+    ) -> dict[str, Any]:
+        """Download a terminal FLARE result into an owned archive.
+
+        The caller supplies only a trusted digest. Source paths come exclusively
+        from the NVFLARE 2.7 JSON artifact manifest and must remain inside the
+        command's controlled staging directory.
+        """
+        from rarelink.services.physical_results import load_aggregate_metrics
+
+        record = self._require(job_id)
+        if record.state is not PhysicalJobState.COMPLETED:
+            raise JobConflictError("Result archival requires a completed job")
+        if not record.external_job_id:
+            raise JobConflictError("Result archival requires an external NVFLARE job ID")
+        quorum = calculate_three_site_quorum(
+            record.bundle.expected_sites,
+            record.reported_sites,
+            record.received_updates,
+        )
+        if not quorum.satisfied:
+            raise JobConflictError("Result archival requires verified three-site quorum")
+        if not SHA256_RE.fullmatch(expected_sha256):
+            raise JobValidationError("expected_sha256 must be 64 lower-case hexadecimal characters")
+
+        owned_root = artifact_root.resolve() / "physical-result-archive"
+        staging_root = owned_root / ".staging"
+        archive_root = owned_root / hashlib.sha256(job_id.encode()).hexdigest()
+        staging_root.mkdir(parents=True, exist_ok=True)
+        archive_root.mkdir(parents=True, exist_ok=True)
+        if staging_root.is_symlink() or archive_root.is_symlink():
+            raise JobValidationError("Managed result archive must not use symbolic links")
+
+        with tempfile.TemporaryDirectory(prefix="nvflare-", dir=staging_root) as temp:
+            staging_directory = Path(temp)
+            result = self.adapter.download(
+                record.external_job_id,
+                admin_kit,
+                staging_directory,
+            )
+            data = result.payload
+            if not isinstance(data, dict):
+                raise JobValidationError("NVFLARE download response must be JSON")
+            if "data" in data:
+                if data.get("status") not in (None, "ok", "OK", "success", "SUCCESS"):
+                    raise JobValidationError("NVFLARE download did not report success")
+                data = data["data"]
+            if not isinstance(data, dict):
+                raise JobValidationError("NVFLARE download data must be a JSON object")
+            download_path_raw = data.get("download_path", data.get("path"))
+            artifacts = data.get("artifacts")
+            if not isinstance(download_path_raw, str) or not isinstance(artifacts, dict):
+                raise JobValidationError("NVFLARE download artifact manifest is missing")
+            model_raw = artifacts.get("global_model")
+            metrics_raw = artifacts.get("metrics_summary")
+            if not isinstance(model_raw, str) or not isinstance(metrics_raw, str):
+                raise JobValidationError(
+                    "NVFLARE result must identify global_model and metrics_summary artifacts"
+                )
+            download_root = Path(download_path_raw)
+            model_source = Path(model_raw)
+            metrics_source = Path(metrics_raw)
+            if not download_root.is_absolute():
+                download_root = staging_directory / download_root
+            if not model_source.is_absolute():
+                model_source = download_root / model_source
+            if not metrics_source.is_absolute():
+                metrics_source = download_root / metrics_source
+            staging_resolved = staging_directory.resolve()
+            try:
+                download_relative = download_root.relative_to(staging_resolved)
+            except ValueError as exc:
+                raise JobValidationError(
+                    "NVFLARE download escaped the controlled staging directory"
+                ) from exc
+            if ".." in download_relative.parts:
+                raise JobValidationError(
+                    "NVFLARE download escaped the controlled staging directory"
+                )
+            current_download_path = staging_resolved
+            for part in download_relative.parts:
+                current_download_path = current_download_path / part
+                if current_download_path.is_symlink():
+                    raise JobValidationError("NVFLARE download must not traverse symbolic links")
+            download_root_resolved = download_root.resolve()
+
+            def trusted_artifact(path: Path, label: str) -> Path:
+                try:
+                    relative = path.relative_to(download_root_resolved)
+                except ValueError as exc:
+                    raise JobValidationError(
+                        f"NVFLARE {label} escaped the downloaded job tree"
+                    ) from exc
+                if ".." in relative.parts:
+                    raise JobValidationError(f"NVFLARE {label} escaped the downloaded job tree")
+                current = download_root_resolved
+                for part in relative.parts:
+                    current = current / part
+                    if current.is_symlink():
+                        raise JobValidationError(
+                            f"NVFLARE {label} must not traverse symbolic links"
+                        )
+                candidate = current.resolve()
+                try:
+                    candidate.relative_to(download_root_resolved)
+                except ValueError as exc:
+                    raise JobValidationError(
+                        f"NVFLARE {label} escaped the downloaded job tree"
+                    ) from exc
+                if not candidate.is_file():
+                    raise JobValidationError(f"NVFLARE {label} must be a regular downloaded file")
+                return candidate
+
+            model_source = trusted_artifact(model_source, "global model")
+            metrics_source = trusted_artifact(metrics_source, "metrics summary")
+            if model_source.suffix.lower() not in SAFE_MODEL_SUFFIXES:
+                raise JobValidationError("NVFLARE global model file type is not allowed")
+            model_size = model_source.stat().st_size
+            if model_size < 1 or model_size > MAX_GLOBAL_MODEL_BYTES:
+                raise JobValidationError("NVFLARE global model size is outside policy")
+            actual_sha256 = sha256_file(model_source)
+            if not hmac.compare_digest(actual_sha256, expected_sha256):
+                raise JobValidationError(
+                    "Downloaded global model sha256 does not match the trusted value"
+                )
+            aggregate_metrics = load_aggregate_metrics(
+                metrics_source,
+                record.bundle.expected_sites,
+            )
+            if record.aggregate_metrics and record.aggregate_metrics.get(
+                "receipt_sha256"
+            ) != aggregate_metrics.get("receipt_sha256"):
+                raise JobValidationError(
+                    "Downloaded metrics do not match the reconciled NVFLARE snapshot"
+                )
+            destination = archive_root / f"global-model{model_source.suffix.lower()}"
+            temporary_destination = archive_root / ".global-model.tmp"
+            if destination.is_symlink() or temporary_destination.is_symlink():
+                raise JobValidationError("Managed model archive target is unsafe")
+            if temporary_destination.exists():
+                if not temporary_destination.is_file():
+                    raise JobValidationError("Managed model archive target is unsafe")
+                temporary_destination.unlink()
+            with model_source.open("rb") as source, temporary_destination.open("xb") as target:
+                shutil.copyfileobj(source, target, length=1024 * 1024)
+                target.flush()
+            if not hmac.compare_digest(sha256_file(temporary_destination), expected_sha256):
+                temporary_destination.unlink(missing_ok=True)
+                raise JobValidationError("Archived global model digest changed during copy")
+            temporary_destination.replace(destination)
+
+        record.global_model_path = destination.resolve()
+        record.global_model_sha256 = expected_sha256
+        record.aggregate_metrics = aggregate_metrics
+        record.updated_at = _utc_now()
+        self.store.save(record)
+        return {
+            "schema_version": "rarelink-physical-result-archive-v1",
+            "job_id": record.job_id,
+            "external_job_id": record.external_job_id,
+            "global_model_sha256": expected_sha256,
+            "model_file_name": destination.name,
+            "metrics": deepcopy(aggregate_metrics),
+            "archived": True,
+            "operation": result.public_receipt(),
+            "source_path_exported": False,
+            "archive_path_exported": False,
+            "admin_kit_path_exported": False,
+            "secret_exported": False,
+            "patient_data_exported": False,
+        }
+
+    def review_readiness(self, job_id: str) -> dict[str, Any]:
+        """Derive the explicit review gate without extending the DB job enum."""
+        record = self._require(job_id)
+        quorum = calculate_three_site_quorum(
+            record.bundle.expected_sites,
+            record.reported_sites,
+            record.received_updates,
+        )
+        model_verified = False
+        try:
+            model_verified = bool(
+                record.global_model_path
+                and record.global_model_sha256
+                and SHA256_RE.fullmatch(record.global_model_sha256)
+                and record.global_model_path.is_file()
+                and not record.global_model_path.is_symlink()
+                and hmac.compare_digest(
+                    sha256_file(record.global_model_path),
+                    record.global_model_sha256,
+                )
+            )
+        except OSError:
+            model_verified = False
+        gates = {
+            "terminal_completion_verified": record.state is PhysicalJobState.COMPLETED,
+            "three_of_three_quorum_verified": quorum.satisfied,
+            "global_model_digest_verified": model_verified,
+            "aggregate_metrics_verified": bool(
+                record.aggregate_metrics
+                and record.aggregate_metrics.get("site_count") == 3
+                and SHA256_RE.fullmatch(str(record.aggregate_metrics.get("receipt_sha256", "")))
+            ),
+        }
+        ready = all(gates.values())
+        return {
+            "schema_version": "rarelink-physical-review-readiness-v1",
+            "job_id": record.job_id,
+            "external_job_id": record.external_job_id,
+            "review_status": "READY_FOR_REVIEW" if ready else "BLOCKED",
+            "ready": ready,
+            "gates": gates,
+            "unmet_gates": [name for name, passed in gates.items() if not passed],
+            "model_path_exported": False,
             "secret_exported": False,
             "patient_data_exported": False,
         }

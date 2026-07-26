@@ -87,9 +87,7 @@ class SqlPhysicalJobStore:
             exact_length=3,
         )
         if not model.bundle_sha256 or not SHA256_RE.fullmatch(model.bundle_sha256):
-            raise PhysicalStoreIntegrityError(
-                "Persisted physical job bundle digest is invalid"
-            )
+            raise PhysicalStoreIntegrityError("Persisted physical job bundle digest is invalid")
         try:
             state = MODEL_TO_STATE[model.status]
         except KeyError as exc:
@@ -108,16 +106,22 @@ class SqlPhysicalJobStore:
             model.previous_external_job_ids_json,
             field_name="previous_external_job_ids_json",
         )
-        if model.submit_token_sha256 and not SHA256_RE.fullmatch(
-            model.submit_token_sha256
-        ):
+        if model.submit_token_sha256 and not SHA256_RE.fullmatch(model.submit_token_sha256):
             raise PhysicalStoreIntegrityError(
                 "Persisted physical job submission token digest is invalid"
             )
         if model.error and not SAFE_ERROR_CODE_RE.fullmatch(model.error):
-            raise PhysicalStoreIntegrityError(
-                "Persisted physical job error code is invalid"
-            )
+            raise PhysicalStoreIntegrityError("Persisted physical job error code is invalid")
+        aggregate_metrics = None
+        if model.metrics_json:
+            try:
+                aggregate_metrics = json.loads(model.metrics_json)
+            except (TypeError, json.JSONDecodeError) as exc:
+                raise PhysicalStoreIntegrityError(
+                    "Persisted physical job metrics are invalid"
+                ) from exc
+            if not isinstance(aggregate_metrics, dict):
+                raise PhysicalStoreIntegrityError("Persisted physical job metrics are invalid")
         if model.strategy == DP_STRATEGY:
             try:
                 bundle = validate_exported_job(Path(model.job_directory))
@@ -155,10 +159,9 @@ class SqlPhysicalJobStore:
             received_updates=model.received_updates,
             attempt=model.attempt,
             previous_external_job_ids=previous,
-            global_model_path=(
-                Path(model.global_model_path) if model.global_model_path else None
-            ),
+            global_model_path=(Path(model.global_model_path) if model.global_model_path else None),
             global_model_sha256=model.global_model_sha256,
+            aggregate_metrics=aggregate_metrics,
             error_code=model.error,
         )
 
@@ -168,25 +171,13 @@ class SqlPhysicalJobStore:
 
     def save(self, record: PhysicalJobRecord) -> None:
         if not SHA256_RE.fullmatch(record.bundle.bundle_sha256):
-            raise PhysicalStoreIntegrityError(
-                "Physical job bundle digest is invalid"
-            )
-        if len(record.bundle.expected_sites) != 3 or len(
-            set(record.bundle.expected_sites)
-        ) != 3:
-            raise PhysicalStoreIntegrityError(
-                "Physical job requires three unique expected sites"
-            )
+            raise PhysicalStoreIntegrityError("Physical job bundle digest is invalid")
+        if len(record.bundle.expected_sites) != 3 or len(set(record.bundle.expected_sites)) != 3:
+            raise PhysicalStoreIntegrityError("Physical job requires three unique expected sites")
         if set(record.reported_sites) - set(record.bundle.expected_sites):
-            raise PhysicalStoreIntegrityError(
-                "Physical job contains an unexpected site identity"
-            )
-        if record.submit_token_sha256 and not SHA256_RE.fullmatch(
-            record.submit_token_sha256
-        ):
-            raise PhysicalStoreIntegrityError(
-                "Physical job submission token digest is invalid"
-            )
+            raise PhysicalStoreIntegrityError("Physical job contains an unexpected site identity")
+        if record.submit_token_sha256 and not SHA256_RE.fullmatch(record.submit_token_sha256):
+            raise PhysicalStoreIntegrityError("Physical job submission token digest is invalid")
         if record.error_code and not SAFE_ERROR_CODE_RE.fullmatch(record.error_code):
             raise PhysicalStoreIntegrityError("Physical job error code is invalid")
         model = self.session.get(PhysicalFederationJob, record.job_id)
@@ -212,13 +203,20 @@ class SqlPhysicalJobStore:
         model.connected_sites_json = json.dumps(record.reported_sites)
         model.received_updates = record.received_updates
         model.attempt = record.attempt
-        model.previous_external_job_ids_json = json.dumps(
-            record.previous_external_job_ids
-        )
+        model.previous_external_job_ids_json = json.dumps(record.previous_external_job_ids)
         model.global_model_path = (
             str(record.global_model_path) if record.global_model_path else None
         )
         model.global_model_sha256 = record.global_model_sha256
+        model.metrics_json = (
+            json.dumps(
+                record.aggregate_metrics,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            if record.aggregate_metrics
+            else None
+        )
         model.error = record.error_code
         model.updated_at = utc_now()
         if record.state is PhysicalJobState.COMPLETED:
@@ -229,9 +227,7 @@ class SqlPhysicalJobStore:
         self.session.commit()
 
     def list(self) -> list[PhysicalJobRecord]:
-        statement = select(PhysicalFederationJob).order_by(
-            PhysicalFederationJob.created_at.desc()
-        )
+        statement = select(PhysicalFederationJob).order_by(PhysicalFederationJob.created_at.desc())
         return [self._record(model) for model in self.session.exec(statement).all()]
 
     def find_by_submit_token_sha256(
@@ -239,9 +235,7 @@ class SqlPhysicalJobStore:
         submit_token_sha256: str,
     ) -> PhysicalJobRecord | None:
         if not SHA256_RE.fullmatch(submit_token_sha256):
-            raise PhysicalStoreIntegrityError(
-                "Submission token digest lookup is invalid"
-            )
+            raise PhysicalStoreIntegrityError("Submission token digest lookup is invalid")
         statement = select(PhysicalFederationJob).where(
             PhysicalFederationJob.submit_token_sha256 == submit_token_sha256
         )

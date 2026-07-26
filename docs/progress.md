@@ -1,5 +1,36 @@
 # Development progress
 
+## Physical P0/P1 production-software baseline (2026-07-26)
+
+- [x] Site Agent preflight now covers GPU model/driver/CUDA/memory/temperature,
+  CPU load, disk/memory, dependency contract, certificate identity/CA chain/offline
+  CRL, local dataset proof, and signed checkpoint recovery.
+- [x] Site Agent supports idempotent start/pause/stop/recover, durable replay state,
+  outage reconnection, process-restart recovery, and patient-free signed receipts.
+- [x] Physical controller has strict NVIDIA FLARE client-registry reconciliation,
+  controlled result archive, strict three-site aggregate metrics, review-readiness
+  gate, abort/retry/resume, and resumable SSE events.
+- [x] The physical web console uses real control APIs and stable idempotency tokens;
+  it displays live site/round/update/quorum, model integrity, signature, and review state.
+- [x] The hospital-local data layer supports NIfTI + JSON manifest, deterministic
+  splits, MONAI persistent cache receipts, PyBIDS indexing, and pydicom header-only
+  de-identification gates without exporting paths or case identifiers.
+- [x] Exported NVIDIA FLARE jobs include a durable-replay server input filter for
+  peer identity, round, sample count, finite values, direction, norm, and L2 clipping.
+- [x] ART membership-inference and MIFace engineering probes emit aggregate-only
+  receipts and never persist sample decisions or reconstructions.
+- [x] P1-S06 secure-aggregation selection and threat model choose NVIDIA FLARE
+  `FedAvgHERecipe` + TenSEAL; enablement remains fail-closed until ARM64 runtime,
+  hospital key governance, client-side pre-encryption checks, and a three-device
+  encrypted-round benchmark exist.
+- [x] Current acceptance baseline: 371 Python tests, Ruff, production web build,
+  three independent control-plane processes, PostgreSQL compose validation, and
+  Alembic migration round trip.
+
+The itemized status and every external blocker are recorded in
+[`p0-p1-engineering-log.md`](p0-p1-engineering-log.md). “Implemented” and
+“isolated integration” are not presented as physical multi-hospital or clinical evidence.
+
 ## DGX Spark hardware milestone (2026-07-16 to 2026-07-17)
 
 - [x] Deployed on a real NVIDIA DGX Spark GB10 with ARM64 and CUDA 13.0

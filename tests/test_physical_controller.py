@@ -35,6 +35,16 @@ def exported_job(tmp_path: Path, **receipt_overrides: object) -> Path:
         "expected_sites": ["hospital-a", "hospital-b", "hospital-c"],
         "local_only_manifest_required": True,
         "dataset_receipt_required": True,
+        "update_guard": {
+            "schema_version": "rarelink-update-guard-contract-v1",
+            "transfer_type": "DIFF",
+            "max_l2_norm": 50.0,
+            "minimum_cosine_similarity": -0.25,
+            "late_round_updates_rejected": True,
+            "duplicate_site_round_updates_rejected": True,
+            "durable_replay_registry_required": True,
+            "raw_update_receipts_exported": False,
+        },
         "patient_data_packaged": False,
         "certificates_packaged": False,
         "private_keys_packaged": False,
@@ -89,6 +99,7 @@ def test_export_validation_builds_safe_deterministic_receipt(tmp_path: Path) -> 
         ({"private_keys_packaged": True}, "prove data"),
         ({"local_only_manifest_required": False}, "local-only"),
         ({"dataset_receipt_required": False}, "dataset receipt"),
+        ({"update_guard": None}, "update-guard"),
     ],
 )
 def test_export_validation_rejects_unsafe_or_invalid_contract(

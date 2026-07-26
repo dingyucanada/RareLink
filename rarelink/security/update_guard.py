@@ -12,11 +12,16 @@ import hmac
 import json
 import math
 import re
+import sqlite3
+import stat
+import threading
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Protocol
 
 SAFE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{1,127}$")
+SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 class UpdateGuardError(ValueError):
@@ -41,6 +46,49 @@ class MemoryReplayRegistry:
             return False
         self._claimed.add(replay_key)
         return True
+
+
+class SQLiteReplayRegistry:
+    """Atomic, restart-safe replay protection for the coordinator process."""
+
+    def __init__(self, path: Path) -> None:
+        if path.is_symlink():
+            raise UpdateGuardError("Replay registry path cannot be a symbolic link")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self.path = path
+        self._lock = threading.Lock()
+        with self._connect() as connection:
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS claimed_update (
+                    replay_key TEXT PRIMARY KEY NOT NULL,
+                    claimed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        self.path.chmod(stat.S_IRUSR | stat.S_IWUSR)
+
+    def _connect(self) -> sqlite3.Connection:
+        connection = sqlite3.connect(self.path, timeout=5, isolation_level=None)
+        connection.execute("PRAGMA journal_mode=WAL")
+        connection.execute("PRAGMA synchronous=FULL")
+        return connection
+
+    def claim(self, replay_key: str) -> bool:
+        if not SHA256_RE.fullmatch(replay_key):
+            raise UpdateGuardError("Replay key must be a SHA-256 digest")
+        with self._lock, self._connect() as connection:
+            try:
+                connection.execute("BEGIN IMMEDIATE")
+                connection.execute(
+                    "INSERT INTO claimed_update (replay_key) VALUES (?)",
+                    (replay_key,),
+                )
+                connection.commit()
+                return True
+            except sqlite3.IntegrityError:
+                connection.rollback()
+                return False
 
 
 @dataclass(frozen=True)

@@ -16,6 +16,7 @@ from rarelink.imaging.monai_runner import (  # noqa: E402
     _remap_label,
     _resolve_image,
 )
+from rarelink.site_data.split import deterministic_dataset_split  # noqa: E402
 
 
 def validate_manifest_for_site(
@@ -51,6 +52,7 @@ def build_site_loaders(
     manifest_path: Path,
     site_id: str,
     data_root: Path | None = None,
+    seed: int = 2026,
 ):  # type: ignore[no-untyped-def]
     from monai.data import CacheDataset, DataLoader
     from monai.transforms import (
@@ -68,12 +70,21 @@ def build_site_loaders(
     site_cases = [case for case in manifest["cases"] if case["site_id"] == site_id]
     if len(site_cases) < 2:
         raise ValueError(f"Site {site_id!r} requires at least two cases")
-    items = [
-        {
+    split = deterministic_dataset_split(site_cases, seed=seed)
+
+    def item(case):  # type: ignore[no-untyped-def]
+        return {
             "image": _resolve_image(dataset_root, case["images"]),
             "label": str((dataset_root / case["label"]).resolve()),
         }
-        for case in site_cases
+
+    train_items = [
+        item(case)
+        for case in split.train_cases
+    ]
+    validation_items = [
+        item(case)
+        for case in split.validation_cases
     ]
     transforms = Compose(
         [
@@ -98,8 +109,8 @@ def build_site_loaders(
             EnsureTyped(keys=["image", "label"]),
         ]
     )
-    train_dataset = CacheDataset(items[:-1], transforms, cache_rate=1.0)
-    validation_dataset = CacheDataset(items[-1:], transforms, cache_rate=1.0)
+    train_dataset = CacheDataset(train_items, transforms, cache_rate=1.0)
+    validation_dataset = CacheDataset(validation_items, transforms, cache_rate=1.0)
     return (
         DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=0),
         DataLoader(validation_dataset, batch_size=1, num_workers=0),
@@ -273,6 +284,7 @@ def main() -> None:
         args.manifest,
         site_id,
         data_root=args.data_root,
+        seed=args.seed,
     )
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = build_segmentation_model().to(device)
@@ -396,7 +408,11 @@ def main() -> None:
                     }.items()
                     if value is not None
                 },
-                meta={"NUM_STEPS_CURRENT_ROUND": steps, "site_id": site_id},
+                meta={
+                    "NUM_STEPS_CURRENT_ROUND": steps,
+                    "site_id": site_id,
+                    "sample_count": sample_count,
+                },
             )
         )
 

@@ -139,6 +139,12 @@ class PhysicalModelVerification(BaseModel):
     expected_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
+class PhysicalResultArchiveRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    expected_model_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class PhysicalModelReleaseApproval(BaseModel):
     model_config = {"extra": "forbid"}
 

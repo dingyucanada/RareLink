@@ -71,6 +71,7 @@ def snapshot(*, ready: bool, failed_check: str | None = None) -> HealthSnapshot:
         "gpu": CheckResult(ok=True, status="available"),
         "disk": CheckResult(ok=True, status="sufficient"),
         "memory": CheckResult(ok=True, status="sufficient"),
+        "cpu": CheckResult(ok=True, status="sufficient"),
         "certificate": CheckResult(ok=True, status="valid"),
         "dependencies": CheckResult(ok=True, status="available"),
         "dataset_manifest": CheckResult(ok=True, status="receipt_verified"),
@@ -210,7 +211,12 @@ def test_gpu_probe_requires_an_eligible_device(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr("rarelink.site_agent.health.shutil.which", lambda _: "/bin/nvidia-smi")
 
     def run_low(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
-        return subprocess.CompletedProcess(args[0], 0, "12288, 512\n", "")
+        return subprocess.CompletedProcess(
+            args[0],
+            0,
+            "NVIDIA GB10, 590.00, 12288, 512, 55\n",
+            "",
+        )
 
     monkeypatch.setattr("rarelink.site_agent.health.subprocess.run", run_low)
     low = _gpu_check(1024)
@@ -218,7 +224,12 @@ def test_gpu_probe_requires_an_eligible_device(monkeypatch: pytest.MonkeyPatch) 
     assert low.status == "insufficient_free_memory"
 
     def run_ready(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
-        return subprocess.CompletedProcess(args[0], 0, "12288, 8192\n", "")
+        return subprocess.CompletedProcess(
+            args[0],
+            0,
+            "NVIDIA GB10, 590.00, 12288, 8192, 55\n",
+            "",
+        )
 
     monkeypatch.setattr("rarelink.site_agent.health.subprocess.run", run_ready)
     ready = _gpu_check(1024)

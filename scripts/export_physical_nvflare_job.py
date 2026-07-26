@@ -82,6 +82,13 @@ def main() -> None:
     parser.add_argument("--dp-max-grad-norm", type=float, default=1.0)
     parser.add_argument("--dp-delta", type=float, default=1e-5)
     parser.add_argument("--dp-accountant", choices=["rdp"], default="rdp")
+    parser.add_argument("--update-max-l2-norm", type=float, default=50.0)
+    parser.add_argument("--update-minimum-cosine-similarity", type=float, default=-0.25)
+    parser.add_argument(
+        "--update-replay-db-path",
+        default="/var/lib/rarelink/coordinator/update-replay.sqlite",
+        help="Coordinator-local logical runtime path; registry contents are never packaged.",
+    )
     parser.add_argument(
         "--site-manifest-path",
         default="/srv/rarelink/site-data/manifest.json",
@@ -106,17 +113,23 @@ def main() -> None:
         raise ValueError("rounds and local-epochs must be positive")
     if args.strategy == "fedprox" and args.fedprox_mu <= 0:
         raise ValueError("fedprox-mu must be positive for FedProx")
+    if args.update_max_l2_norm <= 0:
+        raise ValueError("update-max-l2-norm must be positive")
+    if not -1 <= args.update_minimum_cosine_similarity <= 1:
+        raise ValueError("update-minimum-cosine-similarity must be in [-1, 1]")
     privacy_contract = build_privacy_contract(args)
 
     topology = load_physical_topology(args.topology)
     try:
         from nvflare.app_opt.pt.recipes import FedAvgRecipe
+        from nvflare.client.config import TransferType
         from nvflare.recipe import SimEnv
     except ImportError as exc:
         raise RuntimeError(
             "Install `rarelink[spark]` on the coordinator before exporting a job"
         ) from exc
     from rarelink.imaging.model import segmentation_model_config
+    from rarelink.security.nvflare_update_filter import RareLinkUpdateGuardFilter
 
     train_script = Path(__file__).with_name("nvflare_monai_client.py").resolve()
     train_args = build_client_train_args(args, privacy_contract)
@@ -132,6 +145,16 @@ def main() -> None:
         server_memory_gc_rounds=1,
         client_memory_gc_rounds=1,
         cuda_empty_cache=True,
+        params_transfer_type=TransferType.DIFF,
+    )
+    recipe.add_server_input_filter(
+        RareLinkUpdateGuardFilter(
+            expected_sites=[site.site_id for site in topology.sites],
+            max_l2_norm=args.update_max_l2_norm,
+            minimum_cosine_similarity=args.update_minimum_cosine_similarity,
+            replay_db_path=args.update_replay_db_path,
+        ),
+        tasks=["train"],
     )
     environment = SimEnv(
         clients=[site.site_id for site in topology.sites],
@@ -155,6 +178,16 @@ def main() -> None:
         "local_only_manifest_required": True,
         "dataset_receipt_required": True,
         "privacy": privacy_contract,
+        "update_guard": {
+            "schema_version": "rarelink-update-guard-contract-v1",
+            "transfer_type": "DIFF",
+            "max_l2_norm": args.update_max_l2_norm,
+            "minimum_cosine_similarity": args.update_minimum_cosine_similarity,
+            "late_round_updates_rejected": True,
+            "duplicate_site_round_updates_rejected": True,
+            "durable_replay_registry_required": True,
+            "raw_update_receipts_exported": False,
+        },
         "patient_data_packaged": False,
         "certificates_packaged": False,
         "private_keys_packaged": False,

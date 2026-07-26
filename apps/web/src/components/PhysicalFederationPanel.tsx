@@ -1,6 +1,19 @@
-import { useQuery } from "@tanstack/react-query";
-import { CircleAlert, Network, Server, ShieldCheck, WifiOff } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  CircleAlert,
+  Network,
+  PauseCircle,
+  Play,
+  RefreshCw,
+  RotateCcw,
+  Server,
+  ShieldCheck,
+  Wifi,
+  WifiOff,
+} from "lucide-react";
 import { api } from "../api";
+import type { PhysicalFederationJob } from "../types";
 
 function ageLabel(value: string | null): string {
   if (!value) return "尚无心跳";
@@ -18,7 +31,24 @@ function approvalDeadline(value: string | null): string {
   return `${Math.ceil(minutes / 60)} 小时后到期`;
 }
 
+type PhysicalAction = "submit" | "sync" | "abort" | "retry" | "resume";
+
+function stableActionToken(jobId: string, action: PhysicalAction): string {
+  const key = `rarelink:${jobId}:${action}:idempotency`;
+  const existing = sessionStorage.getItem(key);
+  if (existing) return existing;
+  const token = `${action}-${crypto.randomUUID()}`;
+  sessionStorage.setItem(key, token);
+  return token;
+}
+
 export default function PhysicalFederationPanel() {
+  const queryClient = useQueryClient();
+  const [streamState, setStreamState] = useState<"connecting" | "live" | "retrying">(
+    "connecting",
+  );
+  const [lastEvent, setLastEvent] = useState<Record<string, unknown> | null>(null);
+  const lastEventId = useRef<string | undefined>(undefined);
   const sites = useQuery({
     queryKey: ["physical-sites"],
     queryFn: api.physicalSites,
@@ -36,6 +66,12 @@ export default function PhysicalFederationPanel() {
   });
   const physicalSites = sites.data ?? [];
   const latestJob = jobs.data?.[0];
+  const readiness = useQuery({
+    queryKey: ["physical-review-readiness", latestJob?.id],
+    queryFn: () => api.physicalReviewReadiness(latestJob!.id),
+    enabled: Boolean(latestJob),
+    refetchInterval: latestJob?.status === "COMPLETED" ? 3000 : false,
+  });
   const unavailable = sites.isError || jobs.isError || audit.isError;
   const mode = physicalSites[0]?.deployment_mode ?? latestJob?.deployment_mode ?? "disabled";
   const readyCount = physicalSites.filter(
@@ -47,6 +83,115 @@ export default function PhysicalFederationPanel() {
       site.monai_ready &&
       site.nvflare_ready,
   ).length;
+  const action = useMutation<
+    PhysicalFederationJob,
+    Error,
+    { job: PhysicalFederationJob; action: PhysicalAction }
+  >({
+    mutationFn: ({ job, action: requestedAction }) => {
+      const note = `RareLink operator requested ${requestedAction} from the physical control plane`;
+      if (requestedAction === "sync") return api.physicalSync(job.id);
+      if (requestedAction === "abort") return api.physicalAbort(job.id);
+      const token = stableActionToken(job.id, requestedAction);
+      if (requestedAction === "submit") return api.physicalSubmit(job.id, note, token);
+      if (requestedAction === "retry") return api.physicalRetry(job.id, note, token);
+      return api.physicalResume(job.id, note, token);
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["physical-sites"] }),
+        queryClient.invalidateQueries({ queryKey: ["physical-jobs"] }),
+        queryClient.invalidateQueries({ queryKey: ["physical-audit-summary"] }),
+      ]);
+    },
+  });
+  const resultAction = useMutation<
+    Record<string, unknown>,
+    Error,
+    { kind: "archive" | "sign"; job: PhysicalFederationJob; expectedSha256: string }
+  >({
+    mutationFn: ({ kind, job, expectedSha256 }) =>
+      kind === "archive"
+        ? api.physicalArchiveResults(job.id, expectedSha256)
+        : api.physicalSignModelRelease(job.id, expectedSha256),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["physical-jobs"] }),
+        queryClient.invalidateQueries({ queryKey: ["physical-review-readiness"] }),
+        queryClient.invalidateQueries({ queryKey: ["physical-audit-summary"] }),
+      ]);
+    },
+  });
+
+  useEffect(() => {
+    if (!latestJob) return undefined;
+    let stopped = false;
+    let retryTimer: number | undefined;
+    const controller = new AbortController();
+    const connect = async () => {
+      setStreamState(lastEventId.current ? "retrying" : "connecting");
+      try {
+        await api.physicalEventStream(
+          latestJob.id,
+          (event) => {
+            if (stopped) return;
+            setStreamState("live");
+            setLastEvent(event);
+            if (typeof event.event_id === "string") lastEventId.current = event.event_id;
+            void queryClient.invalidateQueries({ queryKey: ["physical-sites"] });
+            void queryClient.invalidateQueries({ queryKey: ["physical-jobs"] });
+            void queryClient.invalidateQueries({ queryKey: ["physical-audit-summary"] });
+          },
+          controller.signal,
+          lastEventId.current,
+        );
+        if (!stopped) retryTimer = window.setTimeout(connect, 2000);
+      } catch {
+        if (!stopped) {
+          setStreamState("retrying");
+          retryTimer = window.setTimeout(connect, 3000);
+        }
+      }
+    };
+    void connect();
+    return () => {
+      stopped = true;
+      controller.abort();
+      if (retryTimer) window.clearTimeout(retryTimer);
+    };
+  }, [latestJob?.id, queryClient]);
+
+  const runAction = (requestedAction: PhysicalAction) => {
+    if (!latestJob || action.isPending) return;
+    if (
+      requestedAction === "abort" &&
+      !window.confirm("确认停止当前物理联邦作业？原因将进入审计链。")
+    ) {
+      return;
+    }
+    action.mutate({ job: latestJob, action: requestedAction });
+  };
+  const archiveResults = () => {
+    if (!latestJob || resultAction.isPending) return;
+    const expectedSha256 = window.prompt(
+      "输入协调端独立核对的全局模型 SHA-256（64 位小写十六进制）：",
+    );
+    if (!expectedSha256) return;
+    if (!/^[0-9a-f]{64}$/.test(expectedSha256)) {
+      window.alert("SHA-256 格式无效，未执行归档。");
+      return;
+    }
+    resultAction.mutate({ kind: "archive", job: latestJob, expectedSha256 });
+  };
+  const signModelRelease = () => {
+    if (!latestJob?.global_model_sha256 || resultAction.isPending) return;
+    if (!window.confirm("确认模型摘要、三站指标和发布边界均已人工复核？")) return;
+    resultAction.mutate({
+      kind: "sign",
+      job: latestJob,
+      expectedSha256: latestJob.global_model_sha256,
+    });
+  };
 
   return (
     <section className="physical-federation">
@@ -67,6 +212,15 @@ export default function PhysicalFederationPanel() {
           <div className={`physical-audit ${audit.data?.verified ? "ready" : ""}`}>
             <span><ShieldCheck size={12} /> {audit.data?.event_count ?? 0}</span>
             <small>{audit.data?.verified ? "审计链通过" : "审计链待核验"}</small>
+          </div>
+          <div className={`physical-audit ${streamState === "live" ? "ready" : ""}`}>
+            <span>
+              {streamState === "live" ? <Wifi size={12} /> : <WifiOff size={12} />}
+              {" "}{streamState === "live" ? "LIVE" : "RECONNECT"}
+            </span>
+            <small>
+              {lastEvent?.action ? String(lastEvent.action) : "等待控制事件"}
+            </small>
           </div>
           <div className={`physical-quorum ${readyCount === 3 ? "ready" : ""}`}>
             <span>{readyCount}/{physicalSites.length || 3}</span>
@@ -149,6 +303,79 @@ export default function PhysicalFederationPanel() {
           </div>
           <div><span>ROUND</span><strong>{latestJob.current_round}/{latestJob.total_rounds}</strong></div>
           <div><span>UPDATES</span><strong>{latestJob.received_updates}/{latestJob.quorum_required}</strong></div>
+          <div>
+            <span>MODEL INTEGRITY</span>
+            <strong className={latestJob.global_model_sha256 ? "" : "warning"}>
+              {latestJob.global_model_sha256
+                ? `${latestJob.global_model_sha256.slice(0, 12)}…`
+                : "等待 3/3 完成"}
+            </strong>
+            <small>
+              {latestJob.model_release
+                ? `${latestJob.model_release.algorithm} · 已签名发布`
+                : "尚未签名发布"}
+            </small>
+          </div>
+          <div>
+            <span>RESULT REVIEW GATE</span>
+            <strong className={readiness.data?.ready ? "" : "warning"}>
+              {readiness.data?.review_status ?? "核验中"}
+            </strong>
+            <small>
+              {readiness.data?.ready
+                ? "3/3、模型摘要和指标均通过"
+                : `${readiness.data?.unmet_gates.length ?? 0} 项门禁未满足`}
+            </small>
+          </div>
+          <div className="physical-job-actions" aria-label="物理联邦作业控制">
+            {latestJob.status === "APPROVAL_PENDING" && (
+              <button
+                disabled={!latestJob.approval_valid || action.isPending}
+                onClick={() => runAction("submit")}
+                title={latestJob.approval_valid ? "提交已双人审批的作业" : "需要有效双人审批"}
+              >
+                <Play size={14} /> 提交
+              </button>
+            )}
+            <button disabled={action.isPending} onClick={() => runAction("sync")}>
+              <RefreshCw size={14} /> 同步
+            </button>
+            {["SUBMITTED", "WAITING_FOR_SITES", "RUNNING"].includes(latestJob.status) && (
+              <>
+                <button disabled={action.isPending} onClick={() => runAction("resume")}>
+                  <RotateCcw size={14} /> 恢复
+                </button>
+                <button
+                  className="danger"
+                  disabled={action.isPending}
+                  onClick={() => runAction("abort")}
+                >
+                  <PauseCircle size={14} /> 停止
+                </button>
+              </>
+            )}
+            {["FAILED", "ABORTED"].includes(latestJob.status) && (
+              <button disabled={action.isPending} onClick={() => runAction("retry")}>
+                <RotateCcw size={14} /> 安全重试
+              </button>
+            )}
+            {latestJob.status === "COMPLETED" && !latestJob.global_model_sha256 && (
+              <button disabled={resultAction.isPending} onClick={archiveResults}>
+                <ShieldCheck size={14} /> 核验并归档结果
+              </button>
+            )}
+            {latestJob.status === "COMPLETED" &&
+              latestJob.global_model_sha256 &&
+              !latestJob.model_release && (
+                <button disabled={resultAction.isPending} onClick={signModelRelease}>
+                  <ShieldCheck size={14} /> 签名发布
+                </button>
+              )}
+          </div>
+          {action.isError && <p><CircleAlert size={14} /> {action.error.message}</p>}
+          {resultAction.isError && (
+            <p><CircleAlert size={14} /> {resultAction.error.message}</p>
+          )}
           {latestJob.error && <p><CircleAlert size={14} /> {latestJob.error}</p>}
         </div>
       )}

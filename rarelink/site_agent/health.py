@@ -7,15 +7,15 @@ import importlib.metadata
 import importlib.util
 import json
 import os
+import re
 import shutil
-import ssl
-import stat
 import subprocess
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Protocol
 
 from rarelink.site_agent.config import SiteAgentSettings
+from rarelink.site_agent.pki import validate_public_certificate
 from rarelink.site_agent.schemas import CheckResult, HealthSnapshot, utc_now
 from rarelink.site_data import DatasetValidationError, verify_site_dataset_receipt
 
@@ -24,6 +24,7 @@ REQUIRED_PREFLIGHT_CHECKS = frozenset(
         "gpu",
         "disk",
         "memory",
+        "cpu",
         "dependencies",
         "certificate",
         "dataset_manifest",
@@ -50,37 +51,6 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _path_permissions_secure(path: Path, allowed_root: Path) -> bool:
-    """Inspect metadata only; never open a private key or traverse unrelated paths."""
-    try:
-        current_input = path
-        while True:
-            if current_input.is_symlink():
-                return False
-            if current_input == allowed_root:
-                break
-            if current_input.parent == current_input:
-                return False
-            current_input = current_input.parent
-        if allowed_root.is_symlink():
-            return False
-        resolved_path = path.resolve(strict=True)
-        resolved_root = allowed_root.resolve(strict=True)
-        if not resolved_path.is_relative_to(resolved_root):
-            return False
-        current = resolved_path
-        while True:
-            mode = current.stat().st_mode
-            if mode & (stat.S_IWGRP | stat.S_IWOTH):
-                return False
-            if current == resolved_root:
-                break
-            current = current.parent
-        return True
-    except OSError:
-        return False
-
-
 def health_is_ready(snapshot: HealthSnapshot) -> bool:
     """Reject incomplete or internally inconsistent injected health evidence."""
     return (
@@ -96,65 +66,25 @@ def _certificate_check(
     startup_kit: Path,
     minimum_valid_days: int,
     restrict_to_startup_kit: bool,
+    expected_identity: str = "hospital-a",
+    ca_bundle: Path | None = None,
+    require_chain: bool = False,
+    crl_file: Path | None = None,
+    require_crl: bool = False,
     now: datetime | None = None,
 ) -> CheckResult:
-    if path is None:
-        return CheckResult(ok=False, status="not_configured")
-    if path.is_symlink():
-        return CheckResult(ok=False, status="symlink_rejected")
-    if not path.is_file():
-        return CheckResult(ok=False, status="missing")
-    permission_root = startup_kit if restrict_to_startup_kit else path.parent
-    if not _path_permissions_secure(path, permission_root):
-        return CheckResult(
-            ok=False,
-            status="insecure_path_permissions",
-            details={
-                "certificate_content_exported": False,
-                "private_key_content_read": False,
-                "local_path_exported": False,
-            },
-        )
-    try:
-        decoded = ssl._ssl._test_decode_cert(str(path))  # type: ignore[attr-defined]
-        valid_from = datetime.strptime(decoded["notBefore"], "%b %d %H:%M:%S %Y %Z").replace(
-            tzinfo=UTC
-        )
-        expires_at = datetime.strptime(decoded["notAfter"], "%b %d %H:%M:%S %Y %Z").replace(
-            tzinfo=UTC
-        )
-        fingerprint = _sha256_file(path)
-        observed_at = now or datetime.now(UTC)
-        seconds_remaining = (expires_at - observed_at).total_seconds()
-        minimum_seconds = minimum_valid_days * 86_400
-        if valid_from > observed_at:
-            status = "not_yet_valid"
-            valid = False
-        elif seconds_remaining <= 0:
-            status = "expired"
-            valid = False
-        elif seconds_remaining < minimum_seconds:
-            status = "expiring_soon"
-            valid = False
-        else:
-            status = "valid"
-            valid = True
-        return CheckResult(
-            ok=valid,
-            status=status,
-            details={
-                "valid_from": valid_from.isoformat(),
-                "expires_at": expires_at.isoformat(),
-                "minimum_valid_days": minimum_valid_days,
-                "certificate_sha256": fingerprint,
-                "certificate_subject_exported": False,
-                "certificate_content_exported": False,
-                "private_key_content_read": False,
-                "local_path_exported": False,
-            },
-        )
-    except (KeyError, OSError, ssl.SSLError, ValueError):
-        return CheckResult(ok=False, status="invalid")
+    return validate_public_certificate(
+        certificate_path=path,
+        startup_kit=startup_kit,
+        expected_identity=expected_identity,
+        minimum_valid_days=minimum_valid_days,
+        restrict_to_startup_kit=restrict_to_startup_kit,
+        ca_bundle=ca_bundle,
+        require_chain=require_chain,
+        crl_file=crl_file,
+        require_crl=require_crl,
+        now=now,
+    )
 
 
 def _dependency_check(modules: tuple[str, ...]) -> CheckResult:
@@ -168,14 +98,42 @@ def _dependency_check(modules: tuple[str, ...]) -> CheckResult:
             versions[module] = importlib.metadata.version(module)
         except importlib.metadata.PackageNotFoundError:
             versions[module] = "present"
+    contract = {
+        "required_modules": sorted(modules),
+        "versions": {name: versions[name] for name in sorted(versions)},
+        "missing": sorted(missing),
+    }
     return CheckResult(
         ok=not missing,
         status="available" if not missing else "missing",
-        details={"versions": versions, "missing": missing},
+        details={
+            **contract,
+            "dependency_contract_sha256": hashlib.sha256(
+                json.dumps(contract, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest(),
+        },
     )
 
 
-def _gpu_check(required_free_memory_mib: int) -> CheckResult:
+def _cuda_version(executable: str) -> str:
+    try:
+        result = subprocess.run(
+            [executable],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return "unknown"
+    matched = re.search(r"CUDA Version:\s*([0-9.]+)", result.stdout)
+    return matched.group(1) if matched else "unknown"
+
+
+def _gpu_check(
+    required_free_memory_mib: int,
+    maximum_temperature_c: int = 85,
+) -> CheckResult:
     executable = shutil.which("nvidia-smi")
     if not executable:
         return CheckResult(ok=False, status="nvidia_smi_missing")
@@ -183,7 +141,7 @@ def _gpu_check(required_free_memory_mib: int) -> CheckResult:
         result = subprocess.run(
             [
                 executable,
-                "--query-gpu=memory.total,memory.free",
+                "--query-gpu=name,driver_version,memory.total,memory.free,temperature.gpu",
                 "--format=csv,noheader,nounits",
             ],
             check=False,
@@ -194,24 +152,90 @@ def _gpu_check(required_free_memory_mib: int) -> CheckResult:
     except (OSError, subprocess.TimeoutExpired):
         return CheckResult(ok=False, status="probe_failed")
     rows = [row.strip() for row in result.stdout.splitlines() if row.strip()]
-    parsed: list[tuple[int, int]] = []
+    parsed: list[dict[str, object]] = []
     try:
         for row in rows:
-            total_text, free_text = [item.strip() for item in row.split(",", maxsplit=1)]
-            parsed.append((int(total_text), int(free_text)))
+            name, driver, total_text, free_text, temperature_text = [
+                item.strip() for item in row.split(",", maxsplit=4)
+            ]
+            temperature = (
+                None if temperature_text in {"N/A", "[N/A]"} else int(temperature_text)
+            )
+            parsed.append(
+                {
+                    "name": name,
+                    "driver_version": driver,
+                    "total_memory_mib": int(total_text),
+                    "free_memory_mib": int(free_text),
+                    "temperature_c": temperature,
+                }
+            )
     except (TypeError, ValueError):
         return CheckResult(ok=False, status="probe_output_invalid")
-    eligible = [item for item in parsed if item[1] >= required_free_memory_mib]
-    available = result.returncode == 0 and bool(parsed) and bool(eligible)
+    eligible = [
+        item
+        for item in parsed
+        if int(item["free_memory_mib"]) >= required_free_memory_mib
+    ]
+    measured_temperatures = [
+        int(item["temperature_c"])
+        for item in parsed
+        if item["temperature_c"] is not None
+    ]
+    temperature_ok = all(
+        temperature <= maximum_temperature_c for temperature in measured_temperatures
+    )
+    available = (
+        result.returncode == 0
+        and bool(parsed)
+        and bool(eligible)
+        and temperature_ok
+    )
+    if result.returncode != 0 or not parsed:
+        status = "unavailable"
+    elif not eligible:
+        status = "insufficient_free_memory"
+    elif not temperature_ok:
+        status = "temperature_exceeded"
+    else:
+        status = "available"
     return CheckResult(
         ok=available,
-        status="available" if available else "insufficient_free_memory",
+        status=status,
         details={
             "device_count": len(parsed),
             "eligible_device_count": len(eligible),
             "minimum_required_free_memory_mib": required_free_memory_mib,
-            "maximum_free_memory_mib": max((item[1] for item in parsed), default=0),
-            "device_names_exported": False,
+            "maximum_free_memory_mib": max(
+                (int(item["free_memory_mib"]) for item in parsed), default=0
+            ),
+            "maximum_temperature_c": maximum_temperature_c,
+            "temperature_available": bool(measured_temperatures),
+            "cuda_version": _cuda_version(executable),
+            "devices": parsed,
+            "device_uuid_exported": False,
+            "device_serial_exported": False,
+        },
+    )
+
+
+def _cpu_check(maximum_load_percent: float) -> CheckResult:
+    try:
+        load_1, load_5, load_15 = os.getloadavg()
+        cpu_count = os.cpu_count() or 1
+        normalized = load_1 / cpu_count * 100
+    except (OSError, ValueError):
+        return CheckResult(ok=False, status="probe_failed")
+    return CheckResult(
+        ok=normalized <= maximum_load_percent,
+        status="sufficient" if normalized <= maximum_load_percent else "load_exceeded",
+        details={
+            "logical_cpu_count": cpu_count,
+            "load_average_1m": round(load_1, 3),
+            "load_average_5m": round(load_5, 3),
+            "load_average_15m": round(load_15, 3),
+            "normalized_load_percent": round(normalized, 2),
+            "maximum_load_percent": maximum_load_percent,
         },
     )
 
@@ -287,15 +311,24 @@ def collect_health(settings: SiteAgentSettings) -> HealthSnapshot:
     startup_present = (settings.startup_kit / "startup").is_dir()
 
     checks = {
-        "gpu": _gpu_check(settings.required_gpu_free_memory_mib),
+        "gpu": _gpu_check(
+            settings.required_gpu_free_memory_mib,
+            settings.maximum_gpu_temperature_c,
+        ),
         "disk": disk_status,
         "memory": memory_status,
+        "cpu": _cpu_check(settings.maximum_cpu_load_percent),
         "dependencies": _dependency_check(settings.module_names),
         "certificate": _certificate_check(
             settings.certificate_file,
             startup_kit=settings.startup_kit,
             minimum_valid_days=settings.certificate_min_valid_days,
             restrict_to_startup_kit=settings.require_certificate_under_startup_kit,
+            expected_identity=settings.certificate_expected_identity or settings.site_id,
+            ca_bundle=settings.certificate_ca_bundle,
+            require_chain=settings.require_certificate_chain,
+            crl_file=settings.certificate_crl_file,
+            require_crl=settings.require_certificate_crl,
         ),
         "dataset_manifest": _dataset_check(settings),
         "startup_kit": CheckResult(

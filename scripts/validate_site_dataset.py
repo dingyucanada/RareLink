@@ -19,12 +19,16 @@ def main() -> None:
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--site-id", required=True)
     parser.add_argument("--data-root", type=Path)
+    parser.add_argument("--split-seed", type=int, default=2026)
+    parser.add_argument("--validation-fraction", type=float, default=0.2)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     receipt = validate_site_dataset(
         args.manifest,
         site_id=args.site_id,
         data_root=args.data_root,
+        split_seed=args.split_seed,
+        validation_fraction=args.validation_fraction,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(

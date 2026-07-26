@@ -1,7 +1,7 @@
 PYTHON ?= python3
 PROJECT_PYTHON = $(if $(wildcard .venv/bin/python),.venv/bin/python,$(PYTHON))
 
-.PHONY: install install-web dev-api dev-web test lint smoke step-models step-smoke step-team-smoke synthetic-data monai-smoke nvflare-smoke nvflare-fedprox training-job-smoke demo-seed demo-evidence spark-local-verify spark-local-benchmark physical-render physical-preflight physical-job physical-site-agent physical-control-smoke physical-postgres-validate p0-p1-acceptance site-data-validate db-upgrade db-current db-check
+.PHONY: install install-web dev-api dev-web test lint smoke step-models step-smoke step-team-smoke synthetic-data monai-smoke nvflare-smoke nvflare-fedprox training-job-smoke demo-seed demo-evidence spark-local-verify spark-local-benchmark privacy-redteam-smoke secure-aggregation-assessment physical-render physical-preflight physical-job physical-site-agent physical-control-smoke physical-postgres-validate p0-p1-acceptance site-data-validate db-upgrade db-current db-check
 
 install:
 	$(PROJECT_PYTHON) -m pip install -e ".[dev]"
@@ -59,6 +59,12 @@ spark-local-verify:
 
 spark-local-benchmark:
 	$(PROJECT_PYTHON) scripts/benchmark_spark_local_llm.py
+
+privacy-redteam-smoke:
+	$(PROJECT_PYTHON) scripts/run_art_privacy_smoke.py
+
+secure-aggregation-assessment:
+	$(PROJECT_PYTHON) scripts/evaluate_secure_aggregation.py
 
 # Physical deployment commands intentionally require explicit topology/runtime paths.
 # They never upload medical data, startup kits, certificates, or private keys.

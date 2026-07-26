@@ -150,7 +150,7 @@ export interface PhysicalFederationJob {
   id: string;
   study_id: string | null;
   external_job_id: string | null;
-  strategy: "fedavg" | "fedprox";
+  strategy: "fedavg" | "fedprox" | "fedavg_dpsgd";
   status:
     | "DRAFT"
     | "APPROVAL_PENDING"
@@ -158,6 +158,7 @@ export interface PhysicalFederationJob {
     | "WAITING_FOR_SITES"
     | "RUNNING"
     | "COMPLETED"
+    | "READY_FOR_REVIEW"
     | "FAILED"
     | "ABORTED";
   contract_sha256: string | null;
@@ -176,6 +177,13 @@ export interface PhysicalFederationJob {
   approval_expires_at: string | null;
   approval_revoked_at: string | null;
   global_model_sha256: string | null;
+  model_release: {
+    manifest_sha256: string;
+    key_fingerprint_sha256: string;
+    signature: string;
+    released_at: string;
+    algorithm: "Ed25519";
+  } | null;
   metrics: Record<string, unknown> | null;
   error: string | null;
   created_at: string;
@@ -194,6 +202,19 @@ export interface PhysicalAuditSummary {
   events_exported: false;
   actors_exported: false;
   contains_patient_data: false;
+}
+
+export interface PhysicalReviewReadiness {
+  schema_version: string;
+  job_id: string;
+  external_job_id: string | null;
+  review_status: "READY_FOR_REVIEW" | "BLOCKED";
+  ready: boolean;
+  gates: Record<string, boolean>;
+  unmet_gates: string[];
+  model_path_exported: false;
+  secret_exported: false;
+  patient_data_exported: false;
 }
 
 export interface Capabilities {

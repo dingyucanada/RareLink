@@ -20,11 +20,25 @@ def utc_now() -> datetime:
 class TaskState(StrEnum):
     STARTING = "STARTING"
     RUNNING = "RUNNING"
+    PAUSING = "PAUSING"
+    PAUSED = "PAUSED"
     STOPPING = "STOPPING"
     STOPPED = "STOPPED"
     RECOVERING = "RECOVERING"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
+
+
+class TaskStage(StrEnum):
+    STARTING = "starting"
+    TRAINING = "training"
+    PAUSING = "pausing"
+    PAUSED = "paused"
+    STOPPING = "stopping"
+    STOPPED = "stopped"
+    RECOVERING = "recovering"
+    COMPLETED = "completed"
+    FAILED = "failed"
 
 
 class CheckResult(BaseModel):
@@ -93,9 +107,41 @@ class SignedReceipt(BaseModel):
     algorithm: str = "HMAC-SHA256"
     key_id: str
     signature: str
+    checkpoint_sha256: str | None = None
     contains_patient_data: bool = False
     contains_local_paths: bool = False
     contains_secret: bool = False
+
+
+class CheckpointMetadata(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: str = "rarelink-checkpoint-metadata-v1"
+    checkpoint_id: str
+    task_id: str
+    round_id: int = Field(ge=1, le=100_000)
+    contract_sha256: str
+    checkpoint_sha256: str
+    metadata_sha256: str
+    size_bytes: int = Field(ge=1)
+    created_at: datetime
+    verified_at: datetime
+    path_exported: bool = False
+    contains_patient_data: bool = False
+
+    @field_validator("checkpoint_id", "task_id")
+    @classmethod
+    def validate_safe_ids(cls, value: str) -> str:
+        if not SAFE_ID.fullmatch(value):
+            raise ValueError("checkpoint metadata contains an unsafe identifier")
+        return value
+
+    @field_validator("contract_sha256", "checkpoint_sha256", "metadata_sha256")
+    @classmethod
+    def validate_hashes(cls, value: str) -> str:
+        if not SHA256.fullmatch(value):
+            raise ValueError("checkpoint metadata hash must be SHA-256")
+        return value
 
 
 class TaskRecord(BaseModel):
@@ -106,9 +152,14 @@ class TaskRecord(BaseModel):
     total_rounds: int = 0
     contract_sha256: str
     state: TaskState
+    training_stage: TaskStage = TaskStage.STARTING
     revision: int = 1
     executor_ref: str | None = None
     error_code: str | None = None
+    active_runtime_seconds: float = Field(default=0, ge=0)
+    active_since: datetime | None = None
+    resource_status: dict[str, str] = Field(default_factory=dict)
+    checkpoint: CheckpointMetadata | None = None
     created_at: datetime
     updated_at: datetime
     receipt: SignedReceipt

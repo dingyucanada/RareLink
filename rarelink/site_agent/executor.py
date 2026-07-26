@@ -15,6 +15,10 @@ class SiteTaskExecutor(Protocol):
 
     def stop(self, task: TaskRecord) -> str | None: ...
 
+    def pause(self, task: TaskRecord) -> str | None: ...
+
+    def resume(self, task: TaskRecord) -> str | None: ...
+
     def recover(self, task: TaskRecord) -> str | None: ...
 
 
@@ -28,6 +32,12 @@ class DisabledExecutor:
         self._unavailable()
 
     def stop(self, task: TaskRecord) -> str | None:
+        self._unavailable()
+
+    def pause(self, task: TaskRecord) -> str | None:
+        self._unavailable()
+
+    def resume(self, task: TaskRecord) -> str | None:
         self._unavailable()
 
     def recover(self, task: TaskRecord) -> str | None:
@@ -78,8 +88,30 @@ class SystemdServiceExecutor:
     def stop(self, task: TaskRecord) -> str:
         return self._action("stop")
 
+    def pause(self, task: TaskRecord) -> str:
+        return self._signal("SIGSTOP")
+
+    def resume(self, task: TaskRecord) -> str:
+        return self._signal("SIGCONT")
+
     def recover(self, task: TaskRecord) -> str:
         return self._action("restart")
+
+    def _signal(self, signal: str) -> str:
+        if signal not in {"SIGSTOP", "SIGCONT"}:
+            raise RuntimeError("nvflare_service_signal_not_allowed")
+        result = self._runner(
+            (
+                "systemctl",
+                "kill",
+                "--kill-who=all",
+                f"--signal={signal}",
+                self.service_name,
+            )
+        )
+        if result.returncode:
+            raise RuntimeError("nvflare_service_action_failed")
+        return f"systemd:{self.service_name}"
 
     def is_running(self, task: TaskRecord) -> bool:
         result = self._runner(("systemctl", "is-active", "--quiet", self.service_name))

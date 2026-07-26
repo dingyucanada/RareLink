@@ -11,6 +11,8 @@ AGENT_VERSION = "0.2.0"
 ACTIVE_STATES = {
     TaskState.STARTING,
     TaskState.RUNNING,
+    TaskState.PAUSING,
+    TaskState.PAUSED,
     TaskState.STOPPING,
     TaskState.RECOVERING,
 }

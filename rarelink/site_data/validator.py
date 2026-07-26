@@ -10,6 +10,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from rarelink.site_data.split import DatasetSplitError, deterministic_dataset_split
+
 FORBIDDEN_IDENTIFIER_KEYS = {
     "accession_number",
     "birth_date",
@@ -217,6 +219,8 @@ def validate_site_dataset(
     *,
     site_id: str,
     data_root: Path | None = None,
+    split_seed: int = 2026,
+    validation_fraction: float = 0.2,
 ) -> dict[str, Any]:
     """Run explicit NIfTI geometry/label validation and emit a safe receipt."""
     try:
@@ -232,6 +236,14 @@ def validate_site_dataset(
         site_id=site_id,
         data_root=approved_root,
     )
+    try:
+        split = deterministic_dataset_split(
+            cases,
+            seed=split_seed,
+            validation_fraction=validation_fraction,
+        )
+    except DatasetSplitError as exc:
+        raise DatasetValidationError(str(exc)) from None
     allowed_labels = _allowed_label_values(manifest)
     shape_variants: set[tuple[int, int, int]] = set()
     spacing_variants: set[tuple[float, float, float]] = set()
@@ -328,6 +340,7 @@ def validate_site_dataset(
             "observed_values": sorted(observed_labels),
             "integer_contract_verified": True,
         },
+        "split": split.receipt,
         "receipt_contains_patient_data": False,
         "source_manifest_exported": False,
         "case_identifiers_exported": False,
@@ -367,6 +380,22 @@ def verify_site_dataset_receipt(
         and receipt.get("image_voxels_exported") is False
         and receipt.get("label_voxels_exported") is False
     )
+    split_receipt = receipt.get("split")
+    try:
+        if not isinstance(split_receipt, dict):
+            raise DatasetSplitError("Dataset split receipt is unavailable")
+        manifest, _manifest_sha256 = _load_manifest(manifest_path)
+        cases = _manifest_cases(manifest, site_id=site_id)
+        current_split = deterministic_dataset_split(
+            cases,
+            seed=split_receipt.get("seed"),
+            validation_fraction=split_receipt.get("validation_fraction"),
+        )
+    except DatasetSplitError:
+        raise DatasetValidationError(
+            "The local dataset split proof is invalid or unavailable"
+        ) from None
+    split_verified = current_split.receipt == split_receipt
     manifest_sha256, file_state = current_file_state_fingerprint(
         manifest_path,
         site_id=site_id,
@@ -380,6 +409,7 @@ def verify_site_dataset_receipt(
         and SHA256.fullmatch(receipt["dataset_fingerprint"]) is not None
         and receipt.get("manifest_sha256") == manifest_sha256
         and receipt.get("file_state_fingerprint") == file_state
+        and split_verified
         and safe_flags
     )
     if not verified:
@@ -391,6 +421,8 @@ def verify_site_dataset_receipt(
             manifest_path,
             site_id=site_id,
             data_root=data_root,
+            split_seed=current_split.receipt["seed"],
+            validation_fraction=current_split.receipt["validation_fraction"],
         )
         if current["dataset_fingerprint"] != receipt.get("dataset_fingerprint"):
             raise DatasetValidationError(

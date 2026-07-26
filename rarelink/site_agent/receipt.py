@@ -44,6 +44,7 @@ class ReceiptSigner:
         contract_sha256: str,
         state: TaskState,
         revision: int,
+        checkpoint_sha256: str | None = None,
         issued_at: datetime | None = None,
     ) -> SignedReceipt:
         observed_at = issued_at or utc_now()
@@ -62,6 +63,7 @@ class ReceiptSigner:
             "issued_at": observed_at.isoformat(),
             "algorithm": "HMAC-SHA256",
             "key_id": self.key_id,
+            "checkpoint_sha256": checkpoint_sha256,
             "contains_patient_data": False,
             "contains_local_paths": False,
             "contains_secret": False,
@@ -81,6 +83,7 @@ class ReceiptSigner:
             payload_sha256=digest,
             key_id=self.key_id,
             signature=signature,
+            checkpoint_sha256=checkpoint_sha256,
         )
 
     def verify_task(self, receipt: SignedReceipt) -> bool:
@@ -98,6 +101,7 @@ class ReceiptSigner:
             "issued_at": receipt.issued_at.isoformat(),
             "algorithm": receipt.algorithm,
             "key_id": receipt.key_id,
+            "checkpoint_sha256": receipt.checkpoint_sha256,
             "contains_patient_data": receipt.contains_patient_data,
             "contains_local_paths": receipt.contains_local_paths,
             "contains_secret": receipt.contains_secret,

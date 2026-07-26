@@ -24,11 +24,27 @@ def test_systemd_executor_uses_only_fixed_service_and_allowlisted_actions() -> N
 
     assert executor.start(None) == "systemd:rarelink-flare-client.service"  # type: ignore[arg-type]
     assert executor.stop(None) == "systemd:rarelink-flare-client.service"  # type: ignore[arg-type]
+    assert executor.pause(None) == "systemd:rarelink-flare-client.service"  # type: ignore[arg-type]
+    assert executor.resume(None) == "systemd:rarelink-flare-client.service"  # type: ignore[arg-type]
     assert executor.recover(None) == "systemd:rarelink-flare-client.service"  # type: ignore[arg-type]
     assert executor.is_running(None) is True  # type: ignore[arg-type]
     assert commands == [
         ["systemctl", "start", "rarelink-flare-client.service"],
         ["systemctl", "stop", "rarelink-flare-client.service"],
+        [
+            "systemctl",
+            "kill",
+            "--kill-who=all",
+            "--signal=SIGSTOP",
+            "rarelink-flare-client.service",
+        ],
+        [
+            "systemctl",
+            "kill",
+            "--kill-who=all",
+            "--signal=SIGCONT",
+            "rarelink-flare-client.service",
+        ],
         ["systemctl", "restart", "rarelink-flare-client.service"],
         ["systemctl", "is-active", "--quiet", "rarelink-flare-client.service"],
     ]

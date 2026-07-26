@@ -10,12 +10,14 @@ from collections.abc import Callable
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from rarelink.site_agent.checkpoint import verify_checkpoint_receipt
 from rarelink.site_agent.config import SiteAgentSettings
 from rarelink.site_agent.executor import SiteTaskExecutor, build_site_executor
 from rarelink.site_agent.health import HealthProvider, collect_health, health_is_ready
 from rarelink.site_agent.heartbeat import to_central_heartbeat
 from rarelink.site_agent.receipt import ReceiptSigner
 from rarelink.site_agent.schemas import (
+    CheckpointMetadata,
     HealthSnapshot,
     HeartbeatEnvelope,
     TaskActionRequest,
@@ -23,6 +25,7 @@ from rarelink.site_agent.schemas import (
     TaskRecord,
 )
 from rarelink.site_agent.service import (
+    CheckpointPreconditionError,
     ExecutorActionError,
     PreflightFailedError,
     TaskConflictError,
@@ -48,11 +51,28 @@ def create_site_agent_app(
     signer = ReceiptSigner(settings.site_id, settings.receipt_hmac_key.get_secret_value())
     store = TaskStore(settings.state_database)
     probe = health_provider or (lambda: collect_health(settings))
+    checkpoint_provider = None
+    if settings.checkpoint_root is not None and settings.checkpoint_receipt is not None:
+        checkpoint_root = settings.checkpoint_root
+        checkpoint_receipt = settings.checkpoint_receipt
+
+        def local_checkpoint_provider(task: TaskRecord) -> CheckpointMetadata:
+            return verify_checkpoint_receipt(
+                receipt_path=checkpoint_receipt,
+                checkpoint_root=checkpoint_root,
+                task=task,
+            )
+
+        checkpoint_provider = local_checkpoint_provider
     service = TaskService(
         store,
         signer,
         executor or build_site_executor(settings),
         readiness_guard=lambda: health_is_ready(probe()),
+        resource_probe=probe,
+        checkpoint_provider=checkpoint_provider,
+        require_checkpoint_for_pause=settings.require_checkpoint_for_pause,
+        require_checkpoint_for_recover=settings.require_checkpoint_for_recover,
     )
     service.reconcile_interrupted_transitions()
     bearer = HTTPBearer(auto_error=False)
@@ -82,6 +102,8 @@ def create_site_agent_app(
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         except PreflightFailedError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except CheckpointPreconditionError as exc:
+            raise HTTPException(status_code=412, detail=str(exc)) from exc
 
     @app.get("/health/live")
     def live() -> dict[str, object]:
@@ -106,7 +128,7 @@ def create_site_agent_app(
     )
     def heartbeat() -> HeartbeatEnvelope:
         health = probe()
-        tasks = store.list()
+        tasks = service.list_tasks()
         timestamp = int(time.time())
         heartbeat_id = f"heartbeat-{uuid.uuid4().hex}"
         payload = to_central_heartbeat(
@@ -135,7 +157,7 @@ def create_site_agent_app(
         dependencies=[Depends(require_token)],
     )
     def list_tasks() -> list[TaskRecord]:
-        return store.list()
+        return service.list_tasks()
 
     @app.post(
         "/v1/tasks/start",
@@ -152,6 +174,14 @@ def create_site_agent_app(
     )
     def stop_task(request: TaskActionRequest) -> TaskActionResponse:
         return handle_action(lambda: service.stop(request))
+
+    @app.post(
+        "/v1/tasks/pause",
+        response_model=TaskActionResponse,
+        dependencies=[Depends(require_token)],
+    )
+    def pause_task(request: TaskActionRequest) -> TaskActionResponse:
+        return handle_action(lambda: service.pause(request))
 
     @app.post(
         "/v1/tasks/recover",

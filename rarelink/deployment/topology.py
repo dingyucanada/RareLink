@@ -151,7 +151,17 @@ class SiteRuntime(BaseModel):
     dataset_receipt: Path | None = None
     artifact_root: Path
     startup_kit: Path
+    certificate_file: Path | None = None
+    certificate_ca_bundle: Path | None = None
+    certificate_crl_file: Path | None = None
+    certificate_expected_identity: str | None = None
+    checkpoint_root: Path | None = None
+    checkpoint_receipt: Path | None = None
     required_free_memory_percent: int = Field(default=15, ge=5, le=80)
+    required_free_disk_percent: int = Field(default=10, ge=2, le=80)
+    required_gpu_free_memory_mib: int = Field(default=1024, ge=256, le=131_072)
+    maximum_gpu_temperature_c: int = Field(default=85, ge=50, le=100)
+    maximum_cpu_load_percent: int = Field(default=90, ge=10, le=200)
 
     @field_validator("site_id")
     @classmethod
@@ -175,6 +185,17 @@ class SiteRuntime(BaseModel):
             ),
             "startup_kit_present": self.startup_kit.exists(),
             "artifact_root_present": self.artifact_root.exists(),
+            "certificate_configured": self.certificate_file is not None,
+            "certificate_chain_configured": self.certificate_ca_bundle is not None,
+            "certificate_revocation_configured": self.certificate_crl_file is not None,
+            "certificate_identity_bound": self.certificate_expected_identity
+            == self.site_id,
+            "checkpoint_store_configured": self.checkpoint_root is not None,
+            "checkpoint_receipt_configured": self.checkpoint_receipt is not None,
+            "required_free_disk_percent": self.required_free_disk_percent,
+            "required_gpu_free_memory_mib": self.required_gpu_free_memory_mib,
+            "maximum_gpu_temperature_c": self.maximum_gpu_temperature_c,
+            "maximum_cpu_load_percent": self.maximum_cpu_load_percent,
             "raw_patient_data_exported": False,
         }
 

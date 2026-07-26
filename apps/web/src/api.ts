@@ -1,11 +1,18 @@
-import type { AgentArtifact, AuditEvent, Capabilities, Experiment, ImagingPreview, MsdRunReceipt, MsdRunVerification, PhysicalAuditSummary, PhysicalFederationJob, PhysicalSite, Study, SystemEvidence, TrainingJob } from "./types";
+import type { AgentArtifact, AuditEvent, Capabilities, Experiment, ImagingPreview, MsdRunReceipt, MsdRunVerification, PhysicalAuditSummary, PhysicalFederationJob, PhysicalReviewReadiness, PhysicalSite, Study, SystemEvidence, TrainingJob } from "./types";
 
 const DEMO_TOKEN = import.meta.env.VITE_RARELINK_DEMO_TOKEN as string | undefined;
 const JSON_HEADERS = { "Content-Type": "application/json" };
 
+function authenticatedHeaders(input?: HeadersInit): Headers {
+  const headers = new Headers(input);
+  const oidcToken = sessionStorage.getItem("rarelink_oidc_access_token");
+  if (oidcToken) headers.set("Authorization", `Bearer ${oidcToken}`);
+  else if (DEMO_TOKEN) headers.set("X-RareLink-Demo-Token", DEMO_TOKEN);
+  return headers;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const headers = new Headers(init?.headers);
-  if (DEMO_TOKEN) headers.set("X-RareLink-Demo-Token", DEMO_TOKEN);
+  const headers = authenticatedHeaders(init?.headers);
   const response = await fetch(path, { ...init, headers });
   if (!response.ok) {
     const payload = await response.json().catch(() => ({ detail: response.statusText }));
@@ -95,6 +102,88 @@ export const api = {
     request<TrainingJob[]>(`/api/studies/${studyId}/training-jobs`),
   physicalSites: () => request<PhysicalSite[]>("/api/physical/sites"),
   physicalJobs: () => request<PhysicalFederationJob[]>("/api/physical/jobs"),
+  physicalSubmit: (jobId: string, note: string, submitToken: string) =>
+    request<PhysicalFederationJob>(`/api/physical/jobs/${jobId}:submit`, {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ note, submit_token: submitToken }),
+    }),
+  physicalSync: (jobId: string) =>
+    request<PhysicalFederationJob>(`/api/physical/jobs/${jobId}:sync`, {
+      method: "POST",
+    }),
+  physicalAbort: (jobId: string) =>
+    request<PhysicalFederationJob>(`/api/physical/jobs/${jobId}:abort`, {
+      method: "POST",
+    }),
+  physicalRetry: (jobId: string, note: string, submitToken: string) =>
+    request<PhysicalFederationJob>(`/api/physical/jobs/${jobId}:retry`, {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ note, submit_token: submitToken }),
+    }),
+  physicalResume: (jobId: string, note: string, submitToken: string) =>
+    request<PhysicalFederationJob>(`/api/physical/jobs/${jobId}:resume`, {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ note, submit_token: submitToken }),
+    }),
+  physicalArchiveResults: (jobId: string, expectedModelSha256: string) =>
+    request<Record<string, unknown>>(`/api/physical/jobs/${jobId}:archive-results`, {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ expected_model_sha256: expectedModelSha256 }),
+    }),
+  physicalReviewReadiness: (jobId: string) =>
+    request<PhysicalReviewReadiness>(
+      `/api/physical/jobs/${jobId}/review-readiness`,
+    ),
+  physicalSignModelRelease: (jobId: string, expectedModelSha256: string) =>
+    request<Record<string, unknown>>(`/api/physical/jobs/${jobId}:sign-model-release`, {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({
+        attestation: "GLOBAL_MODEL_HASH_AND_RELEASE_REVIEWED",
+        expected_model_sha256: expectedModelSha256,
+      }),
+    }),
+  physicalEventStream: async (
+    jobId: string,
+    onEvent: (event: Record<string, unknown>) => void,
+    signal: AbortSignal,
+    lastEventId?: string,
+  ) => {
+    const headers = authenticatedHeaders(
+      lastEventId ? { "Last-Event-ID": lastEventId } : undefined,
+    );
+    headers.set("Accept", "text/event-stream");
+    const response = await fetch(
+      `/api/physical/events/stream?job_id=${encodeURIComponent(jobId)}`,
+      { headers, signal },
+    );
+    if (!response.ok || !response.body) {
+      const payload = await response.json().catch(() => ({ detail: response.statusText }));
+      throw new Error(payload.detail ?? "RareLink event stream failed");
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffered = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffered += decoder.decode(value, { stream: true });
+      const frames = buffered.split("\n\n");
+      buffered = frames.pop() ?? "";
+      for (const frame of frames) {
+        const data = frame
+          .split("\n")
+          .filter((line) => line.startsWith("data:"))
+          .map((line) => line.slice(5).trim())
+          .join("\n");
+        if (data) onEvent(JSON.parse(data) as Record<string, unknown>);
+      }
+    }
+  },
   physicalAuditSummary: () =>
     request<PhysicalAuditSummary>("/api/physical/audit-summary"),
   exportUrl: (studyId: string) => {

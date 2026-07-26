@@ -10,7 +10,7 @@
 
 <a href="README.en.md">English</a> · <strong>中文</strong>
 
-<strong>📘 <a href="outputs/RareLink-项目报告书.md">阅读完整项目报告书</a></strong> · <strong><a href="docs/p0-p1-implementation-and-acceptance.md">P0/P1 实施与验收</a></strong> · <a href="#部署模型与快速开始">快速开始</a> · <a href="docs/physical-deployment.md">三物理 Spark 部署</a> · <a href="docs/physical-site-agent-reliability.md">Site Agent</a> · <a href="docs/physical-reconciliation-and-recovery.md">故障恢复</a> · <a href="docs/physical-dpsgd-contract.md">物理 DP-SGD</a> · <a href="docs/oidc-jwks-lifecycle.md">OIDC/JWKS</a> · <a href="docs/postgresql-alembic.md">生产数据库</a>
+<strong>📘 <a href="outputs/RareLink-项目报告书.md">阅读完整项目报告书</a></strong> · <strong><a href="docs/p0-p1-engineering-log.md">P0/P1 逐项状态与限制</a></strong> · <a href="#部署模型与快速开始">快速开始</a> · <a href="docs/physical-deployment.md">三物理 Spark 部署</a> · <a href="docs/physical-site-agent-reliability.md">Site Agent</a> · <a href="docs/physical-reconciliation-and-recovery.md">故障恢复</a> · <a href="docs/physical-dpsgd-contract.md">物理 DP-SGD</a> · <a href="docs/secure-aggregation-evaluation.md">安全聚合评估</a> · <a href="docs/oidc-jwks-lifecycle.md">OIDC/JWKS</a> · <a href="docs/postgresql-alembic.md">生产数据库</a>
 
 <a href="https://www.nvidia.com/en-us/products/workstations/dgx-spark/"><img src="https://img.shields.io/badge/NVIDIA-DGX%20Spark-76B900?style=flat-square&logo=nvidia&logoColor=white" alt="NVIDIA DGX Spark" /></a>
 <a href="https://nvidia.github.io/NVFlare/"><img src="https://img.shields.io/badge/NVIDIA%20FLARE-2.7.2-2563EB?style=flat-square" alt="NVIDIA FLARE" /></a>
@@ -52,6 +52,7 @@
 - [部署模型与快速开始](#部署模型与快速开始)
 - [三物理 Spark 部署](docs/physical-deployment.md)
 - [P0/P1 实施与自动验收](docs/p0-p1-implementation-and-acceptance.md)
+- [P0/P1 逐项状态、外部阻塞与证据等级](docs/p0-p1-engineering-log.md)
 - [路线图、资料与责任使用](#路线图资料与责任使用)
 
 ---
@@ -276,13 +277,16 @@ RareLink 在 NVIDIA DGX Spark GB10（ARM64、CUDA 13、PyTorch `2.10.0+cu130`、
 ### 三物理站点控制面
 
 仓库已实现面向真实独立设备的 P0 控制闭环，而不再把“三个科室”硬编码为同一
-进程：每台 Spark 运行自己的 Site Agent 和 SQLite 状态库，检查 GPU、内存、
-磁盘、MONAI、NVIDIA FLARE、证书与本站 manifest；它只发送带 HMAC 签名的
+进程：每台 Spark 运行自己的 Site Agent 和 SQLite 状态库，检查 GPU/显存/温度、
+CPU/内存/磁盘、MONAI、NVIDIA FLARE、证书身份/CA 链/离线 CRL 与本站
+manifest；它只发送带 HMAC 签名的
 无患者信息心跳。中心 FastAPI 保存真实 NVIDIA FLARE Job ID，支持人工审批后
 提交、状态同步、停止、重试、恢复、固定 `3/3` quorum，以及完成模型的 SHA-256
-核验。Site Agent 可通过固定 unit、无 shell 的 systemd 适配器控制本站 FLARE
-Client 生命周期，默认未授权时失败关闭。前端“三物理 Spark 运行面”每 3–5 秒
-读取真实控制状态。医院数据层会在训练前核验四模态 NIfTI、几何与标签合同，
+核验、受控结果归档和 Ed25519 发布签名。Site Agent 可通过固定 unit、无 shell
+的 systemd 适配器控制本站 FLARE Client 生命周期，并通过受签 checkpoint
+实现安全暂停/恢复。前端“三物理 Spark 运行面”使用可断点续传 SSE 实时显示
+站点、轮次、更新数、结果完整性和评审门。医院数据层会在训练前核验四模态
+NIfTI、几何与标签合同，
 形成不含病例 ID/路径的数据指纹；任一站点数据版本变化都会使旧作业自动失效。
 
 ```mermaid
@@ -310,7 +314,28 @@ OIDC 离线验证、五角色十一权限、站点级读取过滤和待完成 IA
 [物理控制面身份与 RBAC](docs/physical-identity-rbac.md)，
 合同摘要锁定、不同主体第二审批与当前局限见
 [物理合同双人审批](docs/physical-dual-approval.md)，
-院内格式与失效规则见[医院本地 NIfTI 数据规范](docs/site-data-manifest.md)。
+院内 NIfTI/BIDS/DICOM Header 边界与失效规则见
+[医院本地数据规范](docs/site-data-manifest.md)。70 项 P0/P1 的真实完成状态、
+外部阻塞原因和证据等级见
+[P0/P1 工程实施与限制日志](docs/p0-p1-engineering-log.md)。
+
+全量软件与隔离验收：
+
+```bash
+make p0-p1-acceptance
+```
+
+当前基线为 **371 项 Python 测试 + Ruff + 前端生产构建 + 三独立进程控制协议 +
+PostgreSQL 生产配置 + Alembic 迁移往返**。该结果只证明 L1/L2；没有三台设备、
+正式 Admin/Client Kit 或医院系统时，不会被描述成真实多院完成。
+
+P1-S06 已完成安全聚合候选选型和威胁模型，复用 NVIDIA FLARE
+`FedAvgHERecipe` + TenSEAL，不自研密码协议。当前运行时缺少 TenSEAL，且
+同态加密与服务器明文更新检查存在架构冲突，因此保持失败关闭：
+
+```bash
+make secure-aggregation-assessment
+```
 
 ### 一键体验
 

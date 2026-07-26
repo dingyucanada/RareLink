@@ -1,3 +1,4 @@
+import asyncio
 import importlib.util
 import io
 import json
@@ -12,7 +13,7 @@ from typing import Annotated, Any
 import yaml
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlmodel import Session, select
@@ -22,6 +23,7 @@ from rarelink.config import Settings, get_settings
 from rarelink.database import (
     DatabaseSchemaError,
     create_db_and_tables,
+    engine,
     get_session,
     verify_production_schema,
 )
@@ -39,6 +41,7 @@ from rarelink.domain import (
     PhysicalModelVerification,
     PhysicalPrivacyBudgetCreate,
     PhysicalPrivacySpendCreate,
+    PhysicalResultArchiveRequest,
     PhysicalSecondApproval,
     PhysicalSiteCreate,
     PhysicalSiteHeartbeat,
@@ -116,6 +119,7 @@ from rarelink.services.physical_controller import (
     sha256_file,
     validate_exported_job,
 )
+from rarelink.services.physical_events import encode_sse, fetch_safe_job_events
 from rarelink.services.physical_store import SqlPhysicalJobStore
 from rarelink.services.policy import sanitize_site_aggregate
 from rarelink.services.training_jobs import execute_training_job, recover_interrupted_jobs
@@ -198,6 +202,7 @@ async def demo_access_gate(request, call_next):  # type: ignore[no-untyped-def]
     if not secrets.compare_digest(provided, expected):
         return JSONResponse(status_code=401, content={"detail": "Demo access token required"})
     return await call_next(request)
+
 
 SessionDep = Annotated[Session, Depends(get_session)]
 SettingsDep = Annotated[Settings, Depends(get_settings)]
@@ -459,10 +464,7 @@ def require_physical_enabled(config: Settings) -> None:
             status_code=503,
             detail="Physical federation control plane is disabled",
         )
-    if (
-        config.rarelink_physical_mode == "physical"
-        and len(config.rarelink_audit_hmac_key) < 32
-    ):
+    if config.rarelink_physical_mode == "physical" and len(config.rarelink_audit_hmac_key) < 32:
         raise HTTPException(
             status_code=503,
             detail="Physical mode requires a managed audit HMAC key",
@@ -641,14 +643,10 @@ def require_current_physical_contract(
     if config.rarelink_physical_mode != "physical":
         return approval_count
     approval = session.exec(
-        select(PhysicalJobApprovalRecord).where(
-            PhysicalJobApprovalRecord.job_id == job.id
-        )
+        select(PhysicalJobApprovalRecord).where(PhysicalJobApprovalRecord.job_id == job.id)
     ).first()
     revocation = session.exec(
-        select(PhysicalJobApprovalRevocation).where(
-            PhysicalJobApprovalRevocation.job_id == job.id
-        )
+        select(PhysicalJobApprovalRevocation).where(PhysicalJobApprovalRevocation.job_id == job.id)
     ).first()
     approval_expires_at = as_utc(approval.expires_at) if approval else None
     job_approval_expires_at = as_utc(job.second_approval_expires_at)
@@ -681,11 +679,7 @@ def require_active_physical_privacy_budget(
     budget = session.exec(
         select(PhysicalPrivacyBudget).where(PhysicalPrivacyBudget.job_id == job.id)
     ).first()
-    if (
-        budget is None
-        or budget.contract_sha256 != job.contract_sha256
-        or budget.status != "ACTIVE"
-    ):
+    if budget is None or budget.contract_sha256 != job.contract_sha256 or budget.status != "ACTIVE":
         raise HTTPException(
             status_code=409,
             detail="DP-SGD physical jobs require an active locked privacy budget",
@@ -888,9 +882,7 @@ def list_physical_sites(
         PhysicalPermission.CONTROL_STATE_READ,
     )
     if principal is not None:
-        statement = statement.where(
-            PhysicalSite.site_id.in_(sorted(principal.site_ids))
-        )
+        statement = statement.where(PhysicalSite.site_id.in_(sorted(principal.site_ids)))
     return [physical_site_view(site, config) for site in session.exec(statement).all()]
 
 
@@ -971,19 +963,14 @@ def receive_physical_site_heartbeat(
         PhysicalJobStatus.RUNNING,
     }
     active_jobs = session.exec(
-        select(PhysicalFederationJob).where(
-            PhysicalFederationJob.status.in_(active_states)
-        )
+        select(PhysicalFederationJob).where(PhysicalFederationJob.status.in_(active_states))
     ).all()
     for job in active_jobs:
         expected_sites = set(as_json(job.expected_sites_json, []))
         if site_id not in expected_sites:
             continue
         expected_fingerprint = as_json(job.dataset_fingerprints_json, {}).get(site_id)
-        if (
-            not payload.dataset_fingerprint
-            or payload.dataset_fingerprint != expected_fingerprint
-        ):
+        if not payload.dataset_fingerprint or payload.dataset_fingerprint != expected_fingerprint:
             job.status = PhysicalJobStatus.FAILED
             job.error = "DATASET_VERSION_CHANGED"
             job.updated_at = utc_now()
@@ -1072,9 +1059,7 @@ def create_physical_job(
                 + ", ".join(unready)
             ),
         )
-    dataset_fingerprints = {
-        site.site_id: site.dataset_fingerprint for site in registered_sites
-    }
+    dataset_fingerprints = {site.site_id: site.dataset_fingerprint for site in registered_sites}
     try:
         bundle = validate_exported_job(Path(payload.job_directory))
     except PhysicalControllerError as exc:
@@ -1358,9 +1343,7 @@ def approve_physical_job_contract(
         raise physical_approval_error(exc) from exc
     require_active_physical_privacy_budget(session, job)
     existing = session.exec(
-        select(PhysicalJobApprovalRecord).where(
-            PhysicalJobApprovalRecord.job_id == job_id
-        )
+        select(PhysicalJobApprovalRecord).where(PhysicalJobApprovalRecord.job_id == job_id)
     ).first()
     if existing:
         existing_expires_at = as_utc(existing.expires_at)
@@ -1469,9 +1452,7 @@ def revoke_physical_job_approval(
     except PhysicalApprovalServiceError as exc:
         raise physical_approval_error(exc) from exc
     approval = session.exec(
-        select(PhysicalJobApprovalRecord).where(
-            PhysicalJobApprovalRecord.job_id == job_id
-        )
+        select(PhysicalJobApprovalRecord).where(PhysicalJobApprovalRecord.job_id == job_id)
     ).first()
     if not approval or approval.approver_subject_id != job.second_approved_by:
         raise HTTPException(
@@ -1479,9 +1460,7 @@ def revoke_physical_job_approval(
             detail="Physical job has no current second approval to revoke",
         )
     existing = session.exec(
-        select(PhysicalJobApprovalRevocation).where(
-            PhysicalJobApprovalRevocation.job_id == job_id
-        )
+        select(PhysicalJobApprovalRevocation).where(PhysicalJobApprovalRevocation.job_id == job_id)
     ).first()
     if existing:
         if (
@@ -1560,9 +1539,7 @@ def submit_physical_job(
     require_active_physical_privacy_budget(session, job)
     expected_fingerprints = as_json(job.dataset_fingerprints_json, {})
     current_sites = session.exec(
-        select(PhysicalSite).where(
-            PhysicalSite.site_id.in_(as_json(job.expected_sites_json, []))
-        )
+        select(PhysicalSite).where(PhysicalSite.site_id.in_(as_json(job.expected_sites_json, [])))
     ).all()
     mismatched = sorted(
         site.site_id
@@ -1848,6 +1825,14 @@ def verify_physical_global_model(
     if not job:
         raise HTTPException(status_code=404, detail="Physical job not found")
     require_physical_job_scope(principal, job, config)
+    if config.rarelink_physical_mode == "physical":
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Physical mode accepts models only through the controlled "
+                "NVFLARE result archive endpoint"
+            ),
+        )
     controller, _admin_kit = build_physical_controller(session, config)
     try:
         receipt = controller.verify_global_model(
@@ -1874,6 +1859,100 @@ def verify_physical_global_model(
     )
     session.commit()
     return receipt
+
+
+@app.get("/api/physical/jobs/{job_id}/clients")
+def physical_job_client_registry(
+    job_id: str,
+    request: Request,
+    session: SessionDep,
+    config: SettingsDep,
+) -> dict[str, Any]:
+    principal = require_physical_principal(
+        request,
+        config,
+        PhysicalPermission.CONTROL_STATE_READ,
+    )
+    job = session.get(PhysicalFederationJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Physical job not found")
+    require_physical_job_scope(principal, job, config)
+    controller, admin_kit = build_physical_controller(session, config)
+    try:
+        return controller.client_registry(job_id, admin_kit=admin_kit)
+    except PhysicalControllerError as exc:
+        raise physical_controller_error(exc) from exc
+
+
+@app.post("/api/physical/jobs/{job_id}:archive-results")
+def archive_physical_job_results(
+    job_id: str,
+    payload: PhysicalResultArchiveRequest,
+    request: Request,
+    session: SessionDep,
+    config: SettingsDep,
+) -> dict[str, Any]:
+    principal = require_physical_principal(
+        request,
+        config,
+        PhysicalPermission.MODEL_VERIFY,
+    )
+    job = session.get(PhysicalFederationJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Physical job not found")
+    require_physical_job_scope(principal, job, config)
+    approval_count = require_current_physical_contract(session, job, config)
+    controller, admin_kit = build_physical_controller(session, config)
+    try:
+        receipt = controller.download_and_archive_results(
+            job_id,
+            admin_kit=admin_kit,
+            artifact_root=config.artifact_root,
+            expected_sha256=payload.expected_model_sha256,
+        )
+    except PhysicalControllerError as exc:
+        raise physical_controller_error(exc) from exc
+    session.expire_all()
+    append_physical_event(
+        session,
+        action="job.results-archived",
+        actor=principal.subject_id,
+        resource_type="physical-job",
+        resource_id=job_id,
+        outcome="accepted",
+        payload={
+            "global_model_sha256": receipt["global_model_sha256"],
+            "metrics_receipt_sha256": receipt["metrics"]["receipt_sha256"],
+            "site_count": receipt["metrics"]["site_count"],
+            "approval_count": approval_count,
+        },
+        hmac_key=config.rarelink_audit_hmac_key,
+    )
+    session.commit()
+    return receipt
+
+
+@app.get("/api/physical/jobs/{job_id}/review-readiness")
+def physical_job_review_readiness(
+    job_id: str,
+    request: Request,
+    session: SessionDep,
+    config: SettingsDep,
+) -> dict[str, Any]:
+    principal = require_physical_principal(
+        request,
+        config,
+        PhysicalPermission.CONTROL_STATE_READ,
+    )
+    job = session.get(PhysicalFederationJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Physical job not found")
+    require_physical_job_scope(principal, job, config)
+    controller, _admin_kit = build_physical_controller(session, config)
+    try:
+        return controller.review_readiness(job_id)
+    except PhysicalControllerError as exc:
+        raise physical_controller_error(exc) from exc
 
 
 @app.post("/api/physical/jobs/{job_id}:sign-model-release")
@@ -1959,9 +2038,7 @@ def sign_physical_global_model_release(
     except ModelSigningError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     job.global_model_signature = str(signed["signature"])
-    job.model_signing_key_fingerprint_sha256 = str(
-        signed["key_fingerprint_sha256"]
-    )
+    job.model_signing_key_fingerprint_sha256 = str(signed["key_fingerprint_sha256"])
     job.model_release_manifest_sha256 = str(signed["manifest_sha256"])
     job.model_released_at = released_at
     job.updated_at = released_at
@@ -1993,6 +2070,80 @@ def sign_physical_global_model_release(
     }
 
 
+@app.get("/api/physical/events/stream")
+async def stream_physical_events(
+    job_id: str,
+    request: Request,
+    session: SessionDep,
+    config: SettingsDep,
+    follow: bool = True,
+    limit: int = 100,
+) -> StreamingResponse:
+    """Stream a job's durable audit events with Last-Event-ID resumption."""
+    principal = require_physical_principal(
+        request,
+        config,
+        PhysicalPermission.AUDIT_READ,
+    )
+    job = session.get(PhysicalFederationJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Physical job not found")
+    require_physical_job_scope(principal, job, config)
+    last_event_id = request.headers.get("Last-Event-ID") or None
+    try:
+        initial_events = fetch_safe_job_events(
+            session,
+            job_id,
+            last_event_id=last_event_id,
+            limit=limit,
+        )
+    except JobValidationError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    async def event_stream():  # type: ignore[no-untyped-def]
+        cursor = last_event_id
+        for event in initial_events:
+            yield encode_sse(event)
+            cursor = event.event_id
+        if not follow:
+            if not initial_events:
+                yield ": rarelink-no-new-events\n\n"
+            return
+        idle_polls = 0
+        while not await request.is_disconnected():
+            await asyncio.sleep(1)
+            with Session(engine) as stream_session:
+                try:
+                    events = fetch_safe_job_events(
+                        stream_session,
+                        job_id,
+                        last_event_id=cursor,
+                        limit=limit,
+                    )
+                except JobValidationError:
+                    yield 'event: stream-reset\ndata: {"reason":"cursor-unavailable"}\n\n'
+                    return
+            if events:
+                idle_polls = 0
+                for event in events:
+                    yield encode_sse(event)
+                    cursor = event.event_id
+            else:
+                idle_polls += 1
+                if idle_polls >= 15:
+                    yield ": rarelink-keep-alive\n\n"
+                    idle_polls = 0
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-store",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @app.get("/api/physical/events")
 def list_physical_events(
     request: Request,
@@ -2005,28 +2156,18 @@ def list_physical_events(
         PhysicalPermission.AUDIT_READ,
     )
     events = list(
-        session.exec(
-            select(PhysicalControlEvent).order_by(PhysicalControlEvent.id)
-        ).all()
+        session.exec(select(PhysicalControlEvent).order_by(PhysicalControlEvent.id)).all()
     )
     exported_events = events
     scope_filtered = False
     if config.rarelink_physical_mode == "physical":
         jobs = list(session.exec(select(PhysicalFederationJob)).all())
-        allowed_job_ids = {
-            job.id for job in jobs if principal_can_read_job(principal, job)
-        }
+        allowed_job_ids = {job.id for job in jobs if principal_can_read_job(principal, job)}
         exported_events = [
             event
             for event in events
-            if (
-                event.resource_type == "physical-site"
-                and event.resource_id in principal.site_ids
-            )
-            or (
-                event.resource_type == "physical-job"
-                and event.resource_id in allowed_job_ids
-            )
+            if (event.resource_type == "physical-site" and event.resource_id in principal.site_ids)
+            or (event.resource_type == "physical-job" and event.resource_id in allowed_job_ids)
         ]
         scope_filtered = True
     recent_events = exported_events[-200:]
@@ -2053,9 +2194,7 @@ def physical_audit_summary(
     config: SettingsDep,
 ) -> dict[str, Any]:
     events = list(
-        session.exec(
-            select(PhysicalControlEvent).order_by(PhysicalControlEvent.id)
-        ).all()
+        session.exec(select(PhysicalControlEvent).order_by(PhysicalControlEvent.id)).all()
     )
     head = events[-1] if events else None
     return {
@@ -2149,10 +2288,7 @@ def msd_run_receipt(config: Settings) -> dict[str, Any] | None:
         "aggregate_metrics": summary.get("metrics"),
         "files": [
             {"name": "fedavg-summary.json", "sha256": _sha256_file(summary_path)},
-            *[
-                {"name": path.name, "sha256": _sha256_file(path)}
-                for path in metric_paths
-            ],
+            *[{"name": path.name, "sha256": _sha256_file(path)} for path in metric_paths],
         ],
         "site_receipts": [
             {
@@ -2216,13 +2352,9 @@ def system_evidence(config: SettingsDep) -> dict[str, Any]:
         config.artifact_root / "nvflare-secure-provision" / "mtls-runtime-evidence.json"
     )
     cross_device = _read_json_if_present(
-        config.artifact_root
-        / "nvflare-secure-provision"
-        / "cross-device-mtls-evidence.json"
+        config.artifact_root / "nvflare-secure-provision" / "cross-device-mtls-evidence.json"
     )
-    agent_redteam = _read_json_if_present(
-        config.artifact_root / "agent-redteam" / "summary.json"
-    )
+    agent_redteam = _read_json_if_present(config.artifact_root / "agent-redteam" / "summary.json")
     public_benchmark = _read_json_if_present(
         config.artifact_root / "public-benchmark" / "latest-intake-validation.json"
     ) or _read_json_if_present(
