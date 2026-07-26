@@ -64,7 +64,7 @@ make p0-p1-acceptance
 
 验收器按顺序执行，任一失败即停止并返回非零退出码：
 
-1. 全量 **402 项** Python 单元、API、迁移和隔离集成测试；
+1. 全量 **406 项** Python 单元、API、迁移和隔离集成测试；
 2. Ruff 静态检查；
 3. 正式发布工程静态合同；
 4. React/TypeScript/Vite 生产构建；

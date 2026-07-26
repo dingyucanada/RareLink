@@ -4,27 +4,90 @@
 
 # RareLink 稀联
 
-### 让稀缺病例成为可协作、可复核、可延续的研究证据
+### 数据不出院，模型跨院协作，证据全程可验证
 
-**可信多中心医学科研 Agent 平台 · 联邦学习与证据驾驶舱**
+**面向罕见病与小样本医学研究的可信联邦科研操作系统**
 
 <a href="README.en.md">English</a> · <strong>中文</strong>
 
-<strong>📘 <a href="outputs/RareLink-项目报告书.md">阅读完整项目报告书</a></strong> · <strong><a href="docs/p0-p1-engineering-log.md">P0/P1 逐项状态与限制</a></strong> · <strong><a href="docs/research-evidence-package.md">签名研究证据包</a></strong> · <strong><a href="docs/release-engineering.md">正式发布工程</a></strong> · <a href="#部署模型与快速开始">快速开始</a> · <a href="docs/physical-deployment.md">三物理 Spark 部署</a> · <a href="docs/physical-field-acceptance.md">现场验收</a> · <a href="docs/fault-injection-matrix.md">故障矩阵</a> · <a href="docs/physical-dpsgd-contract.md">物理 DP-SGD</a> · <a href="docs/secure-aggregation-evaluation.md">安全聚合评估</a> · <a href="docs/oidc-jwks-lifecycle.md">OIDC/JWKS</a>
+<strong>📘 <a href="outputs/RareLink-项目报告书.md">项目报告书</a></strong> ·
+<strong><a href="docs/research-operations-plane.md">研究运营平面</a></strong> ·
+<strong><a href="docs/research-evidence-package.md">签名证据包</a></strong> ·
+<a href="#五分钟开始体验">快速开始</a> ·
+<a href="docs/physical-deployment.md">三物理 Spark 部署</a> ·
+<a href="docs/p0-p1-engineering-log.md">逐项状态与限制</a>
 
 <a href="https://www.nvidia.com/en-us/products/workstations/dgx-spark/"><img src="https://img.shields.io/badge/NVIDIA-DGX%20Spark-76B900?style=flat-square&logo=nvidia&logoColor=white" alt="NVIDIA DGX Spark" /></a>
-<a href="https://nvidia.github.io/NVFlare/"><img src="https://img.shields.io/badge/NVIDIA%20FLARE-2.7.2-2563EB?style=flat-square" alt="NVIDIA FLARE" /></a>
+<a href="https://nvidia.github.io/NVFlare/"><img src="https://img.shields.io/badge/NVIDIA-FLARE-76B900?style=flat-square&logo=nvidia&logoColor=white" alt="NVIDIA FLARE" /></a>
 <a href="https://project-monai.github.io/"><img src="https://img.shields.io/badge/MONAI-1.6.0-7C3AED?style=flat-square" alt="MONAI" /></a>
 <img src="https://img.shields.io/badge/Step-3.7-FF6B35?style=flat-square" alt="Step 3.7" />
+<a href="https://github.com/dingyucanada/RareLink/actions"><img src="https://img.shields.io/github/actions/workflow/status/dingyucanada/RareLink/ci.yml?branch=main&style=flat-square&label=CI" alt="RareLink CI" /></a>
+<img src="https://img.shields.io/badge/tests-406%20passed-0F766E?style=flat-square" alt="406 tests passed" />
 <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-0F766E?style=flat-square" alt="Apache-2.0" /></a>
 
 </div>
 
-> **研究用途工程原型。** RareLink 不提供诊断或治疗建议。当前实机验证在一台真实 DGX Spark 上以三个**逻辑站点**完成；另有 Spark–Mac mTLS 演练。仓库同时提供三台独立 Spark 的拓扑、签名启动包、站点本地数据验证、作业导出与管理员提交工程路径；在完成真实多院网络、治理与多轮试点前，不将其表述为生产或临床验证。
+> **研究用途工程软件，不提供诊断或治疗建议。** 当前硬件证据来自一台真实
+> DGX Spark 上的三个逻辑站点，以及 Spark–Mac mTLS 演练。仓库已经实现三台独立
+> Spark 的物理控制协议、站点数据层、身份/审批、安全和发布工程，但没有三台正式
+> 医院设备与授权队列时，绝不把 L1/L2 软件证据描述为 L3/L4 多院或临床验证。
 
 ---
 
-## 产品演示视频
+## 一页了解 RareLink
+
+RareLink 不是“把三个训练脚本放在一台机器上”，也不是让大模型接触患者资料。
+它把**研究治理、医院本地计算、联邦训练、Agent 协作和签名证据发布**组织成一个
+可运营的软件系统。
+
+| 产品层 | 解决的问题 | 已实现能力 |
+| --- | --- | --- |
+| **Research Operations Plane** | 多项研究、多个站点和模型版本如何长期管理 | 研究切换、站点准入/暂停/退出、模型注册、证据验证/发布/撤销 |
+| **Physical Federation Control Plane** | 网页如何真正控制三台物理 Spark | 独立 Site Agent、真实外部 Job ID、SSE、abort/retry/resume、严格 `3/3` |
+| **Hospital-local Data Plane** | 数据如何留在医院并证明可训练 | NIfTI/BIDS、DICOM Header 门、四模态/几何/标签质控、MONAI 缓存、脱敏数据指纹 |
+| **Federated Security Plane** | 联邦并不天然安全 | mTLS、更新裁剪/异常检测、DP-SGD、隐私预算、迟到/重复更新拒绝、模型签名 |
+| **Agent Governance Plane** | LLM 如何参与而不越权 | 五角色 Agent、Step 3.7/可选本地 TensorRT-LLM、输入输出双门、人工审批、红队 |
+| **Evidence & Release Plane** | 结果如何复核、撤销和交付 | Evidence Package v2、离线验签、审计链、SBOM、Cosign、ARM64 离线包 |
+
+### 当前可证明什么
+
+| 证据 | 结果 | 等级与边界 |
+| --- | --- | --- |
+| 软件质量门 | **406 项 Python 测试**；Ruff、Web 生产构建、发布合同、迁移往返全部通过 | L1/L2，不代替医院现场验收 |
+| 三独立进程控制协议 | 三个 Site Agent、独立状态库、签名心跳、严格 `3/3` 合同 | L2，不冒充三台物理设备 |
+| DGX Spark 公开影像工程验证 | MSD Task01 24 例、四模态质控、CUDA 训练、`3/3` FedAvg、全局模型落盘 | 单 Spark 三逻辑站点；非临床性能 |
+| 安全与稳定性 | `25/25` 多种子策略组合、`26/26` Agent 门控、DP 会计、mTLS 正负对照 | 工程验证，不是安全认证 |
+| 远端 CI | [5 个 GitHub Actions 作业全部通过](https://github.com/dingyucanada/RareLink/actions/runs/30187556875) | 含 Python 3.11/3.12、Web 和双架构通用镜像 |
+
+### 五分钟开始体验
+
+无需医学影像、模型权重、证书或 API Key：
+
+```bash
+git clone https://github.com/dingyucanada/RareLink.git
+cd RareLink
+bash scripts/review_demo.sh
+```
+
+脚本会启动 FastAPI 与 React，并核验可公开的脱敏工程收据。若本机缺少真实运行产物，
+页面会明确显示演示快照或 `NOT CLAIMED`，不会补造实测结果。
+
+---
+
+## 产品界面与演示
+
+### 真实产品运行界面
+
+下图来自 RareLink 实际前端，包含研究状态、DGX Spark 运行收据、联邦站点、
+影像质控、Agent 门、策略对比和审计时间线，不是 PPT 页面。
+
+<details>
+  <summary><strong>展开 RareLink 完整产品驾驶舱截图</strong></summary>
+  <br />
+  <img src="assets/screenshots/rarelink-live-dashboard.png" alt="RareLink 完整产品驾驶舱" width="100%" />
+</details>
+
+### 演示视频
 
 下方为 RareLink 最终演示成片：以真实产品界面的证据哈希核验、站点收据、研究工作流、Agent 安全护栏和一键复现为主，PPT 仅用于解释架构与路线图。视频中的公开 MSD 工程验证为单 Spark 三逻辑站点原型，不构成临床结论或真实跨医院部署证明。
 
@@ -38,12 +101,14 @@
 
 ---
 
-## 目录
+## 导航
 
-- [产品演示视频](#产品演示视频)
+- [一页了解 RareLink](#一页了解-rarelink)
+- [产品界面与演示](#产品界面与演示)
 - [为什么需要 RareLink](#为什么需要-rarelink)
 - [项目报告书（完整提交版）](outputs/RareLink-项目报告书.md)
 - [从研究问题到证据包](#从研究问题到证据包)
+- [研究运营平面](#研究运营平面)
 - [产品界面与核心能力](#产品界面与核心能力)
 - [系统架构与数据边界](#系统架构与数据边界)
 - [多 Agent 协作与模型策略](#多-agent-协作与模型策略)
@@ -112,6 +177,54 @@ RareLink 的核心不是单独的“训练按钮”，而是一条可恢复、�
 
 ---
 
+## 研究运营平面
+
+训练跑通并不等于项目可运营。RareLink 新增的 Research Operations Plane 将
+研究、站点、模型和证据变成可查询、可审批、可撤销的正式对象。
+
+```mermaid
+flowchart LR
+    S["Study Registry\n组织 · 研究 · 修订"] --> M["Site Membership\n邀请 · 准入 · 暂停 · 退出"]
+    M --> J["Physical FLARE Job\n外部 Job ID · Round · 3/3"]
+    J --> V["Model Registry\n版本 · 摘要 · 指标 · 签名"]
+    J --> E["Evidence Registry\nDP · 安全 · 双人审批 · 签名"]
+    E -->|"摘要、研究、等级一致"| V
+    E -->|"撤销级联"| X["Model REVOKED"]
+    V -->|"独立批准与发布"| R["Research Release"]
+```
+
+### 站点不是一条配置，而是有治理状态的研究成员
+
+```text
+INVITED → ACTIVE ↔ PAUSED → WITHDRAWN
+```
+
+只有数据使用批准、证书身份绑定和脱敏数据集指纹同时存在，站点才可激活。退出为
+终态，不能通过修改配置悄悄恢复旧授权。
+
+### 模型不能从训练完成直接跳到发布
+
+```text
+CANDIDATE → STATISTICAL_REVIEW → SECURITY_REVIEW
+          → APPROVED → RELEASED → REVOKED
+```
+
+模型注册表记录语义版本、来源 FLARE Job、工件 SHA-256、验证等级、指标、签名指纹
+和证据绑定，但不保存模型二进制。创建者、批准者和发布者必须分离。
+
+### 证据决定模型是否仍然可信
+
+```text
+REGISTERED → VERIFIED → RELEASED → REVOKED
+```
+
+正式证据只接受 L3 物理联邦或 L4 医院生产等级，并要求精确 quorum、隐私门、
+安全门、不同主体双人审批、敏感内容扫描、包签名和模型签名全部通过。证据撤销会
+自动撤销所有关联模型。完整 API、迁移和验收见
+[研究运营平面说明](docs/research-operations-plane.md)。
+
+---
+
 ## 产品界面与核心能力
 
 RareLink 前端明确区分“可交互的研究工作流沙盘”和“已落盘的实机证据”。前者便于团队理解协议、合同、Agent 和审批；后者用于核验训练、聚合与安全结论，避免把静态演示误当作真实运行。
@@ -166,7 +279,8 @@ RareLink 在通用层优先采用成熟框架；项目特有代码聚焦研究�
 flowchart TB
     U["研究者 / 科室科研团队"] --> W["React 证据驾驶舱"]
     W --> A["FastAPI 控制面"]
-    A --> L["SQLModel / PostgreSQL 控制账本\nSQLite 仅开发与隔离联调"]
+    A --> L["PostgreSQL / Alembic\n研究、成员、作业、模型、证据、审计"]
+    A --> Q["Research Operations Plane\n多研究 · 模型注册 · 证据生命周期"]
     A --> P["协议、合同与策略状态机"]
     A --> G["输入 / 输出安全网关"]
     A --> R["FederationRunner"]
@@ -180,6 +294,8 @@ flowchart TB
     T --> O["五角色 Agent Team"]
     N --> O
     O --> A
+    R --> E["Evidence Package v2\n离线验签 · 模型签名 · 撤销级联"]
+    E --> Q
 ```
 
 ### 不可跨越的三道边界
@@ -331,7 +447,7 @@ OIDC 离线验证、五角色十一权限、站点级读取过滤和待完成 IA
 make p0-p1-acceptance
 ```
 
-当前基线为 **402 项 Python 测试 + Ruff + 发布工程合同 + 前端生产构建 +
+当前基线为 **406 项 Python 测试 + Ruff + 发布工程合同 + 前端生产构建 +
 三独立进程控制协议 + 七场景故障矩阵 + PostgreSQL 生产配置 + Alembic 迁移往返**。
 该结果只证明
 L1/L2；没有三台设备、

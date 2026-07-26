@@ -1,5 +1,28 @@
 # Development progress
 
+## Research operations plane (2026-07-27)
+
+- [x] Multi-study registry records organization, creator, participating sites,
+  revision, and supports explicit study switching in the web console.
+- [x] Study-site membership has invited, active, paused, and withdrawn states;
+  activation fails closed without data-use approval, certificate binding, and a
+  de-identified dataset fingerprint.
+- [x] Model registry tracks semantic version, source NVIDIA FLARE Job, artifact
+  digest, validation tier, metrics, signatures, evidence binding, and independent
+  review/release actors without exporting model binaries.
+- [x] Research evidence registry enforces exact quorum, privacy/security gates,
+  distinct approval subjects, L3/L4-only formal release, and package/model signatures.
+- [x] Revoking an evidence package automatically revokes every model version bound
+  to that evidence.
+- [x] Organization-scoped operations summary and the React Research Operations
+  Plane expose governance state without patient fields, secrets, signatures, or
+  local paths.
+- [x] Alembic revision `0006` and SQLite compatibility migration cover the new
+  production data model.
+
+See [`research-operations-plane.md`](research-operations-plane.md) for the
+lifecycles, API, acceptance rules, and remaining physical/hospital boundaries.
+
 ## Physical P0/P1 production-software baseline (2026-07-26)
 
 - [x] Site Agent preflight now covers GPU model/driver/CUDA/memory/temperature,
@@ -23,7 +46,7 @@
   `FedAvgHERecipe` + TenSEAL; enablement remains fail-closed until ARM64 runtime,
   hospital key governance, client-side pre-encryption checks, and a three-device
   encrypted-round benchmark exist.
-- [x] Current acceptance baseline: 402 Python tests, Ruff, release-engineering
+- [x] Current acceptance baseline: 406 Python tests, Ruff, release-engineering
   contract, production web build,
   three independent control-plane processes, a seven-scenario fault matrix,
   PostgreSQL compose validation, and an Alembic migration round trip.

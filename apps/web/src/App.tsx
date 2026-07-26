@@ -31,6 +31,7 @@ const ImagingPreview = lazy(() => import("./components/ImagingPreview"));
 const SystemEvidence = lazy(() => import("./components/SystemEvidence"));
 const VerifiedRunConsole = lazy(() => import("./components/VerifiedRunConsole"));
 const PhysicalFederationPanel = lazy(() => import("./components/PhysicalFederationPanel"));
+const ResearchOperationsPanel = lazy(() => import("./components/ResearchOperationsPanel"));
 
 function EmptyState({ create }: { create: () => void }) {
   return (
@@ -286,9 +287,13 @@ function ActionPanel({ study, experiments, artifacts }: { study: Study; experime
 function App() {
   const client = useQueryClient();
   const settledJobsRef = useRef("");
+  const [selectedStudyId, setSelectedStudyId] = useState("");
   const studies = useQuery({ queryKey: ["studies"], queryFn: api.listStudies });
   const capabilities = useQuery({ queryKey: ["capabilities"], queryFn: api.capabilities });
-  const study = studies.data?.[0];
+  const study = useMemo(
+    () => studies.data?.find((item) => item.id === selectedStudyId) ?? studies.data?.[0],
+    [selectedStudyId, studies.data],
+  );
   const experiments = useQuery({
     queryKey: ["experiments", study?.id],
     queryFn: () => api.experiments(study!.id),
@@ -316,8 +321,9 @@ function App() {
   });
   const create = useMutation({
     mutationFn: api.createStudy,
-    onSuccess: async () => {
+    onSuccess: async (created) => {
       settledJobsRef.current = "";
+      setSelectedStudyId(created.id);
       await client.invalidateQueries({ queryKey: ["studies"] });
     },
   });
@@ -325,6 +331,9 @@ function App() {
     () => study?.feasibility?.policy_decisions.reduce((sum, item) => sum + item.blocked_fields.length, 0) ?? 0,
     [study],
   );
+  useEffect(() => {
+    if (!selectedStudyId && studies.data?.[0]) setSelectedStudyId(studies.data[0].id);
+  }, [selectedStudyId, studies.data]);
   useEffect(() => {
     const jobs = trainingJobs.data ?? [];
     if (!study || !jobs.length || jobs.some((job) => job.status === "QUEUED" || job.status === "RUNNING")) return;
@@ -365,9 +374,25 @@ function App() {
           </div>
           <div className="hero-status">
             <div className="status-badge"><i /> {study.status.replaceAll("_", " ")}</div>
+            <label className="study-switcher">
+              <small>研究组合</small>
+              <select
+                value={study.id}
+                onChange={(event) => setSelectedStudyId(event.target.value)}
+                aria-label="选择研究"
+              >
+                {(studies.data ?? []).map((item) => (
+                  <option value={item.id} key={item.id}>{item.title}</option>
+                ))}
+              </select>
+            </label>
             {study.status === "REPORT_READY" && <small>这是已核验的完成态证据；点击右上角“从头演示”可新建一条可操作流程。</small>}
           </div>
         </section>
+
+        <Suspense fallback={<div className="panel placeholder">正在读取研究运营平面…</div>}>
+          <ResearchOperationsPanel study={study} />
+        </Suspense>
 
         <Suspense fallback={<div className="run-console loading-console">正在读取 DGX Spark 实机收据…</div>}>
           <VerifiedRunConsole />

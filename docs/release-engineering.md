@@ -1,6 +1,6 @@
 # RareLink 正式发布工程
 
-**适用版本：** Research Evidence Package v2 之后的产品发布
+**适用版本：** Research Evidence Package v2 与 Research Operations Plane 之后的产品发布
 
 **目标：** 让一个 Git tag 能够产生经过测试、扫描、签名、可追溯、支持 ARM64
 且可离线交付的 RareLink 发布物。
@@ -9,7 +9,7 @@
 
 | 能力 | 实现 | 自动门 |
 | --- | --- | --- |
-| GitHub Actions CI | Python 3.11/3.12、Ruff、402 项全仓测试、Web 测试/构建、生产镜像构建 | PR 与 main/codex 分支 push |
+| GitHub Actions CI | Python 3.11/3.12、Ruff、全仓测试、Web 测试/构建、生产镜像构建 | PR 与 main/codex 分支 push |
 | 依赖漏洞扫描 | `pip-audit`、`npm audit --audit-level=high` | 高风险依赖导致 CI 失败 |
 | 自动 Release | 语义版本 tag `v*.*.*` 触发 | tag 必须存在且格式正确 |
 | 多架构容器 | Coordinator 与 Web 构建 `linux/amd64,linux/arm64` | 任一平台构建失败则不发布 |
@@ -104,11 +104,13 @@ python scripts/build_offline_release_bundle.py \
 - 离线包确定性生成、缺件与符号链接阻断测试；
 - PostgreSQL 备份恢复执行器的隔离工具测试；
 - Prometheus 鉴权、低基数标签和敏感 ID 不泄露测试；
-- 全仓软件回归。
+- 全仓软件回归；
+- 2026-07-26 的 [GitHub Actions CI run 30187556875](https://github.com/dingyucanada/RareLink/actions/runs/30187556875)
+  已通过全部 5 个作业，包括 Python 3.11/3.12、Web、依赖/发布合同和
+  `linux/amd64` / `linux/arm64` 通用生产镜像构建。
 
 仍需外部运行：
 
-- GitHub Actions 首次远端运行成功；
 - 创建真实 release tag 后的 GHCR push、Cosign 签名、SBOM 和 Trivy 收据；
 - 原生 DGX Spark self-hosted Runner 构建；
 - 目标医院 PostgreSQL 的真实备份恢复演练；

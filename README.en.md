@@ -4,28 +4,89 @@
 
 # RareLink
 
-### Turn scarce cases into collaborative, verifiable, durable research evidence
+### Keep data inside hospitals. Collaborate across sites. Verify every claim.
 
-**A trusted multi-centre medical-research Agent platform · federated learning and evidence cockpit**
+**A trusted federated research operating system for rare disease and small-cohort imaging**
 
 <a href="README.md">中文</a> · <strong>English</strong>
 
-<strong>📘 <a href="outputs/RareLink-项目报告书.md">Project report (Chinese)</a></strong> · <strong><a href="docs/p0-p1-engineering-log.md">P0/P1 status and limitations</a></strong> · <strong><a href="docs/research-evidence-package.md">Signed research evidence package</a></strong> · <strong><a href="docs/release-engineering.md">Release engineering</a></strong> · <a href="#deployment-and-quick-start">Quick start</a> · <a href="docs/physical-deployment.md">Physical Spark deployment</a> · <a href="docs/physical-field-acceptance.md">Field acceptance</a> · <a href="docs/fault-injection-matrix.md">Fault matrix</a> · <a href="docs/physical-dpsgd-contract.md">Physical DP-SGD</a> · <a href="docs/secure-aggregation-evaluation.md">Secure aggregation assessment</a> · <a href="docs/oidc-jwks-lifecycle.md">OIDC/JWKS</a>
+<strong>📘 <a href="outputs/RareLink-项目报告书.md">Project report</a></strong> ·
+<strong><a href="docs/research-operations-plane.md">Research operations plane</a></strong> ·
+<strong><a href="docs/research-evidence-package.md">Signed evidence package</a></strong> ·
+<a href="#five-minute-start">Quick start</a> ·
+<a href="docs/physical-deployment.md">Three-Spark deployment</a> ·
+<a href="docs/p0-p1-engineering-log.md">Itemized status and limits</a>
 
 <a href="https://www.nvidia.com/en-us/products/workstations/dgx-spark/"><img src="https://img.shields.io/badge/NVIDIA-DGX%20Spark-76B900?style=flat-square&logo=nvidia&logoColor=white" alt="NVIDIA DGX Spark" /></a>
-<a href="https://nvidia.github.io/NVFlare/"><img src="https://img.shields.io/badge/NVIDIA%20FLARE-2.7.2-2563EB?style=flat-square" alt="NVIDIA FLARE" /></a>
+<a href="https://nvidia.github.io/NVFlare/"><img src="https://img.shields.io/badge/NVIDIA-FLARE-76B900?style=flat-square&logo=nvidia&logoColor=white" alt="NVIDIA FLARE" /></a>
 <a href="https://project-monai.github.io/"><img src="https://img.shields.io/badge/MONAI-1.6.0-7C3AED?style=flat-square" alt="MONAI" /></a>
 <img src="https://img.shields.io/badge/Step-3.7-FF6B35?style=flat-square" alt="Step 3.7" />
+<a href="https://github.com/dingyucanada/RareLink/actions"><img src="https://img.shields.io/github/actions/workflow/status/dingyucanada/RareLink/ci.yml?branch=main&style=flat-square&label=CI" alt="RareLink CI" /></a>
+<img src="https://img.shields.io/badge/tests-406%20passed-0F766E?style=flat-square" alt="406 tests passed" />
 <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-0F766E?style=flat-square" alt="Apache-2.0" /></a>
 
 </div>
 
-> **Research-use engineering prototype.** RareLink does not provide diagnostic or treatment advice. Current hardware validation uses three **logical sites** on one real DGX Spark, plus a Spark–Mac mTLS exercise. Neither is a production multi-hospital deployment or clinical validation.
+> **Research-use engineering software; not diagnostic or treatment software.**
+> Current hardware evidence uses three logical sites on one real DGX Spark, plus
+> a Spark–Mac mTLS exercise. The repository implements the protocol for three
+> independent Sparks, but L1/L2 software evidence is never presented as L3/L4
+> physical-hospital or clinical validation.
+
+---
+
+## RareLink at a glance
+
+RareLink is neither three scripts hosted on one machine nor an LLM with access to
+patient records. It brings **research governance, hospital-local compute, federated
+training, governed Agents, and signed evidence release** into one operating system.
+
+| Product plane | Problem solved | Implemented capability |
+| --- | --- | --- |
+| **Research Operations** | Operate multiple studies, sites, and model versions over time | Study switching, site admission/pause/withdrawal, model registry, evidence verification/release/revocation |
+| **Physical Federation Control** | Make the web console control real Sparks | Independent Site Agents, external Job ID, SSE, abort/retry/resume, strict `3/3` |
+| **Hospital-local Data** | Keep data local while proving readiness | NIfTI/BIDS, DICOM-header gate, four-modal/geometry/label QC, MONAI cache, de-identified data digest |
+| **Federated Security** | Federation is not automatically secure | mTLS, update clipping/anomaly checks, DP-SGD, privacy budgets, late/replay rejection, model signatures |
+| **Agent Governance** | Let models assist without overreach | Five roles, Step 3.7/optional local TensorRT-LLM, bidirectional policy gates, human approval, red-team tests |
+| **Evidence & Release** | Make results independently reviewable and revocable | Evidence Package v2, offline verifier, audit chain, SBOM, Cosign, ARM64 offline bundle |
+
+### What the repository can prove today
+
+| Evidence | Result | Level and boundary |
+| --- | --- | --- |
+| Software quality gates | **406 Python tests**; Ruff, production web build, release contract, and migration round trip pass | L1/L2, not hospital acceptance |
+| Independent-process protocol | Three Site Agents, separate stores, signed heartbeats, exact `3/3` contract | L2, not three physical devices |
+| Public-imaging run on DGX Spark | 24 MSD Task01 cases, four-modal QC, CUDA training, `3/3` FedAvg, persisted global model | One Spark, three logical sites; not clinical performance |
+| Safety and stability | `25/25` seeded strategy runs, `26/26` Agent gates, DP accounting, mTLS positive/negative controls | Engineering evidence, not certification |
+| Remote CI | [All five GitHub Actions jobs passed](https://github.com/dingyucanada/RareLink/actions/runs/30187556875) | Python 3.11/3.12, web, and both general-purpose image architectures |
+
+### Five-minute start
+
+No medical images, model weights, certificates, or API keys are required:
+
+```bash
+git clone https://github.com/dingyucanada/RareLink.git
+cd RareLink
+bash scripts/review_demo.sh
+```
+
+The script starts FastAPI and React and verifies public, de-identified engineering
+receipts. Missing hardware evidence is shown as a labelled snapshot or `NOT CLAIMED`;
+it is never fabricated.
+
+### Live product interface
+
+<details>
+  <summary><strong>Expand the full RareLink research and evidence cockpit</strong></summary>
+  <br />
+  <img src="assets/screenshots/rarelink-live-dashboard.png" alt="Full RareLink product cockpit" width="100%" />
+</details>
 
 ---
 
 ## Contents
 
+- [RareLink at a glance](#rarelink-at-a-glance)
 - [Why RareLink](#why-rarelink)
 - [Project report (Chinese)](outputs/RareLink-项目报告书.md)
 - [P0/P1 implementation and automated acceptance](docs/p0-p1-implementation-and-acceptance.md)
@@ -37,6 +98,7 @@
 - [Prometheus and OpenTelemetry](docs/observability.md)
 - [Automated fault-injection matrix](docs/fault-injection-matrix.md)
 - [From a research question to an evidence package](#from-a-research-question-to-an-evidence-package)
+- [Research operations plane](#research-operations-plane)
 - [Product experience and capabilities](#product-experience-and-capabilities)
 - [System architecture and data boundaries](#system-architecture-and-data-boundaries)
 - [Multi-Agent collaboration and model strategy](#multi-agent-collaboration-and-model-strategy)
@@ -96,6 +158,51 @@ research question
 
 ---
 
+## Research operations plane
+
+A successful training run is not an operable product. The Research Operations
+Plane turns studies, sites, models, and evidence into queryable, governed, and
+revocable objects.
+
+```mermaid
+flowchart LR
+    S["Study Registry\norganisation · study · revision"] --> M["Site Membership\ninvite · admit · pause · withdraw"]
+    M --> J["Physical FLARE Job\nexternal Job ID · round · 3/3"]
+    J --> V["Model Registry\nversion · digest · metrics · signature"]
+    J --> E["Evidence Registry\nDP · security · dual approval · signature"]
+    E -->|"same study, digest, and tier"| V
+    E -->|"revocation cascade"| X["Model REVOKED"]
+    V -->|"independent approval and release"| R["Research Release"]
+```
+
+### Governed site membership
+
+```text
+INVITED → ACTIVE ↔ PAUSED → WITHDRAWN
+```
+
+A site cannot become active without data-use approval, certificate binding, and
+a de-identified dataset fingerprint. Withdrawal is terminal; old authority cannot
+be silently restored through configuration.
+
+### Evidence-bound model lifecycle
+
+```text
+CANDIDATE → STATISTICAL_REVIEW → SECURITY_REVIEW
+          → APPROVED → RELEASED → REVOKED
+```
+
+The registry stores semantic version, source FLARE Job, artifact SHA-256,
+validation tier, aggregate metrics, key fingerprint, and evidence binding—not the
+model binary. Creator, approval reviewer, and release approver are separate actors.
+
+Formal evidence accepts only L3 physical or L4 hospital validation with exact
+quorum, privacy and security gates, distinct approvals, sensitive-content scanning,
+and package/model signatures. Revoking evidence automatically revokes every bound
+model. See the [Research Operations Plane specification](docs/research-operations-plane.md).
+
+---
+
 ## Product experience and capabilities
 
 The frontend explicitly separates an interactive research-workflow sandbox from persisted hardware evidence. The former helps teams understand protocol, contract, Agent, and approval states; the latter verifies training, aggregation, and security claims.
@@ -150,7 +257,8 @@ RareLink relies on mature frameworks for commodity functions. Project-specific c
 flowchart TB
     U["Researchers / department teams"] --> W["React evidence cockpit"]
     W --> A["FastAPI control plane"]
-    A --> L["SQLModel / SQLite audit ledger"]
+    A --> L["PostgreSQL / Alembic\nstudies · sites · jobs · models · evidence · audit"]
+    A --> Q["Research Operations Plane\nmulti-study · model registry · evidence lifecycle"]
     A --> P["Protocol, contract, and policy state machine"]
     A --> G["Input / output policy gates"]
     A --> R["FederationRunner"]
@@ -164,6 +272,8 @@ flowchart TB
     T --> O["Five-role Agent Team"]
     N --> O
     O --> A
+    R --> E["Evidence Package v2\noffline verification · model signing · revocation"]
+    E --> Q
 ```
 
 | Boundary | System rule | Purpose |
@@ -317,7 +427,7 @@ Run the complete software and isolated-integration gate:
 make p0-p1-acceptance
 ```
 
-The current baseline is **402 Python tests plus Ruff, the release-engineering
+The current baseline is **406 Python tests plus Ruff, the release-engineering
 contract, a production web build, three independent control-plane processes, a seven-scenario fault matrix,
 PostgreSQL production-compose validation, and an Alembic migration round trip**.
 This is L1/L2 evidence, not

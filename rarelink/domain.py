@@ -39,6 +39,36 @@ class TrainingJobStatus(StrEnum):
     FAILED = "FAILED"
 
 
+class StudySiteStatus(StrEnum):
+    INVITED = "INVITED"
+    ACTIVE = "ACTIVE"
+    PAUSED = "PAUSED"
+    WITHDRAWN = "WITHDRAWN"
+
+
+class ModelVersionStatus(StrEnum):
+    CANDIDATE = "CANDIDATE"
+    STATISTICAL_REVIEW = "STATISTICAL_REVIEW"
+    SECURITY_REVIEW = "SECURITY_REVIEW"
+    APPROVED = "APPROVED"
+    RELEASED = "RELEASED"
+    REVOKED = "REVOKED"
+
+
+class EvidencePackageStatus(StrEnum):
+    REGISTERED = "REGISTERED"
+    VERIFIED = "VERIFIED"
+    RELEASED = "RELEASED"
+    REVOKED = "REVOKED"
+
+
+class ValidationTier(StrEnum):
+    L1_CODE = "L1_CODE"
+    L2_ISOLATED = "L2_ISOLATED"
+    L3_PHYSICAL = "L3_PHYSICAL"
+    L4_HOSPITAL = "L4_HOSPITAL"
+
+
 class PhysicalSiteStatus(StrEnum):
     UNKNOWN = "UNKNOWN"
     READY = "READY"
@@ -171,9 +201,96 @@ class PhysicalPrivacySpendCreate(BaseModel):
 
 
 class StudyCreate(BaseModel):
+    model_config = {"extra": "forbid"}
+
     title: str = Field(min_length=3, max_length=160)
     research_question: str = Field(min_length=10, max_length=2000)
     disease_area: str = Field(default="pediatric high-grade glioma", max_length=160)
+    organization_id: str = Field(
+        default="rarelink-demo",
+        pattern=r"^[a-z][a-z0-9-]{2,62}$",
+    )
+    created_by: str = Field(default="researcher", min_length=2, max_length=255)
+    participating_sites: list[str] = Field(default_factory=list, max_length=100)
+
+
+class StudySiteCreate(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    site_id: str = Field(pattern=r"^[a-z][a-z0-9-]{2,62}$")
+    display_name: str = Field(min_length=2, max_length=160)
+    organization: str = Field(pattern=r"^[a-z][a-z0-9_-]{2,62}$")
+    data_use_approved: bool = False
+    certificate_bound: bool = False
+    dataset_fingerprint: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{64}$",
+    )
+    actor: str = Field(default="researcher", min_length=2, max_length=255)
+
+
+class StudySiteTransition(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    target: StudySiteStatus
+    actor: str = Field(default="researcher", min_length=2, max_length=255)
+    reason: str = Field(min_length=4, max_length=1000)
+
+
+class ModelVersionCreate(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    name: str = Field(pattern=r"^[a-z][a-z0-9-]{2,62}$")
+    semantic_version: str = Field(
+        pattern=r"^v?[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z0-9.-]+)?$",
+    )
+    model_family: str = Field(min_length=2, max_length=160)
+    artifact_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_job_id: str | None = Field(default=None, max_length=128)
+    validation_tier: ValidationTier = ValidationTier.L1_CODE
+    metrics: dict[str, Any] = Field(default_factory=dict)
+    signature: str | None = Field(default=None, min_length=32, max_length=4096)
+    signing_key_fingerprint_sha256: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{64}$",
+    )
+    actor: str = Field(default="researcher", min_length=2, max_length=255)
+
+
+class ModelVersionTransition(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    target: ModelVersionStatus
+    actor: str = Field(default="researcher", min_length=2, max_length=255)
+    evidence_package_id: str | None = Field(default=None, max_length=128)
+    reason: str = Field(min_length=4, max_length=1000)
+
+
+class EvidencePackageCreate(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    package_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    manifest_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    model_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    signature: str = Field(min_length=32, max_length=4096)
+    signing_key_fingerprint_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    validation_tier: ValidationTier
+    site_count: int = Field(ge=0, le=1000)
+    required_quorum: int = Field(ge=3, le=1000)
+    privacy_gate_passed: bool
+    security_gate_passed: bool
+    dual_approval_distinct: bool
+    contains_sensitive_data: bool = False
+    verifier_version: str = Field(min_length=1, max_length=64)
+    actor: str = Field(default="researcher", min_length=2, max_length=255)
+
+
+class EvidencePackageTransition(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    target: EvidencePackageStatus
+    actor: str = Field(default="researcher", min_length=2, max_length=255)
+    reason: str = Field(min_length=4, max_length=1000)
 
 
 class Protocol(BaseModel):

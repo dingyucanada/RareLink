@@ -5,11 +5,15 @@ from sqlalchemy import UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 from rarelink.domain import (
+    EvidencePackageStatus,
     ExperimentStatus,
+    ModelVersionStatus,
     PhysicalJobStatus,
     PhysicalSiteStatus,
+    StudySiteStatus,
     StudyStatus,
     TrainingJobStatus,
+    ValidationTier,
     utc_now,
 )
 
@@ -23,6 +27,10 @@ class Study(SQLModel, table=True):
     title: str = Field(index=True)
     research_question: str
     disease_area: str
+    organization_id: str = Field(default="rarelink-demo", index=True)
+    created_by: str = Field(default="researcher", index=True)
+    participating_sites_json: str = "[]"
+    revision: int = 1
     status: StudyStatus = Field(default=StudyStatus.DRAFT, index=True)
     protocol_json: str | None = None
     feasibility_json: str | None = None
@@ -31,6 +39,98 @@ class Study(SQLModel, table=True):
     report_markdown: str | None = None
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
+
+
+class StudySiteMembership(SQLModel, table=True):
+    __table_args__ = (UniqueConstraint("study_id", "site_id", name="uq_study_site_membership"),)
+
+    id: str = Field(default_factory=lambda: new_id("study-site"), primary_key=True)
+    study_id: str = Field(index=True, foreign_key="study.id")
+    site_id: str = Field(index=True)
+    display_name: str
+    organization: str = Field(index=True)
+    status: StudySiteStatus = Field(default=StudySiteStatus.INVITED, index=True)
+    data_use_approved: bool = False
+    certificate_bound: bool = False
+    dataset_fingerprint: str | None = Field(default=None, index=True)
+    invited_by: str = Field(index=True)
+    activated_by: str | None = Field(default=None, index=True)
+    reason_sha256: str | None = None
+    created_at: datetime = Field(default_factory=utc_now, index=True)
+    updated_at: datetime = Field(default_factory=utc_now, index=True)
+    activated_at: datetime | None = Field(default=None, index=True)
+    withdrawn_at: datetime | None = Field(default=None, index=True)
+
+
+class EvidencePackageRecord(SQLModel, table=True):
+    id: str = Field(default_factory=lambda: new_id("evidence"), primary_key=True)
+    study_id: str = Field(index=True, foreign_key="study.id")
+    package_sha256: str = Field(index=True, sa_column_kwargs={"unique": True})
+    manifest_sha256: str = Field(index=True, sa_column_kwargs={"unique": True})
+    model_sha256: str = Field(index=True)
+    signature: str
+    signing_key_fingerprint_sha256: str = Field(index=True)
+    validation_tier: ValidationTier = Field(index=True)
+    status: EvidencePackageStatus = Field(
+        default=EvidencePackageStatus.REGISTERED,
+        index=True,
+    )
+    site_count: int
+    required_quorum: int
+    privacy_gate_passed: bool
+    security_gate_passed: bool
+    dual_approval_distinct: bool
+    contains_sensitive_data: bool = False
+    verifier_version: str
+    registered_by: str = Field(index=True)
+    verified_by: str | None = Field(default=None, index=True)
+    released_by: str | None = Field(default=None, index=True)
+    revoked_by: str | None = Field(default=None, index=True)
+    reason_sha256: str | None = None
+    created_at: datetime = Field(default_factory=utc_now, index=True)
+    updated_at: datetime = Field(default_factory=utc_now, index=True)
+    verified_at: datetime | None = Field(default=None, index=True)
+    released_at: datetime | None = Field(default=None, index=True)
+    revoked_at: datetime | None = Field(default=None, index=True)
+
+
+class ModelVersion(SQLModel, table=True):
+    __table_args__ = (
+        UniqueConstraint(
+            "study_id",
+            "name",
+            "semantic_version",
+            name="uq_model_version_study_name_version",
+        ),
+    )
+
+    id: str = Field(default_factory=lambda: new_id("model"), primary_key=True)
+    study_id: str = Field(index=True, foreign_key="study.id")
+    name: str = Field(index=True)
+    semantic_version: str = Field(index=True)
+    model_family: str = Field(index=True)
+    artifact_sha256: str = Field(index=True)
+    source_job_id: str | None = Field(default=None, index=True)
+    evidence_package_id: str | None = Field(
+        default=None,
+        index=True,
+        foreign_key="evidencepackagerecord.id",
+    )
+    validation_tier: ValidationTier = Field(default=ValidationTier.L1_CODE, index=True)
+    status: ModelVersionStatus = Field(default=ModelVersionStatus.CANDIDATE, index=True)
+    metrics_json: str = "{}"
+    signature: str | None = None
+    signing_key_fingerprint_sha256: str | None = Field(default=None, index=True)
+    created_by: str = Field(index=True)
+    approved_by: str | None = Field(default=None, index=True)
+    released_by: str | None = Field(default=None, index=True)
+    revoked_by: str | None = Field(default=None, index=True)
+    reason_sha256: str | None = None
+    created_at: datetime = Field(default_factory=utc_now, index=True)
+    updated_at: datetime = Field(default_factory=utc_now, index=True)
+    approved_at: datetime | None = Field(default=None, index=True)
+    released_at: datetime | None = Field(default=None, index=True)
+    revoked_at: datetime | None = Field(default=None, index=True)
 
 
 class Experiment(SQLModel, table=True):

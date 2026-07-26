@@ -46,6 +46,10 @@ export interface Study {
   title: string;
   research_question: string;
   disease_area: string;
+  organization_id: string;
+  created_by: string;
+  participating_sites: string[];
+  revision: number;
   status: StudyStatus;
   protocol: Protocol | null;
   feasibility: {
@@ -60,6 +64,110 @@ export interface Study {
   report_markdown: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface StudySiteMembership {
+  id: string;
+  study_id: string;
+  site_id: string;
+  display_name: string;
+  organization: string;
+  status: "INVITED" | "ACTIVE" | "PAUSED" | "WITHDRAWN";
+  data_use_approved: boolean;
+  certificate_bound: boolean;
+  dataset_fingerprint: string | null;
+  invited_by: string;
+  activated_by: string | null;
+  created_at: string;
+  updated_at: string;
+  activated_at: string | null;
+  withdrawn_at: string | null;
+  contains_patient_data: false;
+  local_path_exported: false;
+}
+
+export interface RegisteredModelVersion {
+  id: string;
+  study_id: string;
+  name: string;
+  semantic_version: string;
+  model_family: string;
+  artifact_sha256: string;
+  source_job_id: string | null;
+  evidence_package_id: string | null;
+  validation_tier: "L1_CODE" | "L2_ISOLATED" | "L3_PHYSICAL" | "L4_HOSPITAL";
+  status:
+    | "CANDIDATE"
+    | "STATISTICAL_REVIEW"
+    | "SECURITY_REVIEW"
+    | "APPROVED"
+    | "RELEASED"
+    | "REVOKED";
+  metrics: Record<string, unknown>;
+  signature_present: boolean;
+  signing_key_fingerprint_sha256: string | null;
+  created_by: string;
+  approved_by: string | null;
+  released_by: string | null;
+  revoked_by: string | null;
+  created_at: string;
+  updated_at: string;
+  approved_at: string | null;
+  released_at: string | null;
+  revoked_at: string | null;
+  model_binary_exported: false;
+  contains_patient_data: false;
+}
+
+export interface RegisteredEvidencePackage {
+  id: string;
+  study_id: string;
+  package_sha256: string;
+  manifest_sha256: string;
+  model_sha256: string;
+  signing_key_fingerprint_sha256: string;
+  signature_present: boolean;
+  validation_tier: "L1_CODE" | "L2_ISOLATED" | "L3_PHYSICAL" | "L4_HOSPITAL";
+  status: "REGISTERED" | "VERIFIED" | "RELEASED" | "REVOKED";
+  site_count: number;
+  required_quorum: number;
+  gates: {
+    quorum: boolean;
+    privacy: boolean;
+    security: boolean;
+    dual_approval: boolean;
+    no_sensitive_data: boolean;
+  };
+  verifier_version: string;
+  registered_by: string;
+  verified_by: string | null;
+  released_by: string | null;
+  revoked_by: string | null;
+  created_at: string;
+  updated_at: string;
+  verified_at: string | null;
+  released_at: string | null;
+  revoked_at: string | null;
+  contains_patient_data: false;
+  private_key_exported: false;
+  signature_exported: false;
+}
+
+export interface ResearchOperationsSummary {
+  schema_version: "rarelink-research-operations-summary-v1";
+  organization_id: string | null;
+  studies: { total: number; by_status: Record<string, number> };
+  sites: { total: number; by_status: Record<string, number> };
+  models: { total: number; by_status: Record<string, number> };
+  evidence_packages: { total: number; by_status: Record<string, number> };
+  alerts: {
+    sites_paused_or_withdrawn: number;
+    models_waiting_for_review: number;
+    evidence_waiting_for_verification: number;
+  };
+  contains_patient_data: false;
+  contains_secret: false;
+  local_paths_exported: false;
 }
 
 export interface SiteMetric {

@@ -1,4 +1,4 @@
-import type { AgentArtifact, AuditEvent, Capabilities, Experiment, ImagingPreview, MsdRunReceipt, MsdRunVerification, PhysicalAuditSummary, PhysicalFederationJob, PhysicalReviewReadiness, PhysicalSite, Study, SystemEvidence, TrainingJob } from "./types";
+import type { AgentArtifact, AuditEvent, Capabilities, Experiment, ImagingPreview, MsdRunReceipt, MsdRunVerification, PhysicalAuditSummary, PhysicalFederationJob, PhysicalReviewReadiness, PhysicalSite, RegisteredEvidencePackage, RegisteredModelVersion, ResearchOperationsSummary, Study, StudySiteMembership, SystemEvidence, TrainingJob } from "./types";
 
 const DEMO_TOKEN = import.meta.env.VITE_RARELINK_DEMO_TOKEN as string | undefined;
 const JSON_HEADERS = { "Content-Type": "application/json" };
@@ -27,6 +27,18 @@ export const api = {
   msdRun: () => request<MsdRunReceipt>("/api/system/msd-run"),
   verifyMsdRun: () => request<MsdRunVerification>("/api/system/msd-run:verify", { method: "POST" }),
   listStudies: () => request<Study[]>("/api/studies"),
+  operationsSummary: (organizationId: string) =>
+    request<ResearchOperationsSummary>(
+      `/api/operations/summary?organization_id=${encodeURIComponent(organizationId)}`,
+    ),
+  studySites: (studyId: string) =>
+    request<StudySiteMembership[]>(`/api/studies/${studyId}/sites`),
+  modelVersions: (studyId: string) =>
+    request<RegisteredModelVersion[]>(`/api/studies/${studyId}/models`),
+  evidencePackages: (studyId: string) =>
+    request<RegisteredEvidencePackage[]>(
+      `/api/studies/${studyId}/evidence-packages`,
+    ),
   getStudy: (id: string) => request<Study>(`/api/studies/${id}`),
   imagingPreview: (studyId: string, siteId: string) =>
     request<ImagingPreview>(`/api/studies/${studyId}/imaging-preview?site_id=${encodeURIComponent(siteId)}`),
@@ -39,6 +51,9 @@ export const api = {
         research_question:
           "在固定计算预算下，联邦学习能否改善三个非独立同分布站点的肿瘤分割，同时不降低最差站点表现？",
         disease_area: "pediatric high-grade glioma",
+        organization_id: "rarelink-demo",
+        created_by: "Competition PI",
+        participating_sites: ["hospital-a", "hospital-b", "hospital-c"],
       }),
     }),
   generateProtocol: (id: string) =>

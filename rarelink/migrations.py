@@ -10,6 +10,12 @@ from __future__ import annotations
 from sqlalchemy import Engine, inspect
 
 SQLITE_ADDITIVE_COLUMNS: dict[str, dict[str, str]] = {
+    "study": {
+        "organization_id": "VARCHAR NOT NULL DEFAULT 'rarelink-demo'",
+        "created_by": "VARCHAR NOT NULL DEFAULT 'researcher'",
+        "participating_sites_json": "VARCHAR NOT NULL DEFAULT '[]'",
+        "revision": "INTEGER NOT NULL DEFAULT 1",
+    },
     "physicalsite": {
         "dataset_fingerprint": "VARCHAR",
     },

@@ -30,9 +30,14 @@ from rarelink.database import (
 from rarelink.domain import (
     ApprovalRequest,
     CapabilityRead,
+    EvidencePackageCreate,
+    EvidencePackageStatus,
+    EvidencePackageTransition,
     ExperimentContract,
     ExperimentCreate,
     ExperimentStatus,
+    ModelVersionCreate,
+    ModelVersionTransition,
     PhysicalApprovalRevocation,
     PhysicalJobApproval,
     PhysicalJobCreate,
@@ -47,6 +52,8 @@ from rarelink.domain import (
     PhysicalSiteHeartbeat,
     PhysicalSiteStatus,
     StudyCreate,
+    StudySiteCreate,
+    StudySiteTransition,
     StudyStatus,
     utc_now,
 )
@@ -54,7 +61,9 @@ from rarelink.imaging.preview import build_synthetic_imaging_preview
 from rarelink.models import (
     AgentArtifact,
     AuditEvent,
+    EvidencePackageRecord,
     Experiment,
+    ModelVersion,
     PhysicalControlEvent,
     PhysicalFederationJob,
     PhysicalHeartbeatReceipt,
@@ -64,6 +73,7 @@ from rarelink.models import (
     PhysicalPrivacySpend,
     PhysicalSite,
     Study,
+    StudySiteMembership,
     TrainingJob,
 )
 from rarelink.observability import configure_observability, shutdown_observability
@@ -123,6 +133,17 @@ from rarelink.services.physical_controller import (
 from rarelink.services.physical_events import encode_sse, fetch_safe_job_events
 from rarelink.services.physical_store import SqlPhysicalJobStore
 from rarelink.services.policy import sanitize_site_aggregate
+from rarelink.services.research_operations import (
+    ResearchOperationsError,
+    evidence_package_view,
+    model_version_view,
+    operations_summary,
+    reason_sha256,
+    site_membership_view,
+    transition_evidence_package,
+    transition_model_version,
+    transition_site_membership,
+)
 from rarelink.services.training_jobs import execute_training_job, recover_interrupted_jobs
 from rarelink.services.workflow import InvalidTransition, transition
 
@@ -231,6 +252,10 @@ def study_view(study: Study) -> dict[str, Any]:
         "title": study.title,
         "research_question": study.research_question,
         "disease_area": study.disease_area,
+        "organization_id": study.organization_id,
+        "created_by": study.created_by,
+        "participating_sites": as_json(study.participating_sites_json, []),
+        "revision": study.revision,
         "status": study.status,
         "protocol": as_json(study.protocol_json),
         "feasibility": as_json(study.feasibility_json),
@@ -572,6 +597,40 @@ def require_physical_job_scope(
     if not isinstance(expected_sites, list):
         raise HTTPException(status_code=409, detail="Physical job site scope is invalid")
     require_physical_site_scope(principal, expected_sites, config)
+
+
+def research_operations_actor(
+    request: Request,
+    config: Settings,
+    *,
+    requested_actor: str,
+    permission: PhysicalPermission,
+) -> tuple[str, PhysicalPrincipal | None]:
+    """Use verified OIDC identity in physical mode and an explicit actor in demos."""
+    if config.rarelink_physical_mode == "physical":
+        principal = require_physical_principal(request, config, permission)
+        return principal.subject_id, principal
+    actor = requested_actor.strip()
+    if not actor:
+        raise HTTPException(status_code=422, detail="Research operations actor is required")
+    return actor, None
+
+
+def require_research_operations_scope(
+    study: Study,
+    principal: PhysicalPrincipal | None,
+) -> None:
+    if principal is None:
+        return
+    if not principal.organization or principal.organization != study.organization_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Principal is outside the study organization boundary",
+        )
+
+
+def research_operations_error(exc: ResearchOperationsError) -> HTTPException:
+    return HTTPException(status_code=exc.status_code, detail=str(exc))
 
 
 def physical_read_principal(
@@ -2399,24 +2458,484 @@ def system_evidence(config: SettingsDep) -> dict[str, Any]:
 
 @app.post("/api/studies", status_code=201)
 def create_study(payload: StudyCreate, session: SessionDep) -> dict[str, Any]:
-    study = Study(**payload.model_dump())
+    participating_sites = list(dict.fromkeys(payload.participating_sites))
+    if len(participating_sites) != len(payload.participating_sites):
+        raise HTTPException(status_code=422, detail="Participating site IDs must be unique")
+    if any(
+        not site_id
+        or len(site_id) > 63
+        or not site_id[0].isalpha()
+        or any(character not in "abcdefghijklmnopqrstuvwxyz0123456789-" for character in site_id)
+        for site_id in participating_sites
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="Participating site IDs must be lowercase DNS-style identifiers",
+        )
+    study_payload = payload.model_dump(exclude={"participating_sites"})
+    study = Study(
+        **study_payload,
+        participating_sites_json=json.dumps(participating_sites, sort_keys=True),
+    )
     session.add(study)
     session.flush()
-    append_event(session, study.id, "study.created", "researcher", payload.model_dump())
+    for site_id in participating_sites:
+        session.add(
+            StudySiteMembership(
+                study_id=study.id,
+                site_id=site_id,
+                display_name=site_id,
+                organization=study.organization_id,
+                invited_by=study.created_by,
+            )
+        )
+    append_event(
+        session,
+        study.id,
+        "study.created",
+        study.created_by,
+        {
+            "title": study.title,
+            "disease_area": study.disease_area,
+            "organization_id": study.organization_id,
+            "participating_sites": participating_sites,
+            "research_question_exported": False,
+        },
+    )
     session.commit()
     session.refresh(study)
     return study_view(study)
 
 
 @app.get("/api/studies")
-def get_studies(session: SessionDep) -> list[dict[str, Any]]:
-    statement = select(Study).order_by(Study.created_at.desc())
+def get_studies(
+    session: SessionDep,
+    organization_id: str | None = None,
+) -> list[dict[str, Any]]:
+    statement = select(Study)
+    if organization_id:
+        statement = statement.where(Study.organization_id == organization_id)
+    statement = statement.order_by(Study.created_at.desc())
     return [study_view(study) for study in session.exec(statement).all()]
 
 
 @app.get("/api/studies/{study_id}")
 def get_study(study_id: str, session: SessionDep) -> dict[str, Any]:
     return study_view(require_study(session, study_id))
+
+
+@app.get("/api/operations/summary")
+def get_research_operations_summary(
+    request: Request,
+    session: SessionDep,
+    config: SettingsDep,
+    organization_id: str | None = None,
+) -> dict[str, Any]:
+    principal = physical_read_principal(
+        request,
+        config,
+        PhysicalPermission.CONTROL_STATE_READ,
+    )
+    scoped_organization = organization_id
+    if principal is not None:
+        if not principal.organization:
+            raise HTTPException(
+                status_code=403,
+                detail="OIDC organization claim is required for research operations",
+            )
+        if organization_id and organization_id != principal.organization:
+            raise HTTPException(
+                status_code=403,
+                detail="Principal is outside the requested organization boundary",
+            )
+        scoped_organization = principal.organization
+    return operations_summary(session, organization_id=scoped_organization)
+
+
+@app.post("/api/studies/{study_id}/sites", status_code=201)
+def add_study_site(
+    study_id: str,
+    payload: StudySiteCreate,
+    request: Request,
+    session: SessionDep,
+    config: SettingsDep,
+) -> dict[str, Any]:
+    study = require_study(session, study_id)
+    actor, principal = research_operations_actor(
+        request,
+        config,
+        requested_actor=payload.actor,
+        permission=PhysicalPermission.SITE_REGISTER,
+    )
+    require_research_operations_scope(study, principal)
+    item = StudySiteMembership(
+        study_id=study.id,
+        site_id=payload.site_id,
+        display_name=payload.display_name,
+        organization=payload.organization,
+        data_use_approved=payload.data_use_approved,
+        certificate_bound=payload.certificate_bound,
+        dataset_fingerprint=payload.dataset_fingerprint,
+        invited_by=actor,
+    )
+    session.add(item)
+    append_event(
+        session,
+        study.id,
+        "study-site.invited",
+        actor,
+        {
+            "membership_id": item.id,
+            "site_id": item.site_id,
+            "organization": item.organization,
+            "dataset_fingerprint": item.dataset_fingerprint,
+            "contains_patient_data": False,
+        },
+    )
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Site is already registered for this study",
+        ) from None
+    session.refresh(item)
+    return site_membership_view(item)
+
+
+@app.get("/api/studies/{study_id}/sites")
+def list_study_sites(
+    study_id: str,
+    request: Request,
+    session: SessionDep,
+    config: SettingsDep,
+) -> list[dict[str, Any]]:
+    study = require_study(session, study_id)
+    principal = physical_read_principal(
+        request,
+        config,
+        PhysicalPermission.CONTROL_STATE_READ,
+    )
+    require_research_operations_scope(study, principal)
+    statement = (
+        select(StudySiteMembership)
+        .where(StudySiteMembership.study_id == study.id)
+        .order_by(StudySiteMembership.created_at)
+    )
+    return [site_membership_view(item) for item in session.exec(statement).all()]
+
+
+@app.post("/api/studies/{study_id}/sites/{membership_id}:transition")
+def transition_study_site(
+    study_id: str,
+    membership_id: str,
+    payload: StudySiteTransition,
+    request: Request,
+    session: SessionDep,
+    config: SettingsDep,
+) -> dict[str, Any]:
+    study = require_study(session, study_id)
+    actor, principal = research_operations_actor(
+        request,
+        config,
+        requested_actor=payload.actor,
+        permission=PhysicalPermission.SITE_REGISTER,
+    )
+    require_research_operations_scope(study, principal)
+    item = session.get(StudySiteMembership, membership_id)
+    if not item or item.study_id != study.id:
+        raise HTTPException(status_code=404, detail="Study site membership not found")
+    previous = item.status
+    try:
+        transition_site_membership(
+            item,
+            target=payload.target,
+            actor=actor,
+            reason=payload.reason,
+        )
+    except ResearchOperationsError as exc:
+        raise research_operations_error(exc) from None
+    session.add(item)
+    append_event(
+        session,
+        study.id,
+        "study-site.transitioned",
+        actor,
+        {
+            "membership_id": item.id,
+            "site_id": item.site_id,
+            "from": previous,
+            "to": item.status,
+            "reason_sha256": reason_sha256(payload.reason),
+        },
+    )
+    session.commit()
+    session.refresh(item)
+    return site_membership_view(item)
+
+
+@app.post("/api/studies/{study_id}/evidence-packages", status_code=201)
+def register_evidence_package(
+    study_id: str,
+    payload: EvidencePackageCreate,
+    request: Request,
+    session: SessionDep,
+    config: SettingsDep,
+) -> dict[str, Any]:
+    study = require_study(session, study_id)
+    actor, principal = research_operations_actor(
+        request,
+        config,
+        requested_actor=payload.actor,
+        permission=PhysicalPermission.MODEL_VERIFY,
+    )
+    require_research_operations_scope(study, principal)
+    item = EvidencePackageRecord(
+        study_id=study.id,
+        package_sha256=payload.package_sha256,
+        manifest_sha256=payload.manifest_sha256,
+        model_sha256=payload.model_sha256,
+        signature=payload.signature,
+        signing_key_fingerprint_sha256=payload.signing_key_fingerprint_sha256,
+        validation_tier=payload.validation_tier,
+        site_count=payload.site_count,
+        required_quorum=payload.required_quorum,
+        privacy_gate_passed=payload.privacy_gate_passed,
+        security_gate_passed=payload.security_gate_passed,
+        dual_approval_distinct=payload.dual_approval_distinct,
+        contains_sensitive_data=payload.contains_sensitive_data,
+        verifier_version=payload.verifier_version,
+        registered_by=actor,
+    )
+    session.add(item)
+    append_event(
+        session,
+        study.id,
+        "evidence-package.registered",
+        actor,
+        {
+            "evidence_package_id": item.id,
+            "package_sha256": item.package_sha256,
+            "manifest_sha256": item.manifest_sha256,
+            "validation_tier": item.validation_tier,
+            "site_count": item.site_count,
+            "required_quorum": item.required_quorum,
+            "signature_exported": False,
+        },
+    )
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Evidence package digest or manifest is already registered",
+        ) from None
+    session.refresh(item)
+    return evidence_package_view(item)
+
+
+@app.get("/api/studies/{study_id}/evidence-packages")
+def list_evidence_packages(
+    study_id: str,
+    request: Request,
+    session: SessionDep,
+    config: SettingsDep,
+) -> list[dict[str, Any]]:
+    study = require_study(session, study_id)
+    principal = physical_read_principal(
+        request,
+        config,
+        PhysicalPermission.CONTROL_STATE_READ,
+    )
+    require_research_operations_scope(study, principal)
+    statement = (
+        select(EvidencePackageRecord)
+        .where(EvidencePackageRecord.study_id == study.id)
+        .order_by(EvidencePackageRecord.created_at.desc())
+    )
+    return [evidence_package_view(item) for item in session.exec(statement).all()]
+
+
+@app.post("/api/studies/{study_id}/evidence-packages/{package_id}:transition")
+def transition_registered_evidence_package(
+    study_id: str,
+    package_id: str,
+    payload: EvidencePackageTransition,
+    request: Request,
+    session: SessionDep,
+    config: SettingsDep,
+) -> dict[str, Any]:
+    study = require_study(session, study_id)
+    actor, principal = research_operations_actor(
+        request,
+        config,
+        requested_actor=payload.actor,
+        permission=PhysicalPermission.MODEL_VERIFY,
+    )
+    require_research_operations_scope(study, principal)
+    item = session.get(EvidencePackageRecord, package_id)
+    if not item or item.study_id != study.id:
+        raise HTTPException(status_code=404, detail="Evidence package not found")
+    previous = item.status
+    try:
+        transition_evidence_package(
+            session,
+            item,
+            target=payload.target,
+            actor=actor,
+            reason=payload.reason,
+        )
+    except ResearchOperationsError as exc:
+        raise research_operations_error(exc) from None
+    session.add(item)
+    append_event(
+        session,
+        study.id,
+        "evidence-package.transitioned",
+        actor,
+        {
+            "evidence_package_id": item.id,
+            "from": previous,
+            "to": item.status,
+            "reason_sha256": reason_sha256(payload.reason),
+            "linked_released_models_revoked": item.status == EvidencePackageStatus.REVOKED,
+        },
+    )
+    session.commit()
+    session.refresh(item)
+    return evidence_package_view(item)
+
+
+@app.post("/api/studies/{study_id}/models", status_code=201)
+def register_model_version(
+    study_id: str,
+    payload: ModelVersionCreate,
+    request: Request,
+    session: SessionDep,
+    config: SettingsDep,
+) -> dict[str, Any]:
+    study = require_study(session, study_id)
+    actor, principal = research_operations_actor(
+        request,
+        config,
+        requested_actor=payload.actor,
+        permission=PhysicalPermission.MODEL_VERIFY,
+    )
+    require_research_operations_scope(study, principal)
+    item = ModelVersion(
+        study_id=study.id,
+        name=payload.name,
+        semantic_version=payload.semantic_version,
+        model_family=payload.model_family,
+        artifact_sha256=payload.artifact_sha256,
+        source_job_id=payload.source_job_id,
+        validation_tier=payload.validation_tier,
+        metrics_json=json.dumps(payload.metrics, ensure_ascii=False, sort_keys=True),
+        signature=payload.signature,
+        signing_key_fingerprint_sha256=payload.signing_key_fingerprint_sha256,
+        created_by=actor,
+    )
+    session.add(item)
+    append_event(
+        session,
+        study.id,
+        "model-version.registered",
+        actor,
+        {
+            "model_version_id": item.id,
+            "name": item.name,
+            "semantic_version": item.semantic_version,
+            "artifact_sha256": item.artifact_sha256,
+            "validation_tier": item.validation_tier,
+            "signature_exported": False,
+            "model_binary_exported": False,
+        },
+    )
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Model name and semantic version already exist in this study",
+        ) from None
+    session.refresh(item)
+    return model_version_view(item)
+
+
+@app.get("/api/studies/{study_id}/models")
+def list_model_versions(
+    study_id: str,
+    request: Request,
+    session: SessionDep,
+    config: SettingsDep,
+) -> list[dict[str, Any]]:
+    study = require_study(session, study_id)
+    principal = physical_read_principal(
+        request,
+        config,
+        PhysicalPermission.CONTROL_STATE_READ,
+    )
+    require_research_operations_scope(study, principal)
+    statement = (
+        select(ModelVersion)
+        .where(ModelVersion.study_id == study.id)
+        .order_by(ModelVersion.created_at.desc())
+    )
+    return [model_version_view(item) for item in session.exec(statement).all()]
+
+
+@app.post("/api/studies/{study_id}/models/{model_id}:transition")
+def transition_registered_model_version(
+    study_id: str,
+    model_id: str,
+    payload: ModelVersionTransition,
+    request: Request,
+    session: SessionDep,
+    config: SettingsDep,
+) -> dict[str, Any]:
+    study = require_study(session, study_id)
+    actor, principal = research_operations_actor(
+        request,
+        config,
+        requested_actor=payload.actor,
+        permission=PhysicalPermission.MODEL_VERIFY,
+    )
+    require_research_operations_scope(study, principal)
+    item = session.get(ModelVersion, model_id)
+    if not item or item.study_id != study.id:
+        raise HTTPException(status_code=404, detail="Model version not found")
+    previous = item.status
+    try:
+        transition_model_version(
+            session,
+            item,
+            target=payload.target,
+            actor=actor,
+            evidence_package_id=payload.evidence_package_id,
+            reason=payload.reason,
+        )
+    except ResearchOperationsError as exc:
+        raise research_operations_error(exc) from None
+    session.add(item)
+    append_event(
+        session,
+        study.id,
+        "model-version.transitioned",
+        actor,
+        {
+            "model_version_id": item.id,
+            "from": previous,
+            "to": item.status,
+            "evidence_package_id": item.evidence_package_id,
+            "reason_sha256": reason_sha256(payload.reason),
+        },
+    )
+    session.commit()
+    session.refresh(item)
+    return model_version_view(item)
 
 
 @app.get("/api/studies/{study_id}/imaging-preview")

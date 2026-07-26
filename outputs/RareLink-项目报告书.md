@@ -129,10 +129,27 @@ PostgreSQL 运维包含原子 custom-format 备份、SHA-256 Manifest、恢复�
 与 Alembic revision 核验；Prometheus 与 OpenTelemetry 只记录低基数路由模板和
 状态，不记录真实 Job ID、query、请求体或 Token。
 
-当前本地完成 402 项自动测试、基础发布依赖 0 个已知漏洞、前端 npm audit 0 个
-漏洞以及 wheel/sdist 实际构建。多架构镜像、Cosign 与 GHCR 收据必须由提交后的
-GitHub Actions 产生；原生 Spark 镜像还受到 NVFLARE 上游固定 Flask 3.0.2 的
-漏洞阻断，扫描门不会忽略该问题。
+当前本地完成 406 项自动测试、基础发布依赖 0 个已知漏洞、前端 npm audit 0 个
+漏洞以及 wheel/sdist 实际构建。2026-07-26 的 GitHub Actions 已通过 Python
+3.11/3.12、Web、依赖/发布合同与 AMD64/ARM64 通用镜像构建共 5 个作业。真正的
+GHCR push、Cosign 签名、SBOM/Trivy Release 资产仍需语义版本 tag 触发；原生
+Spark 镜像还受到 NVFLARE 上游固定 Flask 3.0.2 的漏洞阻断，扫描门不会忽略该问题。
+
+### 9. 多研究运营平面与可撤销模型治理
+
+RareLink 已从单次研究工作流进一步扩展为可长期运营的科研治理软件。研究运营平面
+同时管理多个研究、组织和站点成员；站点必须具备数据使用批准、证书身份绑定和脱敏
+数据集指纹，才能从邀请状态进入活跃状态。暂停和退出都会保留原因摘要和审计关系。
+
+模型注册表记录语义版本、来源 NVIDIA FLARE Job、工件 SHA-256、验证等级、聚合
+指标、签名指纹和证据绑定，但不把模型二进制、患者数据或签名私钥带入控制面。模型
+依次经过统计评审、安全评审、批准和发布，创建者、批准者与发布者必须职责分离。
+
+证据包只有在达到三物理设备或医院生产等级、满足合同 quorum、DP 预算、安全评测、
+双人审批、敏感内容扫描和签名核验后才能发布。L1 代码或 L2 隔离测试不能被升格为
+正式研究证据。若证据包被撤销，所有绑定模型会自动撤销，避免失效证据继续支撑模型
+使用。完整状态机、API 和边界见
+[研究运营平面说明](../docs/research-operations-plane.md)。
 
 ---
 
