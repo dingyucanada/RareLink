@@ -19,13 +19,18 @@ dependencies = [
   "pydantic-settings>=2.6,<3",
   "PyJWT[crypto]>=2.10,<3",
   "openai>=1.55,<2",
+  "opentelemetry-api>=1.29,<2",
+  "opentelemetry-exporter-otlp-proto-http>=1.29,<2",
+  "opentelemetry-sdk>=1.29,<2",
+  "prometheus-client>=0.21,<1",
   "pyyaml>=6,<7",
 ]
 
 [project.optional-dependencies]
 dev = [
+  "build>=1.2,<2",
   "httpx>=0.27,<1",
-  "pytest>=8.3,<9",
+  "pytest>=9.0.3,<10",
   "pytest-cov>=6,<7",
   "ruff>=0.8,<1",
 ]
@@ -33,7 +38,7 @@ spark = [
   "monai>=1.4,<2",
   "numpy>=2,<3",
   "nibabel>=5.3,<6",
-  "nvflare>=2.7,<2.9",
+  "nvflare>=2.8.1,<2.9",
   "opacus>=1.5,<2",
   "scipy>=1.14,<2",
 ]

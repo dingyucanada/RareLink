@@ -11,7 +11,7 @@ def test_pinned_nvflare_recipe_api_is_available() -> None:
     recipe_parameters = inspect.signature(FedAvgRecipe).parameters
     environment_parameters = inspect.signature(SimEnv).parameters
 
-    assert nvflare.__version__ == "2.7.2"
+    assert nvflare.__version__ == "2.8.1"
     assert {"model", "min_clients", "train_script", "num_rounds"}.issubset(recipe_parameters)
     assert {"clients", "num_threads", "workspace_root"}.issubset(environment_parameters)
 

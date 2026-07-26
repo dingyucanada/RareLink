@@ -1,0 +1,28 @@
+{
+  "schema_version": "rarelink-arm64-build-contract-v1",
+  "required_platforms": [
+    "linux/amd64",
+    "linux/arm64"
+  ],
+  "production_images": {
+    "coordinator": "deploy/Dockerfile.coordinator",
+    "web": "deploy/Dockerfile.web.production"
+  },
+  "spark_native_image": {
+    "dockerfile": "deploy/Dockerfile.spark",
+    "required_runner_labels": [
+      "self-hosted",
+      "linux",
+      "ARM64",
+      "dgx-spark"
+    ],
+    "qemu_result_is_physical_evidence": false
+  },
+  "release_requirements": {
+    "sbom": true,
+    "vulnerability_scan": true,
+    "keyless_cosign": true,
+    "digest_pinned_deployment": true,
+    "offline_arm64_bundle": true
+  }
+}

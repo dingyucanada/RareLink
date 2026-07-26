@@ -23,7 +23,8 @@
   `FedAvgHERecipe` + TenSEAL; enablement remains fail-closed until ARM64 runtime,
   hospital key governance, client-side pre-encryption checks, and a three-device
   encrypted-round benchmark exist.
-- [x] Current acceptance baseline: 394 Python tests, Ruff, production web build,
+- [x] Current acceptance baseline: 402 Python tests, Ruff, release-engineering
+  contract, production web build,
   three independent control-plane processes, a seven-scenario fault matrix,
   PostgreSQL compose validation, and an Alembic migration round trip.
 - [x] Read-only three-physical-device field acceptance uses environment-only
@@ -37,6 +38,15 @@
   inventory with Ed25519, requires an external trust fingerprint, and fails
   closed on tampering, incomplete sites, budget overrun, failed security gates,
   broken audit linkage, patient fields, case IDs, credentials, keys or paths.
+- [x] Formal release engineering adds CI, semantic-tag Releases, multi-architecture
+  production images, keyless Cosign, GitHub provenance, Syft SPDX SBOMs,
+  Trivy/pip-audit/npm audit gates, a native DGX Spark ARM64 workflow, and a
+  deterministic checksummed offline bundle.
+- [x] PostgreSQL custom-format backup/restore tooling requires protected
+  pg_service configuration, 0600 artifacts, digest verification, exact target
+  confirmation and post-restore Alembic verification.
+- [x] Authenticated Prometheus metrics and optional OTLP traces use route
+  templates only and never export actual Job IDs, URL queries, bodies or tokens.
 
 The itemized status and every external blocker are recorded in
 [`p0-p1-engineering-log.md`](p0-p1-engineering-log.md). “Implemented” and

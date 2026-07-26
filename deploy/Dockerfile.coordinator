@@ -1,0 +1,30 @@
+FROM python:3.12-slim-bookworm AS builder
+
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1
+WORKDIR /build
+COPY pyproject.toml README.md LICENSE ./
+COPY rarelink ./rarelink
+RUN python -m pip install --upgrade "pip==26.1.2" "build==1.5.0" "hatchling==1.31.0" && \
+    python -m build --wheel --no-isolation
+
+FROM python:3.12-slim-bookworm
+
+ARG RARELINK_VERSION=0.1.0
+LABEL org.opencontainers.image.title="RareLink Coordinator" \
+      org.opencontainers.image.version="${RARELINK_VERSION}" \
+      org.opencontainers.image.licenses="Apache-2.0"
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1
+RUN groupadd --system --gid 10001 rarelink && \
+    useradd --system --uid 10001 --gid rarelink --home-dir /nonexistent rarelink
+COPY --from=builder /build/dist/*.whl /tmp/
+RUN python -m pip install /tmp/*.whl && rm -f /tmp/*.whl
+WORKDIR /app
+COPY alembic.ini ./
+COPY alembic ./alembic
+USER 10001:10001
+EXPOSE 9000
+CMD ["python", "-m", "uvicorn", "rarelink.api.main:app", "--host", "0.0.0.0", "--port", "9000", "--no-access-log"]

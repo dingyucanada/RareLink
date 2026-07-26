@@ -1,0 +1,16 @@
+FROM node:20-alpine AS builder
+WORKDIR /build
+COPY apps/web/package.json apps/web/package-lock.json ./
+RUN npm ci
+COPY apps/web ./
+RUN npm run build
+
+FROM nginx:1.27-alpine
+ARG RARELINK_VERSION=0.1.0
+LABEL org.opencontainers.image.title="RareLink Web" \
+      org.opencontainers.image.version="${RARELINK_VERSION}" \
+      org.opencontainers.image.licenses="Apache-2.0"
+COPY deploy/nginx.conf /etc/nginx/nginx.conf
+COPY --from=builder /build/dist /usr/share/nginx/html
+USER 101:101
+EXPOSE 8080

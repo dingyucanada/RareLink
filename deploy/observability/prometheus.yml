@@ -1,0 +1,15 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: rarelink-coordinator
+    metrics_path: /internal/metrics
+    scheme: http
+    bearer_token_file: /run/secrets/rarelink_metrics_token
+    static_configs:
+      - targets: ["coordinator:9000"]
+    metric_relabel_configs:
+      - source_labels: [route]
+        regex: "unmatched"
+        action: drop

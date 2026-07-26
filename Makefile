@@ -1,7 +1,7 @@
 PYTHON ?= python3
 PROJECT_PYTHON = $(if $(wildcard .venv/bin/python),.venv/bin/python,$(PYTHON))
 
-.PHONY: install install-web dev-api dev-web test lint smoke step-models step-smoke step-team-smoke synthetic-data monai-smoke nvflare-smoke nvflare-fedprox training-job-smoke demo-seed demo-evidence spark-local-verify spark-local-benchmark privacy-redteam-smoke secure-aggregation-assessment physical-render physical-preflight physical-job physical-site-agent physical-control-smoke physical-field-acceptance physical-postgres-validate fault-injection-matrix evidence-package-build evidence-package-verify p0-p1-acceptance site-data-validate db-upgrade db-current db-check
+.PHONY: install install-web dev-api dev-web test lint smoke step-models step-smoke step-team-smoke synthetic-data monai-smoke nvflare-smoke nvflare-fedprox training-job-smoke demo-seed demo-evidence spark-local-verify spark-local-benchmark privacy-redteam-smoke secure-aggregation-assessment physical-render physical-preflight physical-job physical-site-agent physical-control-smoke physical-field-acceptance physical-postgres-validate fault-injection-matrix evidence-package-build evidence-package-verify release-validate postgres-backup postgres-restore p0-p1-acceptance site-data-validate db-upgrade db-current db-check
 
 install:
 	$(PROJECT_PYTHON) -m pip install -e ".[dev]"
@@ -98,6 +98,15 @@ evidence-package-build:
 
 evidence-package-verify:
 	@echo "Usage: $(PROJECT_PYTHON) scripts/verify_research_evidence_package.py --package rarelink-evidence.zip --expected-key-fingerprint <sha256>"
+
+release-validate:
+	$(PROJECT_PYTHON) scripts/validate_release_engineering.py
+
+postgres-backup:
+	@echo "Usage: PGSERVICEFILE=/protected/pg_service.conf $(PROJECT_PYTHON) scripts/postgres_backup.py --service rarelink-production --output /protected/backups/rarelink.dump"
+
+postgres-restore:
+	@echo "Usage: PGSERVICEFILE=/protected/pg_service.conf $(PROJECT_PYTHON) scripts/postgres_restore.py --backup ... --manifest ... --target-service rarelink-restore --confirm-target-service rarelink-restore"
 
 p0-p1-acceptance:
 	$(PROJECT_PYTHON) scripts/accept_p0_p1.py --output artifacts/acceptance/p0-p1-receipt.json

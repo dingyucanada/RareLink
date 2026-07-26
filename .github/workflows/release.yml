@@ -1,0 +1,197 @@
+name: Signed Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Existing semantic version tag to release
+        required: true
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+  attestations: write
+  security-events: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  COORDINATOR_IMAGE: ghcr.io/${{ github.repository_owner }}/rarelink-coordinator
+  WEB_IMAGE: ghcr.io/${{ github.repository_owner }}/rarelink-web
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref }}
+      - name: Resolve and validate version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then VERSION="${INPUT_VERSION}"; fi
+          echo "${VERSION}" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+([-+][A-Za-z0-9.-]+)?$'
+          git rev-parse --verify "refs/tags/${VERSION}"
+          PACKAGE_VERSION="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
+          test "v${PACKAGE_VERSION}" = "${VERSION}"
+          echo "value=${VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "commit=$(git rev-parse HEAD)" >> "${GITHUB_OUTPUT}"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: sigstore/cosign-installer@v3
+      - uses: anchore/sbom-action/download-syft@v0
+      - uses: imjasonh/setup-crane@v0.4
+
+      - name: Build and test release artifacts
+        run: |
+          mkdir -p dist/release
+          python -m pip install --upgrade pip build pip-audit
+          python -m pip install -e ".[dev]"
+          python -m pytest -q
+          python -m ruff check rarelink tests scripts
+          python -m pip_audit . --strict --progress-spinner off --format json --output dist/release/pip-audit.json
+          python -m build
+          npm --prefix apps/web ci
+          npm --prefix apps/web test
+          npm --prefix apps/web run build
+          npm --prefix apps/web audit --audit-level=high --json > dist/release/npm-audit.json
+          tar -czf dist/release/rarelink-web-dist.tar.gz -C apps/web dist
+
+      - name: Build and push coordinator
+        id: coordinator
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile.coordinator
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.COORDINATOR_IMAGE }}:${{ steps.version.outputs.value }}
+          labels: org.opencontainers.image.revision=${{ steps.version.outputs.commit }}
+          build-args: RARELINK_VERSION=${{ steps.version.outputs.value }}
+      - name: Build and push web
+        id: web
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile.web.production
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.WEB_IMAGE }}:${{ steps.version.outputs.value }}
+          labels: org.opencontainers.image.revision=${{ steps.version.outputs.commit }}
+          build-args: RARELINK_VERSION=${{ steps.version.outputs.value }}
+
+      - name: Keyless-sign immutable image digests
+        env:
+          COORDINATOR_DIGEST: ${{ steps.coordinator.outputs.digest }}
+          WEB_DIGEST: ${{ steps.web.outputs.digest }}
+        run: |
+          cosign sign --yes "${COORDINATOR_IMAGE}@${COORDINATOR_DIGEST}"
+          cosign sign --yes "${WEB_IMAGE}@${WEB_DIGEST}"
+          IDENTITY="^https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/(tags/v[0-9].*|heads/main)$"
+          cosign verify --certificate-identity-regexp "${IDENTITY}" --certificate-oidc-issuer https://token.actions.githubusercontent.com --output json "${COORDINATOR_IMAGE}@${COORDINATOR_DIGEST}" > dist/release/cosign-coordinator-verification.json
+          cosign verify --certificate-identity-regexp "${IDENTITY}" --certificate-oidc-issuer https://token.actions.githubusercontent.com --output json "${WEB_IMAGE}@${WEB_DIGEST}" > dist/release/cosign-web-verification.json
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.COORDINATOR_IMAGE }}
+          subject-digest: ${{ steps.coordinator.outputs.digest }}
+          push-to-registry: true
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.WEB_IMAGE }}
+          subject-digest: ${{ steps.web.outputs.digest }}
+          push-to-registry: true
+
+      - name: Generate SPDX SBOMs and ARM64 image archives
+        env:
+          COORDINATOR_DIGEST: ${{ steps.coordinator.outputs.digest }}
+          WEB_DIGEST: ${{ steps.web.outputs.digest }}
+        run: |
+          syft "dir:." -o spdx-json=dist/release/source.spdx.json
+          syft "${COORDINATOR_IMAGE}@${COORDINATOR_DIGEST}" -o spdx-json=dist/release/coordinator.spdx.json
+          syft "${WEB_IMAGE}@${WEB_DIGEST}" -o spdx-json=dist/release/web.spdx.json
+          crane pull --platform linux/arm64 "${COORDINATOR_IMAGE}@${COORDINATOR_DIGEST}" dist/release/rarelink-coordinator-arm64.tar
+          crane pull --platform linux/arm64 "${WEB_IMAGE}@${WEB_DIGEST}" dist/release/rarelink-web-arm64.tar
+
+      - name: Scan source and signed images
+        uses: aquasecurity/trivy-action@0.30.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: sarif
+          output: dist/release/trivy-source.sarif
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+      - name: Scan coordinator image
+        uses: aquasecurity/trivy-action@0.30.0
+        with:
+          image-ref: ${{ env.COORDINATOR_IMAGE }}@${{ steps.coordinator.outputs.digest }}
+          format: json
+          output: dist/release/trivy-coordinator.json
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+      - name: Scan web image
+        uses: aquasecurity/trivy-action@0.30.0
+        with:
+          image-ref: ${{ env.WEB_IMAGE }}@${{ steps.web.outputs.digest }}
+          format: json
+          output: dist/release/trivy-web.json
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: dist/release/trivy-source.sarif
+
+      - name: Build ARM64 offline bundle
+        run: |
+          tar -czf dist/release/vulnerability-reports.tar.gz -C dist/release pip-audit.json npm-audit.json trivy-source.sarif trivy-coordinator.json trivy-web.json
+          python scripts/build_offline_release_bundle.py \
+            --version "${{ steps.version.outputs.value }}" \
+            --artifact "python-wheel=$(find dist -maxdepth 1 -name '*.whl' -print -quit)" \
+            --artifact "python-sdist=$(find dist -maxdepth 1 -name '*.tar.gz' -print -quit)" \
+            --artifact "coordinator-arm64-image=dist/release/rarelink-coordinator-arm64.tar" \
+            --artifact "web-arm64-image=dist/release/rarelink-web-arm64.tar" \
+            --artifact "source-sbom=dist/release/source.spdx.json" \
+            --artifact "coordinator-sbom=dist/release/coordinator.spdx.json" \
+            --artifact "web-sbom=dist/release/web.spdx.json" \
+            --artifact "vulnerability-report=dist/release/vulnerability-reports.tar.gz" \
+            --output "dist/release/rarelink-${{ steps.version.outputs.value }}-linux-arm64-offline.tar.gz"
+          find dist -type f ! -name SHA256SUMS.release -print0 | sort -z | xargs -0 sha256sum > dist/release/SHA256SUMS.release
+
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/release/rarelink-*-linux-arm64-offline.tar.gz
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          if gh release view "${VERSION}" >/dev/null 2>&1; then
+            gh release upload "${VERSION}" dist/*.whl dist/*.tar.gz dist/release/* --clobber
+          else
+            gh release create "${VERSION}" dist/*.whl dist/*.tar.gz dist/release/* --verify-tag --generate-notes --title "RareLink ${VERSION}"
+          fi

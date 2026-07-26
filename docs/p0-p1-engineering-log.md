@@ -183,6 +183,32 @@ RareLink 不以存在接口、按钮或测试桩作为生产完成证据。每�
   仓库不会预生成一份冒充 L3/L4 的“已通过”正式证据包。现场资产齐备后由协调端
   组装 reviewed source，再使用受控私钥生成发布物。
 
+### 2026-07-26：正式发布工程
+
+- 新增 PR/push CI 与语义 tag Release：Python 3.11/3.12、Ruff、Web 测试构建、
+  pip-audit、npm audit、双架构生产镜像和发布合同均为失败关闭门。
+- 新增 Coordinator/Web `linux/amd64,linux/arm64` 生产 Dockerfile；Docker context
+  排除 `.env`、数据、模型、工件和输出目录，运行镜像使用非 root 用户。
+- Release 对不可变镜像 digest 执行 Cosign GitHub OIDC keyless 签名并立即按
+  workflow identity 验证，另生成 GitHub provenance、三份 Syft SPDX SBOM 和
+  Trivy 源码/镜像报告。
+- 新增原生 DGX Spark ARM64 人工工作流：只允许带 `self-hosted, linux, ARM64,
+  dgx-spark` 标签的 Runner，禁止将 QEMU 结果包装成 Spark 实机证据。
+- 新增 ARM64 离线安装包：wheel、sdist、两个镜像归档、三份 SBOM、漏洞报告、
+  Compose/安装脚本和 SHA256SUMS 缺一不可；包内不含医院配置、凭据、证书、密钥
+  或患者数据。
+- 新增 PostgreSQL custom-format 原子备份与恢复：受保护 PGSERVICEFILE、0600、
+  schema revision、归档 SHA-256、恢复目标二次确认和恢复后 revision 核验。
+- 新增 Prometheus 与 OpenTelemetry：Metrics 独立 Bearer Token、固定内部路径、
+  route template 低基数标签、HTTPS OTLP 和不记录 URL/query/body/真实 Job ID。
+- 回归基线提升为 402 项测试；隔离基础依赖环境 pip-audit 为 0 个已知漏洞，
+  `npm audit --audit-level=high` 为 0 个漏洞，wheel 与 sdist 已实际构建。
+- 当前本机 Docker daemon 未运行，未声称本机构建/签名镜像；提交后的 GitHub CI
+  才能形成远程多架构收据，创建正式 tag 后才能形成 Release 与 Cosign 证据。
+- 已知上游阻断：NVFLARE 2.8.1 仍严格固定有已知漏洞的 Flask 3.0.2。通用控制面
+  不安装该可选依赖；原生 Spark 镜像 Trivy 保持失败关闭且不配置 ignore，直到
+  NVIDIA 上游修复或经审批的补丁 wheel 完成独立复核。
+
 ## 6. 每轮验收记录模板
 
 每次关闭任务必须追加：

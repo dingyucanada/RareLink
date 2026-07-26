@@ -66,6 +66,7 @@ from rarelink.models import (
     Study,
     TrainingJob,
 )
+from rarelink.observability import configure_observability, shutdown_observability
 from rarelink.privacy import (
     PrivacyBudgetError,
     PrivacySpendInput,
@@ -143,6 +144,7 @@ async def lifespan(_app: FastAPI):
     try:
         yield
     finally:
+        shutdown_observability(_app)
         _oidc_jwks_provider = None
 
 
@@ -194,6 +196,7 @@ async def demo_access_gate(request, call_next):  # type: ignore[no-untyped-def]
         "/api/health/ready",
         "/docs",
         "/openapi.json",
+        settings.rarelink_metrics_path,
     }:
         return await call_next(request)
     provided = request.headers.get("X-RareLink-Demo-Token") or request.query_params.get(
@@ -202,6 +205,9 @@ async def demo_access_gate(request, call_next):  # type: ignore[no-untyped-def]
     if not secrets.compare_digest(provided, expected):
         return JSONResponse(status_code=401, content={"detail": "Demo access token required"})
     return await call_next(request)
+
+
+configure_observability(app, settings)
 
 
 SessionDep = Annotated[Session, Depends(get_session)]

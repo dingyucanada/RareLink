@@ -16,8 +16,10 @@ def test_physical_postgres_deployment_policy() -> None:
         "committed_secrets_present": False,
         "external_persistent_volumes": True,
         "healthchecks_present": True,
+        "opentelemetry_endpoint_required": True,
         "physical_mode": "physical",
         "postgres_host_port_published": False,
+        "prometheus_metrics_protected": True,
         "schema_version": "rarelink-postgres-compose-validation-v1",
         "services": ["coordinator", "postgres"],
     }

@@ -77,6 +77,10 @@ def main() -> int:
         ("backend-tests", [python, "-m", "pytest", "-q"]),
         ("python-lint", [python, "-m", "ruff", "check", "rarelink", "tests", "scripts"]),
         (
+            "release-engineering-contract",
+            [python, "scripts/validate_release_engineering.py"],
+        ),
+        (
             "three-process-control-plane",
             [python, "scripts/smoke_three_site_control_plane.py"],
         ),

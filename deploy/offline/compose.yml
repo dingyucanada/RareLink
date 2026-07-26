@@ -1,0 +1,57 @@
+name: rarelink-offline-control
+
+services:
+  postgres:
+    image: "${RARELINK_POSTGRES_IMAGE:?Use a separately approved offline PostgreSQL image}"
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: "${RARELINK_POSTGRES_DB:?Set database name}"
+      POSTGRES_USER: "${RARELINK_POSTGRES_USER:?Set database role}"
+      POSTGRES_PASSWORD: "${RARELINK_POSTGRES_PASSWORD:?Load from secret manager}"
+      POSTGRES_INITDB_ARGS: "--data-checksums --auth-host=scram-sha-256"
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks: [database]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    security_opt: [no-new-privileges:true]
+
+  coordinator:
+    image: "${RARELINK_COORDINATOR_IMAGE:?Use the loaded signed release image}"
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - "${RARELINK_PROTECTED_ENV_FILE:?Set the protected environment file}"
+    networks: [database, ingress]
+    ports:
+      - "127.0.0.1:${RARELINK_COORDINATOR_PORT:-9000}:9000"
+    read_only: true
+    tmpfs: ["/tmp:size=256m,mode=1770"]
+    security_opt: [no-new-privileges:true]
+
+  web:
+    image: "${RARELINK_WEB_IMAGE:?Use the loaded signed release image}"
+    restart: unless-stopped
+    depends_on: [coordinator]
+    networks: [ingress]
+    ports:
+      - "127.0.0.1:${RARELINK_WEB_PORT:-8080}:8080"
+    read_only: true
+    tmpfs: ["/var/cache/nginx:size=64m", "/var/run:size=8m"]
+    security_opt: [no-new-privileges:true]
+
+networks:
+  database:
+    internal: true
+  ingress: {}
+
+volumes:
+  postgres-data:
+    external: true
+    name: "${RARELINK_POSTGRES_VOLUME_NAME:?Use a pre-created protected volume}"

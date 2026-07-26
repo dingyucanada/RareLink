@@ -17,6 +17,7 @@ SENSITIVE_ENV_NAMES = {
     "RARELINK_NVFLARE_ADMIN_KIT_HOST_PATH",
     "RARELINK_PHYSICAL_SITE_SECRETS",
     "RARELINK_AUDIT_HMAC_KEY",
+    "RARELINK_METRICS_BEARER_TOKEN",
     "RARELINK_OIDC_JWKS_JSON",
 }
 FORBIDDEN_SECRET_VALUES = {
@@ -92,6 +93,14 @@ def validate(compose_path: Path, env_path: Path) -> dict[str, object]:
         coordinator_environment.get("RARELINK_PHYSICAL_APPROVAL_TTL_SECONDS", "")
     ):
         raise ValueError("Coordinator must require an explicit second-approval lifetime")
+    if coordinator_environment.get("RARELINK_OBSERVABILITY_ENABLED") != "true":
+        raise ValueError("Coordinator must enable the reviewed observability boundary")
+    if ":?" not in str(
+        coordinator_environment.get("RARELINK_METRICS_BEARER_TOKEN", "")
+    ):
+        raise ValueError("Coordinator must require a protected metrics token")
+    if ":?" not in str(coordinator_environment.get("RARELINK_OTEL_ENDPOINT", "")):
+        raise ValueError("Coordinator must require an approved OTLP endpoint")
 
     volumes = _mapping(compose.get("volumes"), "volumes")
     for name in ("postgres-data", "coordinator-artifacts"):
@@ -128,6 +137,8 @@ def validate(compose_path: Path, env_path: Path) -> dict[str, object]:
         "external_persistent_volumes": True,
         "physical_mode": "physical",
         "authentication_mode": "oidc",
+        "prometheus_metrics_protected": True,
+        "opentelemetry_endpoint_required": True,
         "committed_secrets_present": False,
     }
 

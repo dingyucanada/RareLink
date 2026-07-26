@@ -2,8 +2,9 @@ import json
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -84,7 +85,53 @@ class Settings(BaseSettings):
     rarelink_model_signing_private_key: Path | None = None
     rarelink_nvflare_admin_kit: str = ""
     rarelink_nvflare_executable: str = "nvflare"
+    rarelink_observability_enabled: bool = False
+    rarelink_metrics_path: str = "/internal/metrics"
+    rarelink_metrics_bearer_token: str = ""
+    rarelink_otel_enabled: bool = False
+    rarelink_otel_endpoint: str = ""
+    rarelink_otel_service_name: str = "rarelink-coordinator"
     cors_origins: str = "http://localhost:5173"
+
+    @model_validator(mode="after")
+    def validate_observability(self) -> "Settings":
+        if not self.rarelink_observability_enabled:
+            if self.rarelink_otel_enabled:
+                raise ValueError(
+                    "RARELINK_OTEL_ENABLED requires RARELINK_OBSERVABILITY_ENABLED"
+                )
+            return self
+        if (
+            not self.rarelink_metrics_path.startswith("/internal/")
+            or "{" in self.rarelink_metrics_path
+            or "}" in self.rarelink_metrics_path
+            or "?" in self.rarelink_metrics_path
+        ):
+            raise ValueError(
+                "RARELINK_METRICS_PATH must be a fixed path under /internal/"
+            )
+        if len(self.rarelink_metrics_bearer_token) < 32:
+            raise ValueError(
+                "RARELINK_METRICS_BEARER_TOKEN must contain at least 32 characters"
+            )
+        if not re_safe_service_name(self.rarelink_otel_service_name):
+            raise ValueError("RARELINK_OTEL_SERVICE_NAME is invalid")
+        if self.rarelink_otel_enabled:
+            parsed = urlsplit(self.rarelink_otel_endpoint)
+            loopback = parsed.hostname in {"127.0.0.1", "::1", "localhost"}
+            if (
+                parsed.scheme not in ({"https", "http"} if loopback else {"https"})
+                or not parsed.hostname
+                or parsed.username
+                or parsed.password
+                or parsed.query
+                or parsed.fragment
+            ):
+                raise ValueError(
+                    "RARELINK_OTEL_ENDPOINT must be HTTPS without credentials, "
+                    "query, or fragment; HTTP is loopback-only"
+                )
+        return self
 
     @property
     def cors_origin_list(self) -> list[str]:
@@ -133,3 +180,11 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+def re_safe_service_name(value: str) -> bool:
+    return (
+        2 <= len(value) <= 64
+        and value[0].isalnum()
+        and all(character.isalnum() or character in "._-" for character in value)
+    )

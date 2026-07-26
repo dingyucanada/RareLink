@@ -1,0 +1,74 @@
+name: Native DGX Spark ARM64 Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Semantic release version
+        required: true
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+  attestations: write
+
+jobs:
+  native-spark-build:
+    runs-on: [self-hosted, linux, ARM64, dgx-spark]
+    environment: dgx-spark-release
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.version }}
+          fetch-depth: 0
+      - name: Validate release version
+        run: |
+          echo "${{ inputs.version }}" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'
+          git rev-parse --verify "refs/tags/${{ inputs.version }}"
+          PACKAGE_VERSION="$(python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
+          test "v${PACKAGE_VERSION}" = "${{ inputs.version }}"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: sigstore/cosign-installer@v3
+      - uses: anchore/sbom-action/download-syft@v0
+      - name: Native ARM64 build and push
+        id: build
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/rarelink-spark
+          VERSION: ${{ inputs.version }}
+        run: |
+          test "$(uname -m)" = "aarch64"
+          docker build --file deploy/Dockerfile.spark --tag "${IMAGE}:${VERSION}" .
+          docker push "${IMAGE}:${VERSION}"
+          DIGEST="$(docker inspect --format='{{index .RepoDigests 0}}' "${IMAGE}:${VERSION}" | cut -d@ -f2)"
+          echo "digest=${DIGEST}" >> "${GITHUB_OUTPUT}"
+          cosign sign --yes "${IMAGE}@${DIGEST}"
+          cosign verify \
+            --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/spark-arm64.yml@refs/heads/main" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --output json "${IMAGE}@${DIGEST}" > rarelink-spark-arm64-cosign.json
+          syft "${IMAGE}@${DIGEST}" -o spdx-json=rarelink-spark-arm64.spdx.json
+      - name: Scan native Spark image
+        uses: aquasecurity/trivy-action@0.30.0
+        with:
+          image-ref: ghcr.io/${{ github.repository_owner }}/rarelink-spark@${{ steps.build.outputs.digest }}
+          format: json
+          output: rarelink-spark-arm64-trivy.json
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ghcr.io/${{ github.repository_owner }}/rarelink-spark
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rarelink-spark-arm64-sbom
+          path: |
+            rarelink-spark-arm64.spdx.json
+            rarelink-spark-arm64-cosign.json
+            rarelink-spark-arm64-trivy.json

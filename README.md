@@ -10,7 +10,7 @@
 
 <a href="README.en.md">English</a> · <strong>中文</strong>
 
-<strong>📘 <a href="outputs/RareLink-项目报告书.md">阅读完整项目报告书</a></strong> · <strong><a href="docs/p0-p1-engineering-log.md">P0/P1 逐项状态与限制</a></strong> · <strong><a href="docs/research-evidence-package.md">签名研究证据包</a></strong> · <a href="#部署模型与快速开始">快速开始</a> · <a href="docs/physical-deployment.md">三物理 Spark 部署</a> · <a href="docs/physical-field-acceptance.md">现场验收</a> · <a href="docs/fault-injection-matrix.md">故障矩阵</a> · <a href="docs/physical-dpsgd-contract.md">物理 DP-SGD</a> · <a href="docs/secure-aggregation-evaluation.md">安全聚合评估</a> · <a href="docs/oidc-jwks-lifecycle.md">OIDC/JWKS</a>
+<strong>📘 <a href="outputs/RareLink-项目报告书.md">阅读完整项目报告书</a></strong> · <strong><a href="docs/p0-p1-engineering-log.md">P0/P1 逐项状态与限制</a></strong> · <strong><a href="docs/research-evidence-package.md">签名研究证据包</a></strong> · <strong><a href="docs/release-engineering.md">正式发布工程</a></strong> · <a href="#部署模型与快速开始">快速开始</a> · <a href="docs/physical-deployment.md">三物理 Spark 部署</a> · <a href="docs/physical-field-acceptance.md">现场验收</a> · <a href="docs/fault-injection-matrix.md">故障矩阵</a> · <a href="docs/physical-dpsgd-contract.md">物理 DP-SGD</a> · <a href="docs/secure-aggregation-evaluation.md">安全聚合评估</a> · <a href="docs/oidc-jwks-lifecycle.md">OIDC/JWKS</a>
 
 <a href="https://www.nvidia.com/en-us/products/workstations/dgx-spark/"><img src="https://img.shields.io/badge/NVIDIA-DGX%20Spark-76B900?style=flat-square&logo=nvidia&logoColor=white" alt="NVIDIA DGX Spark" /></a>
 <a href="https://nvidia.github.io/NVFlare/"><img src="https://img.shields.io/badge/NVIDIA%20FLARE-2.7.2-2563EB?style=flat-square" alt="NVIDIA FLARE" /></a>
@@ -53,6 +53,9 @@
 - [三物理 Spark 部署](docs/physical-deployment.md)
 - [三物理设备现场验收](docs/physical-field-acceptance.md)
 - [签名研究证据包](docs/research-evidence-package.md)
+- [正式发布工程](docs/release-engineering.md)
+- [PostgreSQL 备份恢复](docs/postgresql-backup-restore.md)
+- [Prometheus 与 OpenTelemetry](docs/observability.md)
 - [自动故障注入矩阵](docs/fault-injection-matrix.md)
 - [P0/P1 实施与自动验收](docs/p0-p1-implementation-and-acceptance.md)
 - [P0/P1 逐项状态、外部阻塞与证据等级](docs/p0-p1-engineering-log.md)
@@ -328,8 +331,9 @@ OIDC 离线验证、五角色十一权限、站点级读取过滤和待完成 IA
 make p0-p1-acceptance
 ```
 
-当前基线为 **394 项 Python 测试 + Ruff + 前端生产构建 + 三独立进程控制协议 +
-七场景故障矩阵 + PostgreSQL 生产配置 + Alembic 迁移往返**。该结果只证明
+当前基线为 **402 项 Python 测试 + Ruff + 发布工程合同 + 前端生产构建 +
+三独立进程控制协议 + 七场景故障矩阵 + PostgreSQL 生产配置 + Alembic 迁移往返**。
+该结果只证明
 L1/L2；没有三台设备、
 正式 Admin/Client Kit 或医院系统时，不会被描述成真实多院完成。
 

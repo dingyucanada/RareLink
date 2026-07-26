@@ -81,6 +81,12 @@ services:
       RARELINK_OIDC_SITES_CLAIM: "${RARELINK_OIDC_SITES_CLAIM:?Set the reviewed site scope claim}"
       RARELINK_NVFLARE_ADMIN_KIT: /run/rarelink/nvflare-admin-kit
       RARELINK_MODEL_SIGNING_PRIVATE_KEY: /run/rarelink/model-signing-private.pem
+      RARELINK_OBSERVABILITY_ENABLED: "true"
+      RARELINK_METRICS_PATH: /internal/metrics
+      RARELINK_METRICS_BEARER_TOKEN: "${RARELINK_METRICS_BEARER_TOKEN:?Load the metrics token from a secret manager}"
+      RARELINK_OTEL_ENABLED: "${RARELINK_OTEL_ENABLED:?Explicitly enable or disable OTLP traces}"
+      RARELINK_OTEL_ENDPOINT: "${RARELINK_OTEL_ENDPOINT:?Set the approved HTTPS OTLP HTTP endpoint}"
+      RARELINK_OTEL_SERVICE_NAME: rarelink-coordinator
       CORS_ORIGINS: "${RARELINK_CORS_ORIGINS:?Set the exact HTTPS control-console origin}"
       PYTHONDONTWRITEBYTECODE: "1"
     volumes:

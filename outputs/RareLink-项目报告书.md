@@ -120,6 +120,20 @@ Data Card、三份最终轮完成收据、DP 账本、Agent/ART 四项安全门�
 绑定与签名；本体摘要的重新计算必须留在所属受控环境。协调端审计 HMAC 密钥也不
 导出，因此离线端核验完整链接和协调端验证声明，不虚构“离线重新计算 HMAC”。
 
+### 8. 正式软件发布与可观测性
+
+项目现已具备 GitHub Actions、语义版本 Release、AMD64/ARM64 双架构生产镜像、
+Cosign keyless 签名与即时身份验证、GitHub provenance、Syft SPDX SBOM、
+Trivy/pip-audit/npm audit、ARM64 离线安装包和原生 DGX Spark Runner 合同。
+PostgreSQL 运维包含原子 custom-format 备份、SHA-256 Manifest、恢复目标二次确认
+与 Alembic revision 核验；Prometheus 与 OpenTelemetry 只记录低基数路由模板和
+状态，不记录真实 Job ID、query、请求体或 Token。
+
+当前本地完成 402 项自动测试、基础发布依赖 0 个已知漏洞、前端 npm audit 0 个
+漏洞以及 wheel/sdist 实际构建。多架构镜像、Cosign 与 GHCR 收据必须由提交后的
+GitHub Actions 产生；原生 Spark 镜像还受到 NVFLARE 上游固定 Flask 3.0.2 的
+漏洞阻断，扫描门不会忽略该问题。
+
 ---
 
 ## 四、NVIDIA SDK / 模型与 Step 技术使用说明
