@@ -4,6 +4,9 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+
+pytest.importorskip("nvflare")
+
 from nvflare.apis.dxo import DXO, DataKind
 from nvflare.apis.filter import ContentBlockedException
 from nvflare.apis.shareable import Shareable

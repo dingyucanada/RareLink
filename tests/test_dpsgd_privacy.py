@@ -17,6 +17,7 @@ def test_dpsgd_config_rejects_invalid_budget_parameters() -> None:
 
 
 def test_federation_privacy_uses_max_cumulative_site_epsilon() -> None:
+    pytest.importorskip("opacus")
     config = DPSGDConfig(noise_multiplier=1.2, max_grad_norm=1.0, delta=1e-5)
     metrics = [
         {

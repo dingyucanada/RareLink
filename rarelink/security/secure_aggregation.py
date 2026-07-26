@@ -16,6 +16,13 @@ def _package_version(name: str) -> str | None:
         return None
 
 
+def _module_available(name: str) -> bool:
+    try:
+        return importlib.util.find_spec(name) is not None
+    except (ModuleNotFoundError, ValueError):
+        return False
+
+
 def assess_secure_aggregation_readiness(
     *,
     expected_sites: tuple[str, ...],
@@ -36,9 +43,7 @@ def assess_secure_aggregation_readiness(
 
     nvflare_version = _package_version("nvflare")
     tenseal_version = _package_version("tenseal")
-    recipe_available = (
-        importlib.util.find_spec("nvflare.app_opt.pt.recipes.fedavg_he") is not None
-    )
+    recipe_available = _module_available("nvflare.app_opt.pt.recipes.fedavg_he")
     runtime_ready = bool(nvflare_version and recipe_available and tenseal_version)
     decision = "eligible-for-physical-benchmark" if runtime_ready else "deferred-fail-closed"
 

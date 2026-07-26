@@ -180,6 +180,7 @@ def test_pybids_adapter_writes_local_manifest_but_returns_aggregate_receipt(
 
 
 def test_real_pybids_indexes_two_complete_local_cases(tmp_path: Path) -> None:
+    pytest.importorskip("bids")
     bids_root = tmp_path / "real-bids"
     bids_root.mkdir()
     (bids_root / "dataset_description.json").write_text(
