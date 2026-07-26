@@ -96,7 +96,7 @@ class PhysicalJobCreate(BaseModel):
     model_config = {"extra": "forbid"}
 
     study_id: str | None = None
-    strategy: str = Field(pattern=r"^(fedavg|fedprox)$")
+    strategy: str = Field(pattern=r"^(fedavg|fedprox|fedavg_dpsgd)$")
     expected_sites: list[str] = Field(min_length=3)
     total_rounds: int = Field(ge=1, le=1000)
     local_epochs: int = Field(default=1, ge=1, le=100)
@@ -137,6 +137,31 @@ class PhysicalModelVerification(BaseModel):
 
     model_path: str = Field(min_length=1, max_length=500)
     expected_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class PhysicalModelReleaseApproval(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    attestation: Literal["GLOBAL_MODEL_HASH_AND_RELEASE_REVIEWED"]
+    expected_model_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class PhysicalPrivacyBudgetCreate(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    max_epsilon: float = Field(gt=0, le=100)
+    delta: float = Field(gt=0, lt=1)
+
+
+class PhysicalPrivacySpendCreate(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    site_id: str = Field(pattern=r"^[a-z][a-z0-9-]{2,62}$")
+    round_number: int = Field(ge=1, le=10_000)
+    cumulative_epsilon: float = Field(ge=0, le=100_000)
+    delta: float = Field(gt=0, lt=1)
+    accountant: Literal["rdp"]
+    optimizer_steps: int = Field(ge=1, le=1_000_000_000)
 
 
 class StudyCreate(BaseModel):

@@ -33,6 +33,8 @@ class SiteAgentSettings(BaseSettings):
     artifact_root: Path
     startup_kit: Path
     certificate_file: Path | None = None
+    certificate_min_valid_days: int = Field(default=14, ge=1, le=180)
+    require_certificate_under_startup_kit: bool = True
     state_database: Path = Path("/var/lib/rarelink/site-agent/state.sqlite3")
     api_token: SecretStr = Field(min_length=24)
     receipt_hmac_key: SecretStr = Field(min_length=32)
@@ -40,6 +42,7 @@ class SiteAgentSettings(BaseSettings):
     port: int = Field(default=9100, ge=1, le=65535)
     required_free_memory_percent: float = Field(default=15, ge=5, le=80)
     required_free_disk_percent: float = Field(default=10, ge=2, le=80)
+    required_gpu_free_memory_mib: int = Field(default=1024, ge=256, le=131_072)
     required_modules: str = "torch,monai,nvflare"
     executor_backend: Literal["disabled", "systemd"] = "disabled"
     nvflare_service_name: str = "rarelink-flare-client.service"
@@ -84,6 +87,8 @@ class SiteAgentSettings(BaseSettings):
             "artifact_store_configured": bool(str(self.artifact_root)),
             "startup_kit_configured": bool(str(self.startup_kit)),
             "certificate_configured": self.certificate_file is not None,
+            "certificate_min_valid_days": self.certificate_min_valid_days,
+            "certificate_path_restricted": self.require_certificate_under_startup_kit,
             "required_modules": list(self.module_names),
             "executor_backend": self.executor_backend,
             "local_paths_exported": False,

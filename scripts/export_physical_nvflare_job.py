@@ -14,15 +14,74 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from rarelink.deployment.topology import load_physical_topology, topology_sha256  # noqa: E402
+from rarelink.privacy.physical_contract import (  # noqa: E402
+    build_physical_dpsgd_contract,
+    disabled_physical_privacy_contract,
+)
+
+
+def build_privacy_contract(args: argparse.Namespace) -> dict:
+    if args.strategy != "fedavg_dpsgd":
+        return disabled_physical_privacy_contract()
+    return build_physical_dpsgd_contract(
+        noise_multiplier=args.dp_noise_multiplier,
+        max_grad_norm=args.dp_max_grad_norm,
+        delta=args.dp_delta,
+        accountant=args.dp_accountant,
+    )
+
+
+def build_client_train_args(
+    args: argparse.Namespace,
+    privacy_contract: dict,
+) -> str:
+    arguments = [
+        "--manifest",
+        args.site_manifest_path,
+        "--data-root",
+        args.site_data_root_path,
+        "--dataset-receipt",
+        args.site_dataset_receipt_path,
+        "--require-local-only-manifest",
+        "--epochs",
+        str(args.local_epochs),
+        "--fedprox-mu",
+        str(args.fedprox_mu if args.strategy == "fedprox" else 0.0),
+        "--seed",
+        "2026",
+    ]
+    if args.strategy == "fedavg_dpsgd":
+        arguments.extend(
+            [
+                "--dp-sgd",
+                "--dp-noise-multiplier",
+                str(privacy_contract["noise_multiplier"]),
+                "--dp-max-grad-norm",
+                str(privacy_contract["max_grad_norm"]),
+                "--dp-delta",
+                str(privacy_contract["delta"]),
+                "--dp-accountant",
+                str(privacy_contract["accountant"]),
+            ]
+        )
+    return shlex.join(arguments)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Export a real multi-Spark RareLink NVFLARE job")
     parser.add_argument("--topology", type=Path, required=True)
-    parser.add_argument("--strategy", choices=["fedavg", "fedprox"], default="fedavg")
+    parser.add_argument(
+        "--strategy",
+        choices=["fedavg", "fedprox", "fedavg_dpsgd"],
+        default="fedavg",
+    )
     parser.add_argument("--rounds", type=int, default=3)
     parser.add_argument("--local-epochs", type=int, default=1)
     parser.add_argument("--fedprox-mu", type=float, default=0.01)
+    parser.add_argument("--dp-noise-multiplier", type=float, default=1.2)
+    parser.add_argument("--dp-max-grad-norm", type=float, default=1.0)
+    parser.add_argument("--dp-delta", type=float, default=1e-5)
+    parser.add_argument("--dp-accountant", choices=["rdp"], default="rdp")
     parser.add_argument(
         "--site-manifest-path",
         default="/srv/rarelink/site-data/manifest.json",
@@ -47,6 +106,7 @@ def main() -> None:
         raise ValueError("rounds and local-epochs must be positive")
     if args.strategy == "fedprox" and args.fedprox_mu <= 0:
         raise ValueError("fedprox-mu must be positive for FedProx")
+    privacy_contract = build_privacy_contract(args)
 
     topology = load_physical_topology(args.topology)
     try:
@@ -59,17 +119,7 @@ def main() -> None:
     from rarelink.imaging.model import segmentation_model_config
 
     train_script = Path(__file__).with_name("nvflare_monai_client.py").resolve()
-    train_args = " ".join(
-        [
-            f"--manifest {shlex.quote(args.site_manifest_path)}",
-            f"--data-root {shlex.quote(args.site_data_root_path)}",
-            f"--dataset-receipt {shlex.quote(args.site_dataset_receipt_path)}",
-            "--require-local-only-manifest",
-            f"--epochs {args.local_epochs}",
-            f"--fedprox-mu {args.fedprox_mu if args.strategy == 'fedprox' else 0.0}",
-            "--seed 2026",
-        ]
-    )
+    train_args = build_client_train_args(args, privacy_contract)
     recipe = FedAvgRecipe(
         name=f"rarelink-physical-{args.strategy}",
         min_clients=len(topology.sites),
@@ -91,7 +141,7 @@ def main() -> None:
     args.output_dir.mkdir(parents=True, exist_ok=True)
     recipe.export(str(args.output_dir.resolve()), env=environment)
     receipt = {
-        "schema_version": "rarelink-physical-job-export-v1",
+        "schema_version": "rarelink-physical-job-export-v2",
         "exported_at_utc": datetime.now(UTC).isoformat(),
         "federation_name": topology.federation_name,
         "topology_sha256": topology_sha256(topology),
@@ -104,6 +154,7 @@ def main() -> None:
         "site_dataset_receipt_path_contract": args.site_dataset_receipt_path,
         "local_only_manifest_required": True,
         "dataset_receipt_required": True,
+        "privacy": privacy_contract,
         "patient_data_packaged": False,
         "certificates_packaged": False,
         "private_keys_packaged": False,

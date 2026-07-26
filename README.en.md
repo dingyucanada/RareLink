@@ -10,7 +10,7 @@
 
 <a href="README.md">中文</a> · <strong>English</strong>
 
-<strong>📘 <a href="outputs/RareLink-项目报告书.md">Project report (Chinese)</a></strong> · <a href="#deployment-and-quick-start">Quick start</a> · <a href="docs/physical-deployment.md">Physical Spark deployment</a> · <a href="docs/physical-identity-rbac.md">OIDC/RBAC</a> · <a href="docs/physical-site-scope.md">Site scope</a> · <a href="docs/physical-dual-approval.md">Dual approval</a> · <a href="docs/physical-audit.md">Physical audit design</a> · <a href="#engineering-evidence-and-claim-boundaries">Engineering evidence</a>
+<strong>📘 <a href="outputs/RareLink-项目报告书.md">Project report (Chinese)</a></strong> · <strong><a href="docs/p0-p1-implementation-and-acceptance.md">P0/P1 implementation and acceptance</a></strong> · <a href="#deployment-and-quick-start">Quick start</a> · <a href="docs/physical-deployment.md">Physical Spark deployment</a> · <a href="docs/physical-site-agent-reliability.md">Site Agent</a> · <a href="docs/physical-reconciliation-and-recovery.md">Recovery</a> · <a href="docs/physical-dpsgd-contract.md">Physical DP-SGD</a> · <a href="docs/oidc-jwks-lifecycle.md">OIDC/JWKS</a>
 
 <a href="https://www.nvidia.com/en-us/products/workstations/dgx-spark/"><img src="https://img.shields.io/badge/NVIDIA-DGX%20Spark-76B900?style=flat-square&logo=nvidia&logoColor=white" alt="NVIDIA DGX Spark" /></a>
 <a href="https://nvidia.github.io/NVFlare/"><img src="https://img.shields.io/badge/NVIDIA%20FLARE-2.7.2-2563EB?style=flat-square" alt="NVIDIA FLARE" /></a>
@@ -28,6 +28,7 @@
 
 - [Why RareLink](#why-rarelink)
 - [Project report (Chinese)](outputs/RareLink-项目报告书.md)
+- [P0/P1 implementation and automated acceptance](docs/p0-p1-implementation-and-acceptance.md)
 - [From a research question to an evidence package](#from-a-research-question-to-an-evidence-package)
 - [Product experience and capabilities](#product-experience-and-capabilities)
 - [System architecture and data boundaries](#system-architecture-and-data-boundaries)

@@ -7,6 +7,7 @@ import jwt
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
 
+from rarelink.api import main as api_main
 from rarelink.api.main import app
 from rarelink.config import Settings, get_settings
 from rarelink.database import get_session
@@ -222,6 +223,59 @@ def test_physical_oidc_missing_jwks_is_configuration_failure(
 
     assert response.status_code == 503
     assert "not configured" in response.json()["detail"]
+    assert token not in response.text
+
+
+def test_physical_oidc_uses_preloaded_dynamic_jwks_provider(
+    client: TestClient,
+) -> None:
+    private_key, jwk = oidc_material()
+
+    class Provider:
+        def trusted_jwks_for_token(self, _token: str) -> dict[str, Any]:
+            return {"keys": [jwk]}
+
+        def safe_status(self) -> dict[str, int | bool]:
+            return {
+                "loaded": True,
+                "fresh": True,
+                "current_key_count": 1,
+                "grace_key_count": 0,
+                "contains_jwk_material": False,
+                "contains_token": False,
+            }
+
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        _env_file=None,
+        rarelink_allow_llm=False,
+        rarelink_physical_mode="physical",
+        rarelink_physical_auth_mode="oidc",
+        rarelink_audit_hmac_key="audit-key-for-dynamic-jwks-test-0001",
+        rarelink_oidc_issuer=ISSUER,
+        rarelink_oidc_audience=AUDIENCE,
+        rarelink_oidc_jwks_uri=f"{ISSUER}/jwks",
+        rarelink_oidc_jwks_allowed_uris_json=json.dumps([f"{ISSUER}/jwks"]),
+    )
+    api_main._oidc_jwks_provider = Provider()  # type: ignore[assignment]
+    try:
+        token = oidc_token(
+            private_key,
+            subject="dynamic-site-admin",
+            roles=["site_admin"],
+        )
+        response = client.post(
+            "/api/physical/sites",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "site_id": "hospital-a",
+                "display_name": "Hospital A Spark",
+                "organization": "hospital_a",
+            },
+        )
+    finally:
+        api_main._oidc_jwks_provider = None
+
+    assert response.status_code == 201
     assert token not in response.text
 
 

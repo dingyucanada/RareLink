@@ -1,6 +1,6 @@
 # RareLink 正式工程开发计划
 
-**文档状态：** Implementing Baseline
+**文档状态：** P0/P1 Software Baseline Implemented；External Infrastructure Validation Pending
 **适用版本：** Physical Federation Control Plane v0.2 及后续版本
 **目标环境：** 三家研究机构各部署一台 NVIDIA DGX Spark，并由独立协调端运行 NVIDIA FLARE Server
 **文档责任人：** RareLink 工程团队
@@ -22,6 +22,8 @@
 6. 如何定义“完成”，避免把 UI 演示、SimEnv 或单机逻辑站点误认为真实多中心验证。
 
 ### 1.1 2026-07-26 实现检查点
+
+> **最新状态：** 本节早期检查表保留为迭代轨迹；其“尚未完成”栏不再作为当前结论。控制器对账恢复、Site Agent 可靠性、动态 JWKS、DP-SGD 物理合同、持久隐私预算、更新防护和模型发布签名已经在同日后续迭代完成。当前实施范围、测试方法和仍需医院/设备条件的项目，以 [P0/P1 实施与自动验收报告](p0-p1-implementation-and-acceptance.md) 为准。
 
 本检查点已经把 P0 控制协议从方案落实为可运行代码，但不将其表述为三院上线：
 
@@ -45,21 +47,21 @@
 | 医院 NIfTI 数据层 | 四模态、几何、标签、路径和直接标识质控；生成脱敏内容指纹 | 数据证明、篡改/外站/标识/几何负面对照 | DICOM/PACS、MONAI 缓存服务和医院数据治理审批 |
 | 数据版本合同 | 物理作业固定三站数据指纹；变化时自动失败且禁止 retry/resume | API 失效测试与训练前内容复核 | 合同修订 UI、双人复核和 PostgreSQL 事务 |
 
-当前全量回归为 **221 项测试通过**；Python lint、前端 TypeScript/Vite 生产构建和
-Git diff 完整性检查通过。这些是软件回归证据，不是医学性能或临床验证证据。
-当前 Site Agent 心跳仍使用每站独立 HMAC，NVIDIA FLARE 数据面使用证书化通信；
-操作员 API 已增加离线 OIDC JWT 验证与固定 RBAC，`physical` 模式拒绝 legacy
-token。JWKS 仍由环境 JSON 注入，尚无 discovery/HTTPS 拉取、自动缓存轮换、
-MFA 和会话吊销。目标明确的控制操作已强制 `site_ids` 全目标站点子集，但公开
-列表、audit read、组织/研究 scope 和跨组织治理仍待完成，见
+全量回归、前端生产构建、三独立进程控制面演练、PostgreSQL Compose 校验和
+Alembic 往返现由 `make p0-p1-acceptance` 统一执行并生成脱敏收据。这些是软件
+回归证据，不是医学性能或临床验证证据。当前 Site Agent 控制面心跳仍使用每站独立
+HMAC，NVIDIA FLARE 数据面使用证书化通信；操作员 API 使用 OIDC JWT 与固定
+RBAC，`physical` 模式拒绝 legacy token。OIDC 已支持严格 HTTPS JWKS 拉取、启动
+预加载、TTL 缓存和受控公钥轮换；MFA 和会话吊销仍由医院 IdP 策略提供。目标明确
+的控制操作已强制 `site_ids` 全目标站点子集，但组织/研究 scope 和跨组织治理仍待完成，见
 [物理控制面 OIDC/RBAC 文档](physical-identity-rbac.md)和
 [站点资源级授权](physical-site-scope.md)。物理合同的不同主体
 第二审批、有效期及撤销已经持久化并在 submit/retry/resume 前重新核验；审批替补
 和执行动作双审仍待完成，见[物理合同双人审批](physical-dual-approval.md)。
-物理事件链已能检测历史修改并在 `physical` 模式强制配置
-HMAC 密钥，但 SQLite pilot 不是 WORM，尚未覆盖全部拒绝操作，也没有旧 HMAC
-key-ring 轮换；多 worker 串行写入仍需 PostgreSQL。医院级 mTLS/OIDC 身份、
-PACS/FHIR、安全聚合和真实三设备运行仍按下文 P1/P2 与 Level 2 推进。完整设计、
+物理事件链已能检测历史修改并在 `physical` 模式强制配置 HMAC 密钥；PostgreSQL
+通过事务级 advisory lock 串行追加，但 SQLite pilot 不是 WORM，仍没有旧 HMAC
+key-ring 轮换。医院级 mTLS/OIDC 身份、PACS/FHIR、安全聚合和真实三设备运行仍按
+下文外部验收与 Level 2 推进。完整设计、
 API 边界与验收见[物理控制面审计文档](physical-audit.md)。
 
 ## 2. 产品范围与非目标

@@ -10,7 +10,7 @@
 
 <a href="README.en.md">English</a> · <strong>中文</strong>
 
-<strong>📘 <a href="outputs/RareLink-项目报告书.md">阅读完整项目报告书</a></strong> · <a href="#部署模型与快速开始">快速开始</a> · <a href="docs/physical-deployment.md">三物理 Spark 部署</a> · <a href="docs/physical-identity-rbac.md">OIDC/RBAC</a> · <a href="docs/physical-site-scope.md">站点授权</a> · <a href="docs/physical-dual-approval.md">双人审批</a> · <a href="docs/physical-audit.md">物理审计设计</a> · <a href="docs/postgresql-alembic.md">生产数据库</a> · <a href="#工程验证与可信边界">工程证据</a>
+<strong>📘 <a href="outputs/RareLink-项目报告书.md">阅读完整项目报告书</a></strong> · <strong><a href="docs/p0-p1-implementation-and-acceptance.md">P0/P1 实施与验收</a></strong> · <a href="#部署模型与快速开始">快速开始</a> · <a href="docs/physical-deployment.md">三物理 Spark 部署</a> · <a href="docs/physical-site-agent-reliability.md">Site Agent</a> · <a href="docs/physical-reconciliation-and-recovery.md">故障恢复</a> · <a href="docs/physical-dpsgd-contract.md">物理 DP-SGD</a> · <a href="docs/oidc-jwks-lifecycle.md">OIDC/JWKS</a> · <a href="docs/postgresql-alembic.md">生产数据库</a>
 
 <a href="https://www.nvidia.com/en-us/products/workstations/dgx-spark/"><img src="https://img.shields.io/badge/NVIDIA-DGX%20Spark-76B900?style=flat-square&logo=nvidia&logoColor=white" alt="NVIDIA DGX Spark" /></a>
 <a href="https://nvidia.github.io/NVFlare/"><img src="https://img.shields.io/badge/NVIDIA%20FLARE-2.7.2-2563EB?style=flat-square" alt="NVIDIA FLARE" /></a>
@@ -51,6 +51,7 @@
 - [工程验证与可信边界](#工程验证与可信边界)
 - [部署模型与快速开始](#部署模型与快速开始)
 - [三物理 Spark 部署](docs/physical-deployment.md)
+- [P0/P1 实施与自动验收](docs/p0-p1-implementation-and-acceptance.md)
 - [路线图、资料与责任使用](#路线图资料与责任使用)
 
 ---

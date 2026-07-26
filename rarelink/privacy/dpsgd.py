@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -17,11 +18,11 @@ class DPSGDConfig:
     grad_sample_mode: str = "ew"
 
     def validate(self) -> None:
-        if self.noise_multiplier <= 0:
+        if not math.isfinite(self.noise_multiplier) or self.noise_multiplier <= 0:
             raise ValueError("DP-SGD noise multiplier must be positive")
-        if self.max_grad_norm <= 0:
+        if not math.isfinite(self.max_grad_norm) or self.max_grad_norm <= 0:
             raise ValueError("DP-SGD max gradient norm must be positive")
-        if not 0 < self.delta < 1:
+        if not math.isfinite(self.delta) or not 0 < self.delta < 1:
             raise ValueError("DP-SGD delta must be in (0, 1)")
         if self.accountant != "rdp":
             raise ValueError("RareLink currently contracts the Opacus RDP accountant")

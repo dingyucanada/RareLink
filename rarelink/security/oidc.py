@@ -10,16 +10,19 @@ from __future__ import annotations
 import math
 import re
 import time
+from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Any, Final
+from typing import Any, Final, Protocol
 
 import jwt
 
 from rarelink.security.physical_rbac import PhysicalPrincipal, PhysicalRole
 
 ALLOWED_ALGORITHMS: Final = frozenset({"RS256", "ES256"})
-PRIVATE_JWK_FIELDS: Final = frozenset({"d", "p", "q", "dp", "dq", "qi", "oth"})
+PRIVATE_JWK_FIELDS: Final = frozenset(
+    {"d", "p", "q", "dp", "dq", "qi", "oth", "k"}
+)
 SITE_ID = re.compile(r"^[a-z][a-z0-9-]{2,62}$")
 
 
@@ -39,6 +42,10 @@ class OIDCValidationError(RuntimeError):
             "message": str(self),
             "status_code": self.status_code,
         }
+
+
+class TrustedJWKSProvider(Protocol):
+    def trusted_jwks_for_token(self, token: str) -> Mapping[str, Any]: ...
 
 
 class OIDCConfigurationError(ValueError):
@@ -236,9 +243,25 @@ def _select_jwk(token: str, jwks: dict[str, Any]) -> tuple[str, dict[str, Any]]:
 class OfflineOIDCAdapter:
     """Validate a bearer JWT against an already trusted, in-memory JWKS."""
 
-    def __init__(self, config: OIDCClaimsConfig, jwks: dict[str, Any]) -> None:
+    def __init__(
+        self,
+        config: OIDCClaimsConfig,
+        jwks: dict[str, Any] | TrustedJWKSProvider,
+    ) -> None:
         if not isinstance(jwks, dict):
-            raise TypeError("jwks must be an in-memory mapping")
+            if not callable(getattr(jwks, "trusted_jwks_for_token", None)):
+                raise TypeError(
+                    "jwks must be an in-memory mapping or trusted provider"
+                )
+            self.config = config
+            self._jwks = jwks
+            return
+        self._validate_trusted_jwks(jwks)
+        self.config = config
+        self._jwks = deepcopy(jwks)
+
+    @staticmethod
+    def _validate_trusted_jwks(jwks: Mapping[str, Any]) -> None:
         keys = jwks.get("keys")
         if (
             not isinstance(keys, list)
@@ -246,11 +269,13 @@ class OfflineOIDCAdapter:
             or len(keys) > 100
             or any(not isinstance(key, dict) for key in keys)
         ):
-            raise OIDCConfigurationError("Trusted JWKS must contain 1 to 100 public keys")
+            raise OIDCConfigurationError(
+                "Trusted JWKS must contain 1 to 100 public keys"
+            )
         if any(PRIVATE_JWK_FIELDS.intersection(key) for key in keys):
-            raise OIDCConfigurationError("Trusted JWKS must not contain private key material")
-        self.config = config
-        self._jwks = deepcopy(jwks)
+            raise OIDCConfigurationError(
+                "Trusted JWKS must not contain private key material"
+            )
 
     def authenticate(self, token: str, *, now: float | None = None) -> PhysicalPrincipal:
         if (
@@ -260,7 +285,20 @@ class OfflineOIDCAdapter:
             or token != token.strip()
         ):
             _fail("token_invalid")
-        algorithm, jwk = _select_jwk(token, self._jwks)
+        try:
+            trusted_jwks = (
+                self._jwks
+                if isinstance(self._jwks, dict)
+                else self._jwks.trusted_jwks_for_token(token)
+            )
+            if not isinstance(trusted_jwks, Mapping):
+                _fail("trusted_keys_unavailable")
+            self._validate_trusted_jwks(trusted_jwks)
+        except OIDCValidationError:
+            raise
+        except Exception:
+            _fail("trusted_keys_unavailable")
+        algorithm, jwk = _select_jwk(token, dict(trusted_jwks))
         try:
             verification_key = jwt.PyJWK.from_dict(jwk, algorithm=algorithm).key
             claims = jwt.decode(

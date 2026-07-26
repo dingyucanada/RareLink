@@ -440,6 +440,14 @@ def test_global_model_sha256_must_match_and_public_receipt_hides_path(tmp_path: 
             model,
             expected_sha256="0" * 64,
         )
+    symlink = tmp_path / "coordinator-artifacts" / "linked-global.pt"
+    symlink.symlink_to(model)
+    with pytest.raises(JobValidationError, match="regular file"):
+        controller.verify_global_model(
+            "physical-model",
+            symlink,
+            expected_sha256=expected,
+        )
     receipt = controller.verify_global_model(
         "physical-model",
         model,

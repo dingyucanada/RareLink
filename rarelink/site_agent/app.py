@@ -12,7 +12,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from rarelink.site_agent.config import SiteAgentSettings
 from rarelink.site_agent.executor import SiteTaskExecutor, build_site_executor
-from rarelink.site_agent.health import HealthProvider, collect_health
+from rarelink.site_agent.health import HealthProvider, collect_health, health_is_ready
 from rarelink.site_agent.heartbeat import to_central_heartbeat
 from rarelink.site_agent.receipt import ReceiptSigner
 from rarelink.site_agent.schemas import (
@@ -24,6 +24,7 @@ from rarelink.site_agent.schemas import (
 )
 from rarelink.site_agent.service import (
     ExecutorActionError,
+    PreflightFailedError,
     TaskConflictError,
     TaskNotFoundError,
     TaskService,
@@ -46,9 +47,14 @@ def create_site_agent_app(
     )
     signer = ReceiptSigner(settings.site_id, settings.receipt_hmac_key.get_secret_value())
     store = TaskStore(settings.state_database)
-    service = TaskService(store, signer, executor or build_site_executor(settings))
-    service.reconcile_interrupted_transitions()
     probe = health_provider or (lambda: collect_health(settings))
+    service = TaskService(
+        store,
+        signer,
+        executor or build_site_executor(settings),
+        readiness_guard=lambda: health_is_ready(probe()),
+    )
+    service.reconcile_interrupted_transitions()
     bearer = HTTPBearer(auto_error=False)
 
     def require_token(
@@ -73,6 +79,8 @@ def create_site_agent_app(
         except TaskConflictError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except ExecutorActionError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except PreflightFailedError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     @app.get("/health/live")

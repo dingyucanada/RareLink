@@ -10,6 +10,10 @@ def test_dpsgd_config_rejects_invalid_budget_parameters() -> None:
         DPSGDConfig(noise_multiplier=0).validate()
     with pytest.raises(ValueError, match="delta"):
         DPSGDConfig(delta=1).validate()
+    with pytest.raises(ValueError, match="noise multiplier"):
+        DPSGDConfig(noise_multiplier=float("nan")).validate()
+    with pytest.raises(ValueError, match="gradient norm"):
+        DPSGDConfig(max_grad_norm=float("inf")).validate()
 
 
 def test_federation_privacy_uses_max_cumulative_site_epsilon() -> None:

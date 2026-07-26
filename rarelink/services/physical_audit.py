@@ -83,6 +83,36 @@ ALLOWED_PAYLOAD_KEYS = {
         "global_model_sha256",
         "verified",
     },
+    "job.global-model-release-signed": {
+        "global_model_sha256",
+        "manifest_sha256",
+        "key_fingerprint_sha256",
+        "algorithm",
+        "attestation",
+        "released_at",
+    },
+    "job.privacy-budget-locked": {
+        "budget_id",
+        "contract_sha256",
+        "max_epsilon",
+        "delta",
+        "status",
+    },
+    "job.privacy-spend-recorded": {
+        "budget_id",
+        "spend_id",
+        "site_id",
+        "round_number",
+        "cumulative_epsilon",
+        "consumed_epsilon",
+        "remaining_epsilon",
+        "receipt_sha256",
+    },
+    "job.privacy-spend-rejected": {
+        "site_id",
+        "round_number",
+        "reason_code",
+    },
 }
 FORBIDDEN_PAYLOAD_KEYS = {
     "admin_kit",

@@ -24,3 +24,29 @@ def test_physical_control_plane_is_fail_closed_by_default() -> None:
     assert settings.rarelink_physical_mode == "disabled"
     assert settings.rarelink_physical_auth_mode == "legacy-token"
     assert settings.rarelink_audit_hmac_key == ""
+
+
+def test_oidc_jwks_refresh_settings_are_bounded_and_parse_an_exact_allowlist() -> None:
+    settings = Settings(
+        _env_file=None,
+        rarelink_oidc_jwks_uri="https://idp.hospital.example/keys",
+        rarelink_oidc_jwks_allowed_uris_json=(
+            '["https://idp.hospital.example/keys",'
+            '"https://idp.hospital.example/keys-next"]'
+        ),
+        rarelink_oidc_jwks_timeout_seconds=2.5,
+        rarelink_oidc_jwks_max_response_bytes=65536,
+        rarelink_oidc_jwks_cache_ttl_seconds=600,
+        rarelink_oidc_jwks_old_key_grace_seconds=90,
+    )
+
+    assert settings.physical_oidc_jwks_allowed_uris == frozenset(
+        {
+            "https://idp.hospital.example/keys",
+            "https://idp.hospital.example/keys-next",
+        }
+    )
+    assert settings.rarelink_oidc_jwks_timeout_seconds == 2.5
+    assert settings.rarelink_oidc_jwks_max_response_bytes == 65536
+    assert settings.rarelink_oidc_jwks_cache_ttl_seconds == 600
+    assert settings.rarelink_oidc_jwks_old_key_grace_seconds == 90

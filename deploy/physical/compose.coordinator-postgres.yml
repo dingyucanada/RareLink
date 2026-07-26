@@ -63,17 +63,24 @@ services:
       RARELINK_FL_MODE: nvflare
       RARELINK_ALLOW_LLM: "false"
       RARELINK_DEMO_CACHE: "false"
-      # HMAC values and the offline trusted JWKS are required at runtime but
-      # deliberately absent from source control.
+      # HMAC values and signing keys are required at runtime but deliberately
+      # absent from source control.
       RARELINK_PHYSICAL_SITE_SECRETS: "${RARELINK_PHYSICAL_SITE_SECRETS:?Load per-site heartbeat keys from a secret manager}"
       RARELINK_AUDIT_HMAC_KEY: "${RARELINK_AUDIT_HMAC_KEY:?Load the audit HMAC key from a secret manager}"
       RARELINK_OIDC_ISSUER: "${RARELINK_OIDC_ISSUER:?Set the pinned hospital OIDC issuer}"
       RARELINK_OIDC_AUDIENCE: "${RARELINK_OIDC_AUDIENCE:?Set the RareLink OIDC audience}"
-      RARELINK_OIDC_JWKS_JSON: "${RARELINK_OIDC_JWKS_JSON:?Load the pinned trusted JWKS JSON}"
+      RARELINK_OIDC_JWKS_URI: "${RARELINK_OIDC_JWKS_URI:?Set the exact approved HTTPS JWKS URI}"
+      RARELINK_OIDC_JWKS_ALLOWED_URIS_JSON: "${RARELINK_OIDC_JWKS_ALLOWED_URIS_JSON:?Set the exact JWKS URI allow-list}"
+      RARELINK_OIDC_JWKS_TIMEOUT_SECONDS: "${RARELINK_OIDC_JWKS_TIMEOUT_SECONDS:?Set the bounded JWKS timeout}"
+      RARELINK_OIDC_JWKS_MAX_RESPONSE_BYTES: "${RARELINK_OIDC_JWKS_MAX_RESPONSE_BYTES:?Set the bounded JWKS response size}"
+      RARELINK_OIDC_JWKS_CACHE_TTL_SECONDS: "${RARELINK_OIDC_JWKS_CACHE_TTL_SECONDS:?Set the reviewed JWKS cache TTL}"
+      RARELINK_OIDC_JWKS_OLD_KEY_GRACE_SECONDS: "${RARELINK_OIDC_JWKS_OLD_KEY_GRACE_SECONDS:?Set the reviewed key-rotation grace}"
+      RARELINK_OIDC_JWKS_JSON: ""
       RARELINK_OIDC_ROLES_CLAIM: "${RARELINK_OIDC_ROLES_CLAIM:?Set the reviewed roles claim}"
       RARELINK_OIDC_ORGANIZATION_CLAIM: "${RARELINK_OIDC_ORGANIZATION_CLAIM:?Set the reviewed organization claim}"
       RARELINK_OIDC_SITES_CLAIM: "${RARELINK_OIDC_SITES_CLAIM:?Set the reviewed site scope claim}"
       RARELINK_NVFLARE_ADMIN_KIT: /run/rarelink/nvflare-admin-kit
+      RARELINK_MODEL_SIGNING_PRIVATE_KEY: /run/rarelink/model-signing-private.pem
       CORS_ORIGINS: "${RARELINK_CORS_ORIGINS:?Set the exact HTTPS control-console origin}"
       PYTHONDONTWRITEBYTECODE: "1"
     volumes:
@@ -85,6 +92,12 @@ services:
       - type: bind
         source: "${RARELINK_NVFLARE_ADMIN_KIT_HOST_PATH:?Set the protected NVFLARE Admin Kit host path}"
         target: /run/rarelink/nvflare-admin-kit
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: "${RARELINK_MODEL_SIGNING_PRIVATE_KEY_HOST_PATH:?Set the protected Ed25519 signing key host path}"
+        target: /run/rarelink/model-signing-private.pem
         read_only: true
         bind:
           create_host_path: false

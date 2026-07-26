@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from pathlib import Path
 
@@ -11,6 +12,8 @@ from rarelink.site_agent.schemas import TaskRecord
 
 class TaskStore:
     def __init__(self, path: Path) -> None:
+        if path.is_symlink():
+            raise ValueError("Site task state database must not be a symbolic link")
         self.path = path
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as connection:
@@ -24,6 +27,7 @@ class TaskStore:
                 )
                 """
             )
+        os.chmod(self.path, 0o600)
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.path, timeout=10)

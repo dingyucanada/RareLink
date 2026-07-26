@@ -33,6 +33,9 @@ class DisabledExecutor:
     def recover(self, task: TaskRecord) -> str | None:
         self._unavailable()
 
+    def is_running(self, task: TaskRecord) -> bool:
+        return False
+
 
 CommandRunner = Callable[[Sequence[str]], subprocess.CompletedProcess[str]]
 
@@ -77,6 +80,10 @@ class SystemdServiceExecutor:
 
     def recover(self, task: TaskRecord) -> str:
         return self._action("restart")
+
+    def is_running(self, task: TaskRecord) -> bool:
+        result = self._runner(("systemctl", "is-active", "--quiet", self.service_name))
+        return result.returncode == 0
 
 
 def build_site_executor(settings: SiteAgentSettings) -> SiteTaskExecutor:

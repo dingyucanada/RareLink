@@ -246,6 +246,7 @@ def main() -> None:
     parser.add_argument("--dp-noise-multiplier", type=float, default=1.2)
     parser.add_argument("--dp-max-grad-norm", type=float, default=1.0)
     parser.add_argument("--dp-delta", type=float, default=1e-5)
+    parser.add_argument("--dp-accountant", choices=["rdp"], default="rdp")
     args = parser.parse_args()
 
     set_determinism(args.seed)
@@ -292,6 +293,7 @@ def main() -> None:
             noise_multiplier=args.dp_noise_multiplier,
             max_grad_norm=args.dp_max_grad_norm,
             delta=args.dp_delta,
+            accountant=args.dp_accountant,
         )
         privacy_config.validate()
         ModuleValidator.validate(model, strict=True)
@@ -339,7 +341,7 @@ def main() -> None:
         if privacy_engine:
             privacy = {
                 "mechanism": "opacus_sample_level_dp_sgd",
-                "accountant": "rdp",
+                "accountant": privacy_config.accountant,
                 "epsilon": round(float(privacy_engine.get_epsilon(args.dp_delta)), 6),
                 "delta": args.dp_delta,
                 "noise_multiplier": args.dp_noise_multiplier,

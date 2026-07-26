@@ -10,7 +10,10 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
+
+from rarelink.site_agent.forwarder import BackoffPolicy, HeartbeatOutbox
 
 
 @dataclass(frozen=True)
@@ -101,45 +104,149 @@ def forward_once(
     }
 
 
+def send_envelope(
+    *,
+    envelope: dict[str, Any],
+    coordinator_url: str,
+    demo_token: str,
+    timeout: float,
+) -> dict[str, Any]:
+    prepared = build_forward_request(envelope, coordinator_url, demo_token)
+    request = urllib.request.Request(
+        prepared.url,
+        data=prepared.body,
+        method="POST",
+        headers=prepared.headers,
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
+        result = json.loads(response.read())
+    if not isinstance(result, dict):
+        raise ValueError("Coordinator heartbeat response must be a JSON object")
+    return result
+
+
+def reliable_forward_once(
+    *,
+    outbox: HeartbeatOutbox,
+    agent_url: str,
+    coordinator_url: str,
+    api_token: str,
+    demo_token: str,
+    timeout: float,
+    now: float,
+) -> dict[str, Any]:
+    state = outbox.state()
+    if state.next_attempt_at > now:
+        return {
+            "forwarded": False,
+            "deferred": True,
+            "retry_after_seconds": round(state.next_attempt_at - now, 3),
+            "contains_patient_data": False,
+            "secret_exported": False,
+        }
+    envelope = state.pending_envelope
+    if envelope is not None:
+        timestamp = envelope.get("timestamp")
+        if (
+            not isinstance(timestamp, (int, float))
+            or now - float(timestamp) >= outbox.policy.maximum_envelope_age_seconds
+        ):
+            outbox.discard_stale(str(envelope.get("heartbeat_id", "")))
+            envelope = None
+    try:
+        if envelope is None:
+            envelope = fetch_envelope(agent_url, api_token, timeout)
+            envelope = outbox.enqueue(envelope)
+            if envelope is None:
+                return {
+                    "forwarded": False,
+                    "duplicate_suppressed": True,
+                    "contains_patient_data": False,
+                    "secret_exported": False,
+                }
+        result = send_envelope(
+            envelope=envelope,
+            coordinator_url=coordinator_url,
+            demo_token=demo_token,
+            timeout=timeout,
+        )
+        outbox.record_accepted(str(envelope["heartbeat_id"]))
+        return {
+            "forwarded": True,
+            "site_id": result.get("site_id"),
+            "status": result.get("status"),
+            "contains_patient_data": False,
+            "secret_exported": False,
+        }
+    except urllib.error.HTTPError as exc:
+        if exc.code == 409 and envelope is not None:
+            outbox.record_accepted(str(envelope["heartbeat_id"]))
+            return {
+                "forwarded": True,
+                "duplicate_already_accepted": True,
+                "contains_patient_data": False,
+                "secret_exported": False,
+            }
+        delay = outbox.record_failure(now)
+        return {
+            "forwarded": False,
+            "error_type": type(exc).__name__,
+            "retry_after_seconds": delay,
+            "contains_patient_data": False,
+            "secret_exported": False,
+        }
+    except (OSError, ValueError, urllib.error.URLError) as exc:
+        delay = outbox.record_failure(now)
+        return {
+            "forwarded": False,
+            "error_type": type(exc).__name__,
+            "retry_after_seconds": delay,
+            "contains_patient_data": False,
+            "secret_exported": False,
+        }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Forward signed RareLink Site Agent heartbeats")
     parser.add_argument("--agent-url", default="http://127.0.0.1:9100")
     parser.add_argument("--coordinator-url", required=True)
     parser.add_argument("--interval", type=float, default=0)
     parser.add_argument("--timeout", type=float, default=10)
+    parser.add_argument(
+        "--state-database",
+        type=Path,
+        default=Path("/var/lib/rarelink/site-agent/heartbeat-forwarder.sqlite3"),
+    )
+    parser.add_argument("--maximum-backoff", type=float, default=300)
+    parser.add_argument("--maximum-envelope-age", type=float, default=240)
     args = parser.parse_args()
     api_token = os.environ.get("RARELINK_SITE_AGENT_API_TOKEN", "")
     if not api_token:
         raise RuntimeError("RARELINK_SITE_AGENT_API_TOKEN is required")
     demo_token = os.environ.get("RARELINK_DEMO_ACCESS_TOKEN", "")
+    outbox = HeartbeatOutbox(
+        args.state_database,
+        BackoffPolicy(
+            base_seconds=max(5, args.interval or 5),
+            maximum_seconds=max(args.maximum_backoff, max(5, args.interval or 5)),
+            maximum_envelope_age_seconds=args.maximum_envelope_age,
+        ),
+    )
 
     while True:
-        try:
-            result = forward_once(
-                agent_url=args.agent_url,
-                coordinator_url=args.coordinator_url,
-                api_token=api_token,
-                demo_token=demo_token,
-                timeout=args.timeout,
-            )
-            print(json.dumps(result, ensure_ascii=False), flush=True)
-        except (OSError, ValueError, urllib.error.URLError) as exc:
-            print(
-                json.dumps(
-                    {
-                        "forwarded": False,
-                        "error_type": type(exc).__name__,
-                        "contains_patient_data": False,
-                        "secret_exported": False,
-                    }
-                ),
-                flush=True,
-            )
-            if not args.interval:
-                raise
+        result = reliable_forward_once(
+            outbox=outbox,
+            agent_url=args.agent_url,
+            coordinator_url=args.coordinator_url,
+            api_token=api_token,
+            demo_token=demo_token,
+            timeout=args.timeout,
+            now=time.time(),
+        )
+        print(json.dumps(result, ensure_ascii=False), flush=True)
         if not args.interval:
             break
-        time.sleep(max(5, args.interval))
+        time.sleep(max(5, float(result.get("retry_after_seconds", args.interval))))
 
 
 if __name__ == "__main__":

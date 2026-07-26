@@ -1,8 +1,11 @@
 import json
 import time
 from datetime import UTC, datetime, timedelta
+from hashlib import sha256
 from pathlib import Path
 
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from fastapi.testclient import TestClient
 
 from rarelink.api import main as api_main
@@ -408,6 +411,103 @@ def test_physical_job_is_invalidated_when_a_site_dataset_version_changes(
     assert jobs[0]["error"] == "DATASET_VERSION_CHANGED"
 
 
+def test_physical_privacy_budget_blocks_excess_and_exports_no_gradients(
+    client: TestClient,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        _env_file=None,
+        rarelink_allow_llm=False,
+        rarelink_physical_mode="isolated-integration",
+        rarelink_physical_operator_token="operator-secret",
+        rarelink_physical_site_secrets=json.dumps(SITE_SECRETS),
+    )
+    register_sites(client)
+    ready_sites(client)
+    created = client.post(
+        "/api/physical/jobs",
+        headers=OPERATOR_HEADERS,
+        json={
+            "strategy": "fedavg",
+            "expected_sites": ["hospital-a", "hospital-b", "hospital-c"],
+            "total_rounds": 5,
+            "local_epochs": 1,
+            "job_directory": str(exported_job(tmp_path)),
+        },
+    )
+    assert created.status_code == 201
+    job_id = created.json()["id"]
+    budget = client.post(
+        f"/api/physical/jobs/{job_id}/privacy-budget",
+        headers=OPERATOR_HEADERS,
+        json={"max_epsilon": 2.0, "delta": 1e-5},
+    )
+    assert budget.status_code == 201
+    assert budget.json()["remaining_epsilon"] == 2.0
+
+    def runner(_command):  # type: ignore[no-untyped-def]
+        return CommandResult(0, '{"job_id":"flare-private-001"}')
+
+    monkeypatch.setattr(
+        api_main,
+        "build_physical_controller",
+        lambda session, _config: (
+            PhysicalFederationController(
+                NvflareCliAdapter(runner=runner),
+                SqlPhysicalJobStore(session),
+            ),
+            tmp_path / "admin-kit",
+        ),
+    )
+    submitted = client.post(
+        f"/api/physical/jobs/{job_id}:submit",
+        headers=OPERATOR_HEADERS,
+        json={
+            "note": "Approved privacy-accounted run",
+            "submit_token": "privacy-submit-token-001",
+        },
+    )
+    assert submitted.status_code == 200
+
+    accepted = client.post(
+        f"/api/physical/jobs/{job_id}/privacy-spends",
+        headers=OPERATOR_HEADERS,
+        json={
+            "site_id": "hospital-a",
+            "round_number": 1,
+            "cumulative_epsilon": 1.2,
+            "delta": 1e-5,
+            "accountant": "rdp",
+            "optimizer_steps": 12,
+        },
+    )
+    assert accepted.status_code == 201
+    assert accepted.json()["consumed_epsilon"] == 1.2
+    assert accepted.json()["raw_gradient_exported"] is False
+
+    exceeded = client.post(
+        f"/api/physical/jobs/{job_id}/privacy-spends",
+        headers=OPERATOR_HEADERS,
+        json={
+            "site_id": "hospital-b",
+            "round_number": 1,
+            "cumulative_epsilon": 2.1,
+            "delta": 1e-5,
+            "accountant": "rdp",
+            "optimizer_steps": 12,
+        },
+    )
+    assert exceeded.status_code == 409
+    assert "budget exceeded" in exceeded.json()["detail"]
+
+    view = client.get(f"/api/physical/jobs/{job_id}/privacy-budget")
+    assert view.status_code == 200
+    assert view.json()["status"] == "EXHAUSTED"
+    assert view.json()["patient_data_exported"] is False
+    assert len(view.json()["spends"]) == 1
+
+
 def test_model_verification_route_never_exposes_coordinator_path(
     client: TestClient,
     tmp_path: Path,
@@ -478,3 +578,81 @@ def test_model_verification_route_never_exposes_coordinator_path(
     assert response.status_code == 200
     assert response.json()["verified"] is True
     assert str(model.parent) not in response.text
+
+
+def test_model_release_is_signed_idempotently_without_exporting_key_path(
+    client: TestClient,
+    tmp_path: Path,
+) -> None:
+    model = tmp_path / "coordinator-models" / "global-model.pt"
+    model.parent.mkdir()
+    model.write_bytes(b"verified-global-model")
+    model_sha256 = sha256(model.read_bytes()).hexdigest()
+    private_key = Ed25519PrivateKey.generate()
+    private_key_path = tmp_path / "managed-secrets" / "model-signing.pem"
+    private_key_path.parent.mkdir()
+    private_key_path.write_bytes(
+        private_key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        )
+    )
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        _env_file=None,
+        rarelink_allow_llm=False,
+        rarelink_physical_mode="isolated-integration",
+        rarelink_physical_operator_token="operator-secret",
+        rarelink_model_signing_private_key=private_key_path,
+    )
+    session_provider = app.dependency_overrides[get_session]()
+    session = next(session_provider)
+    try:
+        session.add(
+            PhysicalFederationJob(
+                id="physical-job-release-001",
+                external_job_id="flare-job-release-001",
+                strategy="fedavg",
+                status="COMPLETED",
+                contract_sha256=sha256(b"locked-contract").hexdigest(),
+                bundle_sha256=sha256(b"locked-bundle").hexdigest(),
+                expected_sites_json=json.dumps(
+                    ["hospital-a", "hospital-b", "hospital-c"]
+                ),
+                total_rounds=5,
+                local_epochs=1,
+                current_round=5,
+                received_updates=3,
+                quorum_required=3,
+                job_directory=str(tmp_path / "coordinator-job"),
+                global_model_path=str(model),
+                global_model_sha256=model_sha256,
+            )
+        )
+        session.commit()
+    finally:
+        session.close()
+        session_provider.close()
+
+    request = {
+        "attestation": "GLOBAL_MODEL_HASH_AND_RELEASE_REVIEWED",
+        "expected_model_sha256": model_sha256,
+    }
+    first = client.post(
+        "/api/physical/jobs/physical-job-release-001:sign-model-release",
+        headers=OPERATOR_HEADERS,
+        json=request,
+    )
+    second = client.post(
+        "/api/physical/jobs/physical-job-release-001:sign-model-release",
+        headers=OPERATOR_HEADERS,
+        json=request,
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()["signature"] == second.json()["signature"]
+    assert first.json()["verified"] is True
+    assert first.json()["private_key_exported"] is False
+    assert str(private_key_path) not in first.text
+    assert str(model) not in first.text

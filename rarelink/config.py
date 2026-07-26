@@ -56,9 +56,32 @@ class Settings(BaseSettings):
     rarelink_oidc_issuer: str = ""
     rarelink_oidc_audience: str = ""
     rarelink_oidc_jwks_json: str = ""
+    rarelink_oidc_jwks_uri: str = ""
+    rarelink_oidc_jwks_allowed_uris_json: str = "[]"
+    rarelink_oidc_jwks_timeout_seconds: float = Field(
+        default=3.0,
+        ge=0.1,
+        le=30,
+    )
+    rarelink_oidc_jwks_max_response_bytes: int = Field(
+        default=256 * 1024,
+        ge=1024,
+        le=4 * 1024 * 1024,
+    )
+    rarelink_oidc_jwks_cache_ttl_seconds: int = Field(
+        default=300,
+        ge=1,
+        le=86400,
+    )
+    rarelink_oidc_jwks_old_key_grace_seconds: int = Field(
+        default=120,
+        ge=0,
+        le=3600,
+    )
     rarelink_oidc_roles_claim: str = "roles"
     rarelink_oidc_organization_claim: str = "organization"
     rarelink_oidc_sites_claim: str = "site_ids"
+    rarelink_model_signing_private_key: Path | None = None
     rarelink_nvflare_admin_kit: str = ""
     rarelink_nvflare_executable: str = "nvflare"
     cors_origins: str = "http://localhost:5173"
@@ -87,6 +110,24 @@ class Settings(BaseSettings):
         if not isinstance(value, dict) or not isinstance(value.get("keys"), list):
             raise ValueError("RARELINK_OIDC_JWKS_JSON must be a JWKS object")
         return value
+
+    @property
+    def physical_oidc_jwks_allowed_uris(self) -> frozenset[str]:
+        value = json.loads(self.rarelink_oidc_jwks_allowed_uris_json)
+        if (
+            not isinstance(value, list)
+            or any(
+                not isinstance(uri, str)
+                or not uri
+                or uri != uri.strip()
+                for uri in value
+            )
+            or len(value) != len(set(value))
+        ):
+            raise ValueError(
+                "RARELINK_OIDC_JWKS_ALLOWED_URIS_JSON must be a unique JSON string list"
+            )
+        return frozenset(value)
 
 
 @lru_cache

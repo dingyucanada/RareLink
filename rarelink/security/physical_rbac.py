@@ -33,6 +33,8 @@ class PhysicalPermission(StrEnum):
     JOB_ABORT = "physical.job.abort"
     JOB_RETRY_RESUME = "physical.job.retry_resume"
     MODEL_VERIFY = "physical.model.verify"
+    PRIVACY_BUDGET_MANAGE = "physical.privacy_budget.manage"
+    PRIVACY_SPEND_REPORT = "physical.privacy_spend.report"
     AUDIT_READ = "physical.audit.read"
 
 
@@ -48,6 +50,7 @@ _ROLE_PERMISSIONS_SOURCE: Final[dict[PhysicalRole, frozenset[PhysicalPermission]
             PhysicalPermission.JOB_ABORT,
             PhysicalPermission.JOB_RETRY_RESUME,
             PhysicalPermission.MODEL_VERIFY,
+            PhysicalPermission.PRIVACY_BUDGET_MANAGE,
             PhysicalPermission.AUDIT_READ,
         }
     ),
@@ -58,6 +61,7 @@ _ROLE_PERMISSIONS_SOURCE: Final[dict[PhysicalRole, frozenset[PhysicalPermission]
             PhysicalPermission.JOB_SYNC,
             PhysicalPermission.JOB_ABORT,
             PhysicalPermission.JOB_RETRY_RESUME,
+            PhysicalPermission.PRIVACY_SPEND_REPORT,
             PhysicalPermission.AUDIT_READ,
         }
     ),
@@ -66,6 +70,7 @@ _ROLE_PERMISSIONS_SOURCE: Final[dict[PhysicalRole, frozenset[PhysicalPermission]
             PhysicalPermission.CONTROL_STATE_READ,
             PhysicalPermission.CONTRACT_APPROVE,
             PhysicalPermission.CONTRACT_REVOKE,
+            PhysicalPermission.PRIVACY_BUDGET_MANAGE,
             PhysicalPermission.AUDIT_READ,
         }
     ),
@@ -74,6 +79,7 @@ _ROLE_PERMISSIONS_SOURCE: Final[dict[PhysicalRole, frozenset[PhysicalPermission]
             PhysicalPermission.CONTROL_STATE_READ,
             PhysicalPermission.CONTRACT_APPROVE,
             PhysicalPermission.MODEL_VERIFY,
+            PhysicalPermission.PRIVACY_BUDGET_MANAGE,
             PhysicalPermission.AUDIT_READ,
         }
     ),
@@ -85,6 +91,8 @@ _ROLE_PERMISSIONS_SOURCE: Final[dict[PhysicalRole, frozenset[PhysicalPermission]
             PhysicalPermission.CONTRACT_REVOKE,
             PhysicalPermission.JOB_SYNC,
             PhysicalPermission.JOB_ABORT,
+            PhysicalPermission.PRIVACY_BUDGET_MANAGE,
+            PhysicalPermission.PRIVACY_SPEND_REPORT,
             PhysicalPermission.AUDIT_READ,
         }
     ),

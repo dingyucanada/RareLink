@@ -35,7 +35,10 @@ from rarelink.domain import (
     PhysicalJobApproval,
     PhysicalJobCreate,
     PhysicalJobStatus,
+    PhysicalModelReleaseApproval,
     PhysicalModelVerification,
+    PhysicalPrivacyBudgetCreate,
+    PhysicalPrivacySpendCreate,
     PhysicalSecondApproval,
     PhysicalSiteCreate,
     PhysicalSiteHeartbeat,
@@ -54,9 +57,16 @@ from rarelink.models import (
     PhysicalHeartbeatReceipt,
     PhysicalJobApprovalRecord,
     PhysicalJobApprovalRevocation,
+    PhysicalPrivacyBudget,
+    PhysicalPrivacySpend,
     PhysicalSite,
     Study,
     TrainingJob,
+)
+from rarelink.privacy import (
+    PrivacyBudgetError,
+    PrivacySpendInput,
+    SqlPrivacyBudgetLedger,
 )
 from rarelink.security import (
     OfflineOIDCAdapter,
@@ -72,6 +82,15 @@ from rarelink.security import (
     verify_heartbeat_signature,
 )
 from rarelink.security.http_boundary import validate_physical_cors
+from rarelink.security.jwks import (
+    TrustedJWKSCache,
+    build_preloaded_jwks_provider,
+)
+from rarelink.security.model_signing import (
+    ModelReleaseManifest,
+    ModelSigningError,
+    sign_model_release,
+)
 from rarelink.security.physical_rbac import PhysicalAccessControlError
 from rarelink.services.agents import build_research_agent
 from rarelink.services.federation import build_federation_runner
@@ -94,6 +113,7 @@ from rarelink.services.physical_controller import (
     NvflareCliAdapter,
     PhysicalControllerError,
     PhysicalFederationController,
+    sha256_file,
     validate_exported_job,
 )
 from rarelink.services.physical_store import SqlPhysicalJobStore
@@ -101,13 +121,25 @@ from rarelink.services.policy import sanitize_site_aggregate
 from rarelink.services.training_jobs import execute_training_job, recover_interrupted_jobs
 from rarelink.services.workflow import InvalidTransition, transition
 
+_oidc_jwks_provider: TrustedJWKSCache | None = None
+
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    global _oidc_jwks_provider
     validate_physical_cors(settings)
     create_db_and_tables()
+    if (
+        settings.rarelink_physical_mode == "physical"
+        and settings.rarelink_physical_auth_mode == "oidc"
+        and settings.rarelink_oidc_jwks_uri
+    ):
+        _oidc_jwks_provider = build_preloaded_jwks_provider(settings)
     recover_interrupted_jobs()
-    yield
+    try:
+        yield
+    finally:
+        _oidc_jwks_provider = None
 
 
 app = FastAPI(
@@ -347,12 +379,57 @@ def physical_job_view(job: PhysicalFederationJob, config: Settings) -> dict[str,
         "approval_expires_at": approval_expires_at,
         "approval_revoked_at": as_utc(job.second_approval_revoked_at),
         "global_model_sha256": job.global_model_sha256,
+        "model_release": (
+            {
+                "manifest_sha256": job.model_release_manifest_sha256,
+                "key_fingerprint_sha256": job.model_signing_key_fingerprint_sha256,
+                "signature": job.global_model_signature,
+                "released_at": as_utc(job.model_released_at),
+                "algorithm": "Ed25519",
+            }
+            if job.global_model_signature
+            else None
+        ),
         "metrics": as_json(job.metrics_json),
         "error": job.error,
         "created_at": job.created_at,
         "updated_at": job.updated_at,
         "completed_at": job.completed_at,
         "contains_patient_data": False,
+    }
+
+
+def physical_privacy_budget_view(
+    budget: PhysicalPrivacyBudget,
+    spends: list[PhysicalPrivacySpend],
+) -> dict[str, Any]:
+    return {
+        "schema_version": "rarelink-privacy-budget-view-v1",
+        "budget_id": budget.id,
+        "job_id": budget.job_id,
+        "contract_sha256": budget.contract_sha256,
+        "max_epsilon": budget.max_epsilon,
+        "delta": budget.delta,
+        "consumed_epsilon": budget.consumed_epsilon,
+        "remaining_epsilon": max(0.0, budget.max_epsilon - budget.consumed_epsilon),
+        "status": budget.status,
+        "ledger_head_sha256": budget.ledger_head_sha256,
+        "spends": [
+            {
+                "spend_id": spend.id,
+                "site_id": spend.site_id,
+                "round_number": spend.round_number,
+                "cumulative_epsilon": spend.cumulative_epsilon,
+                "delta": spend.delta,
+                "accountant": spend.accountant,
+                "optimizer_steps": spend.optimizer_steps,
+                "receipt_sha256": spend.receipt_sha256,
+                "created_at": spend.created_at,
+            }
+            for spend in spends
+        ],
+        "raw_gradient_exported": False,
+        "patient_data_exported": False,
     }
 
 
@@ -434,9 +511,14 @@ def require_physical_principal(
                 organization_claim=config.rarelink_oidc_organization_claim,
                 site_claim=config.rarelink_oidc_sites_claim,
             )
-            trusted_jwks = config.physical_oidc_jwks
-            if not trusted_jwks.get("keys"):
-                raise ValueError("OIDC JWKS is empty")
+            if config.rarelink_oidc_jwks_uri:
+                if _oidc_jwks_provider is None:
+                    raise ValueError("OIDC signing-key provider is unavailable")
+                trusted_jwks = _oidc_jwks_provider
+            else:
+                trusted_jwks = config.physical_oidc_jwks
+                if not trusted_jwks.get("keys"):
+                    raise ValueError("OIDC JWKS is empty")
             principal = OfflineOIDCAdapter(
                 oidc_config,
                 trusted_jwks,
@@ -554,6 +636,7 @@ def require_current_physical_contract(
         verify_contract_unchanged(job, job.contract_sha256)
     except PhysicalApprovalServiceError as exc:
         raise physical_approval_error(exc) from exc
+    require_active_physical_privacy_budget(session, job)
     approval_count = int(bool(job.proposed_by)) + int(bool(job.second_approved_by))
     if config.rarelink_physical_mode != "physical":
         return approval_count
@@ -586,6 +669,42 @@ def require_current_physical_contract(
             detail="Physical mode requires a current distinct second contract approval",
         )
     return 2
+
+
+def require_active_physical_privacy_budget(
+    session: Session,
+    job: PhysicalFederationJob,
+) -> PhysicalPrivacyBudget | None:
+    """Require the immutable DP budget and exported Opacus contract when applicable."""
+    if job.strategy != "fedavg_dpsgd":
+        return None
+    budget = session.exec(
+        select(PhysicalPrivacyBudget).where(PhysicalPrivacyBudget.job_id == job.id)
+    ).first()
+    if (
+        budget is None
+        or budget.contract_sha256 != job.contract_sha256
+        or budget.status != "ACTIVE"
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="DP-SGD physical jobs require an active locked privacy budget",
+        )
+    try:
+        bundle = validate_exported_job(Path(job.job_directory))
+    except PhysicalControllerError as exc:
+        raise physical_controller_error(exc) from exc
+    privacy_contract = bundle.privacy_contract
+    if (
+        bundle.bundle_sha256 != job.bundle_sha256
+        or privacy_contract.get("accountant") != "rdp"
+        or privacy_contract.get("delta") != budget.delta
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="DP-SGD bundle or privacy parameters changed after contract locking",
+        )
+    return budget
 
 
 def store_agent_artifact(
@@ -656,12 +775,38 @@ def readiness(
                 "database": "unavailable_or_stale",
             },
         )
-    return {
+    response = {
         "status": "ready",
         "service": "rarelink",
         "database": backend,
         "schema_revision": revision,
     }
+    if (
+        config.rarelink_physical_mode == "physical"
+        and config.rarelink_physical_auth_mode == "oidc"
+        and config.rarelink_oidc_jwks_uri
+    ):
+        if _oidc_jwks_provider is None:
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "status": "not_ready",
+                    "service": "rarelink",
+                    "oidc_signing_keys": "unavailable",
+                },
+            )
+        oidc_status = _oidc_jwks_provider.safe_status()
+        if not oidc_status["loaded"] or not oidc_status["fresh"]:
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "status": "not_ready",
+                    "service": "rarelink",
+                    "oidc_signing_keys": "unavailable",
+                },
+            )
+        response["oidc_signing_keys"] = "ready"
+    return response
 
 
 @app.get("/api/system/capabilities", response_model=CapabilityRead)
@@ -1011,6 +1156,175 @@ def list_physical_jobs(
     return [physical_job_view(job, config) for job in jobs]
 
 
+@app.post("/api/physical/jobs/{job_id}/privacy-budget", status_code=201)
+def create_physical_privacy_budget(
+    job_id: str,
+    payload: PhysicalPrivacyBudgetCreate,
+    request: Request,
+    session: SessionDep,
+    config: SettingsDep,
+) -> dict[str, Any]:
+    principal = require_physical_principal(
+        request,
+        config,
+        PhysicalPermission.PRIVACY_BUDGET_MANAGE,
+    )
+    job = session.get(PhysicalFederationJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Physical job not found")
+    require_physical_job_scope(principal, job, config)
+    if job.status != PhysicalJobStatus.APPROVAL_PENDING:
+        raise HTTPException(
+            status_code=409,
+            detail="Privacy budget must be locked before physical job submission",
+        )
+    if not job.contract_sha256:
+        raise HTTPException(status_code=409, detail="Physical contract is not locked")
+    try:
+        receipt = SqlPrivacyBudgetLedger(session).create(
+            job_id=job.id,
+            contract_sha256=job.contract_sha256,
+            max_epsilon=payload.max_epsilon,
+            delta=payload.delta,
+        )
+    except PrivacyBudgetError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    append_physical_event(
+        session,
+        action="job.privacy-budget-locked",
+        actor=principal.subject_id,
+        resource_type="physical-job",
+        resource_id=job.id,
+        outcome="accepted",
+        payload={
+            "budget_id": receipt["budget_id"],
+            "contract_sha256": receipt["contract_sha256"],
+            "max_epsilon": receipt["max_epsilon"],
+            "delta": receipt["delta"],
+            "status": receipt["status"],
+        },
+        hmac_key=config.rarelink_audit_hmac_key,
+    )
+    session.commit()
+    return receipt
+
+
+@app.get("/api/physical/jobs/{job_id}/privacy-budget")
+def get_physical_privacy_budget(
+    job_id: str,
+    request: Request,
+    session: SessionDep,
+    config: SettingsDep,
+) -> dict[str, Any]:
+    job = session.get(PhysicalFederationJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Physical job not found")
+    principal = physical_read_principal(
+        request,
+        config,
+        PhysicalPermission.CONTROL_STATE_READ,
+    )
+    if principal is not None:
+        require_physical_job_scope(principal, job, config)
+    budget = session.exec(
+        select(PhysicalPrivacyBudget).where(PhysicalPrivacyBudget.job_id == job_id)
+    ).first()
+    if not budget:
+        raise HTTPException(status_code=404, detail="Physical privacy budget not found")
+    spends = list(
+        session.exec(
+            select(PhysicalPrivacySpend)
+            .where(PhysicalPrivacySpend.budget_id == budget.id)
+            .order_by(PhysicalPrivacySpend.created_at)
+        ).all()
+    )
+    return physical_privacy_budget_view(budget, spends)
+
+
+@app.post("/api/physical/jobs/{job_id}/privacy-spends", status_code=201)
+def record_physical_privacy_spend(
+    job_id: str,
+    payload: PhysicalPrivacySpendCreate,
+    request: Request,
+    session: SessionDep,
+    config: SettingsDep,
+) -> dict[str, Any]:
+    principal = require_physical_principal(
+        request,
+        config,
+        PhysicalPermission.PRIVACY_SPEND_REPORT,
+    )
+    job = session.get(PhysicalFederationJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Physical job not found")
+    expected_sites = as_json(job.expected_sites_json, [])
+    if payload.site_id not in expected_sites:
+        raise HTTPException(
+            status_code=403,
+            detail="Privacy receipt site is outside the locked federation contract",
+        )
+    require_physical_site_scope(principal, [payload.site_id], config)
+    if job.status not in {
+        PhysicalJobStatus.SUBMITTED,
+        PhysicalJobStatus.WAITING_FOR_SITES,
+        PhysicalJobStatus.RUNNING,
+    }:
+        raise HTTPException(
+            status_code=409,
+            detail="Privacy spend is accepted only while a physical job is active",
+        )
+    try:
+        receipt = SqlPrivacyBudgetLedger(session).record(
+            PrivacySpendInput(
+                job_id=job.id,
+                site_id=payload.site_id,
+                round_number=payload.round_number,
+                cumulative_epsilon=payload.cumulative_epsilon,
+                delta=payload.delta,
+                accountant=payload.accountant,
+                optimizer_steps=payload.optimizer_steps,
+            )
+        )
+    except PrivacyBudgetError as exc:
+        append_physical_event(
+            session,
+            action="job.privacy-spend-rejected",
+            actor=principal.subject_id,
+            resource_type="physical-job",
+            resource_id=job.id,
+            outcome="blocked",
+            payload={
+                "site_id": payload.site_id,
+                "round_number": payload.round_number,
+                "reason_code": "PRIVACY_BUDGET_POLICY_REJECTED",
+            },
+            hmac_key=config.rarelink_audit_hmac_key,
+        )
+        session.commit()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    append_physical_event(
+        session,
+        action="job.privacy-spend-recorded",
+        actor=principal.subject_id,
+        resource_type="physical-job",
+        resource_id=job.id,
+        outcome="accepted",
+        payload={
+            "budget_id": receipt["budget_id"],
+            "spend_id": receipt["spend_id"],
+            "site_id": receipt["site_id"],
+            "round_number": receipt["round_number"],
+            "cumulative_epsilon": receipt["cumulative_epsilon"],
+            "consumed_epsilon": receipt["consumed_epsilon"],
+            "remaining_epsilon": receipt["remaining_epsilon"],
+            "receipt_sha256": receipt["receipt_sha256"],
+        },
+        hmac_key=config.rarelink_audit_hmac_key,
+    )
+    session.commit()
+    return receipt
+
+
 @app.post("/api/physical/jobs/{job_id}:approve")
 def approve_physical_job_contract(
     job_id: str,
@@ -1042,6 +1356,7 @@ def approve_physical_job_contract(
         verify_contract_unchanged(job, job.contract_sha256)
     except PhysicalApprovalServiceError as exc:
         raise physical_approval_error(exc) from exc
+    require_active_physical_privacy_budget(session, job)
     existing = session.exec(
         select(PhysicalJobApprovalRecord).where(
             PhysicalJobApprovalRecord.job_id == job_id
@@ -1242,6 +1557,7 @@ def submit_physical_job(
     if job.status not in {"APPROVAL_PENDING", "SUBMITTED"}:
         raise HTTPException(status_code=409, detail="Physical job is not awaiting submission")
     approval_count = require_current_physical_contract(session, job, config)
+    require_active_physical_privacy_budget(session, job)
     expected_fingerprints = as_json(job.dataset_fingerprints_json, {})
     current_sites = session.exec(
         select(PhysicalSite).where(
@@ -1418,6 +1734,7 @@ def retry_physical_job(
             detail="Dataset version changed; create and approve a new physical job contract",
         )
     require_current_physical_contract(session, existing, config)
+    require_active_physical_privacy_budget(session, existing)
     controller, admin_kit = build_physical_controller(session, config)
     try:
         controller.retry(
@@ -1476,6 +1793,7 @@ def resume_physical_job(
             detail="Dataset version changed; create and approve a new physical job contract",
         )
     require_current_physical_contract(session, existing, config)
+    require_active_physical_privacy_budget(session, existing)
     controller, admin_kit = build_physical_controller(session, config)
     try:
         controller.resume(
@@ -1556,6 +1874,123 @@ def verify_physical_global_model(
     )
     session.commit()
     return receipt
+
+
+@app.post("/api/physical/jobs/{job_id}:sign-model-release")
+def sign_physical_global_model_release(
+    job_id: str,
+    payload: PhysicalModelReleaseApproval,
+    request: Request,
+    session: SessionDep,
+    config: SettingsDep,
+) -> dict[str, Any]:
+    """Sign a verified model digest without exporting the key or coordinator path."""
+    principal = require_physical_principal(
+        request,
+        config,
+        PhysicalPermission.MODEL_VERIFY,
+    )
+    job = session.get(PhysicalFederationJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Physical job not found")
+    require_physical_job_scope(principal, job, config)
+    if (
+        job.status != PhysicalJobStatus.COMPLETED
+        or not job.external_job_id
+        or not job.contract_sha256
+        or not job.global_model_sha256
+        or not job.global_model_path
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Only a completed and verified global model can be signed",
+        )
+    if not secrets.compare_digest(
+        job.global_model_sha256,
+        payload.expected_model_sha256,
+    ):
+        raise HTTPException(status_code=409, detail="Expected global model digest changed")
+    configured_model_path = Path(job.global_model_path)
+    model_path = configured_model_path.resolve()
+    if (
+        not model_path.is_file()
+        or configured_model_path.is_symlink()
+        or not secrets.compare_digest(sha256_file(model_path), job.global_model_sha256)
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Global model file changed after verification",
+        )
+    if job.global_model_signature:
+        return {
+            "schema_version": "rarelink-model-release-signature-v1",
+            "job_id": job.id,
+            "global_model_sha256": job.global_model_sha256,
+            "manifest_sha256": job.model_release_manifest_sha256,
+            "key_fingerprint_sha256": job.model_signing_key_fingerprint_sha256,
+            "signature": job.global_model_signature,
+            "algorithm": "Ed25519",
+            "released_at": as_utc(job.model_released_at),
+            "verified": True,
+            "private_key_exported": False,
+            "private_key_path_exported": False,
+            "model_path_exported": False,
+            "patient_data_exported": False,
+        }
+    if config.rarelink_model_signing_private_key is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Global model signing key is not configured",
+        )
+    released_at = utc_now()
+    manifest = ModelReleaseManifest(
+        job_id=job.id,
+        external_job_id=job.external_job_id,
+        contract_sha256=job.contract_sha256,
+        model_sha256=job.global_model_sha256,
+        model_file_name=model_path.name,
+        approved_at=released_at.isoformat(),
+    )
+    try:
+        signed = sign_model_release(
+            manifest,
+            private_key_path=config.rarelink_model_signing_private_key,
+        )
+    except ModelSigningError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    job.global_model_signature = str(signed["signature"])
+    job.model_signing_key_fingerprint_sha256 = str(
+        signed["key_fingerprint_sha256"]
+    )
+    job.model_release_manifest_sha256 = str(signed["manifest_sha256"])
+    job.model_released_at = released_at
+    job.updated_at = released_at
+    session.add(job)
+    append_physical_event(
+        session,
+        action="job.global-model-release-signed",
+        actor=principal.subject_id,
+        resource_type="physical-job",
+        resource_id=job.id,
+        outcome="accepted",
+        payload={
+            "global_model_sha256": job.global_model_sha256,
+            "manifest_sha256": job.model_release_manifest_sha256,
+            "key_fingerprint_sha256": job.model_signing_key_fingerprint_sha256,
+            "algorithm": "Ed25519",
+            "attestation": payload.attestation,
+            "released_at": released_at.isoformat().replace("+00:00", "Z"),
+        },
+        hmac_key=config.rarelink_audit_hmac_key,
+    )
+    session.commit()
+    return {
+        **signed,
+        "job_id": job.id,
+        "global_model_sha256": job.global_model_sha256,
+        "released_at": released_at,
+        "model_path_exported": False,
+    }
 
 
 @app.get("/api/physical/events")

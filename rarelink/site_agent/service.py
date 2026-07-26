@@ -29,16 +29,22 @@ class ExecutorActionError(RuntimeError):
     pass
 
 
+class PreflightFailedError(RuntimeError):
+    pass
+
+
 class TaskService:
     def __init__(
         self,
         store: TaskStore,
         signer: ReceiptSigner,
         executor: SiteTaskExecutor,
+        readiness_guard: Callable[[], bool] | None = None,
     ) -> None:
         self.store = store
         self.signer = signer
         self.executor = executor
+        self.readiness_guard = readiness_guard
         self._lock = threading.RLock()
 
     def _record(
@@ -130,6 +136,30 @@ class TaskService:
         self.store.put(completed)
         return TaskActionResponse(record=completed, idempotent_replay=False)
 
+    def _require_ready(
+        self,
+        request: TaskActionRequest,
+        *,
+        previous: TaskRecord | None = None,
+    ) -> None:
+        if self.readiness_guard is None:
+            return
+        try:
+            ready = self.readiness_guard()
+        except Exception:
+            ready = False
+        if ready:
+            return
+        failed = self._record(
+            request,
+            TaskState.FAILED,
+            "preflight_failed",
+            previous=previous,
+            error_code="PreflightFailed",
+        )
+        self.store.put(failed)
+        raise PreflightFailedError("site resource and security preflight did not pass")
+
     def start(self, request: TaskActionRequest) -> TaskActionResponse:
         with self._lock:
             existing = self.store.get(request.task_id, request.round_id)
@@ -145,6 +175,7 @@ class TaskService:
                     f"cannot start a task in {existing.state}; "
                     "use recover for a stopped/failed task"
                 )
+            self._require_ready(request)
             seed = self._record(request, TaskState.STARTING, "start_requested")
             self.store.put(seed)
             try:
@@ -197,6 +228,7 @@ class TaskService:
                 return TaskActionResponse(record=existing, idempotent_replay=True)
             if existing.state not in {TaskState.STOPPED, TaskState.FAILED}:
                 raise TaskConflictError(f"cannot recover a task in {existing.state}")
+            self._require_ready(request, previous=existing)
             return self._execute(
                 request=request,
                 previous=existing,
@@ -233,4 +265,30 @@ class TaskService:
                 )
                 self.store.put(failed)
                 count += 1
+            inspector = getattr(self.executor, "is_running", None)
+            if callable(inspector):
+                for existing in self.store.list():
+                    if existing.state != TaskState.RUNNING:
+                        continue
+                    try:
+                        running = inspector(existing)
+                    except Exception:
+                        running = False
+                    if running:
+                        continue
+                    request = TaskActionRequest(
+                        task_id=existing.task_id,
+                        round_id=existing.round_id,
+                        total_rounds=existing.total_rounds,
+                        contract_sha256=existing.contract_sha256,
+                    )
+                    failed = self._record(
+                        request,
+                        TaskState.FAILED,
+                        "executor_not_running_after_restart",
+                        previous=existing,
+                        error_code="ExecutorNotRunningAfterRestart",
+                    )
+                    self.store.put(failed)
+                    count += 1
         return count

@@ -1,7 +1,7 @@
 PYTHON ?= python3
 PROJECT_PYTHON = $(if $(wildcard .venv/bin/python),.venv/bin/python,$(PYTHON))
 
-.PHONY: install install-web dev-api dev-web test lint smoke step-models step-smoke step-team-smoke synthetic-data monai-smoke nvflare-smoke nvflare-fedprox training-job-smoke demo-seed demo-evidence spark-local-verify spark-local-benchmark physical-render physical-preflight physical-job physical-site-agent physical-control-smoke physical-postgres-validate site-data-validate db-upgrade db-current db-check
+.PHONY: install install-web dev-api dev-web test lint smoke step-models step-smoke step-team-smoke synthetic-data monai-smoke nvflare-smoke nvflare-fedprox training-job-smoke demo-seed demo-evidence spark-local-verify spark-local-benchmark physical-render physical-preflight physical-job physical-site-agent physical-control-smoke physical-postgres-validate p0-p1-acceptance site-data-validate db-upgrade db-current db-check
 
 install:
 	$(PROJECT_PYTHON) -m pip install -e ".[dev]"
@@ -80,6 +80,9 @@ physical-control-smoke:
 
 physical-postgres-validate:
 	$(PROJECT_PYTHON) scripts/validate_physical_postgres_compose.py
+
+p0-p1-acceptance:
+	$(PROJECT_PYTHON) scripts/accept_p0_p1.py --output artifacts/acceptance/p0-p1-receipt.json
 
 site-data-validate:
 	@echo "Usage: $(PROJECT_PYTHON) scripts/validate_site_dataset.py --manifest ... --site-id ... --data-root ... --output ..."

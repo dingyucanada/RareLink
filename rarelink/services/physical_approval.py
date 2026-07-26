@@ -21,7 +21,7 @@ from rarelink.security.physical_rbac import (
 
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 SITE_ID_RE = re.compile(r"^[a-z][a-z0-9-]{2,62}$")
-ALLOWED_STRATEGIES = frozenset({"fedavg", "fedprox"})
+ALLOWED_STRATEGIES = frozenset({"fedavg", "fedprox", "fedavg_dpsgd"})
 
 
 class PhysicalApprovalServiceError(RuntimeError):
@@ -144,7 +144,7 @@ def canonical_contract_payload(job: object) -> dict[str, Any]:
     strategy = _required_text(job, "strategy", max_length=32).lower()
     if strategy not in ALLOWED_STRATEGIES:
         raise PhysicalContractValidationError(
-            "Physical contract strategy must be fedavg or fedprox"
+            "Physical contract strategy must be fedavg or fedprox, or fedavg_dpsgd"
         )
     bundle_sha256 = _required_text(job, "bundle_sha256", max_length=64)
     if not SHA256_RE.fullmatch(bundle_sha256):

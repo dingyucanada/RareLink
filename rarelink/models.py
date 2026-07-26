@@ -1,6 +1,7 @@
 from datetime import datetime
 from uuid import uuid4
 
+from sqlalchemy import UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 from rarelink.domain import (
@@ -166,6 +167,10 @@ class PhysicalFederationJob(SQLModel, table=True):
     previous_external_job_ids_json: str = "[]"
     global_model_path: str | None = None
     global_model_sha256: str | None = None
+    global_model_signature: str | None = None
+    model_signing_key_fingerprint_sha256: str | None = Field(default=None, index=True)
+    model_release_manifest_sha256: str | None = Field(default=None, index=True)
+    model_released_at: datetime | None = Field(default=None, index=True)
     metrics_json: str | None = None
     error: str | None = None
     created_at: datetime = Field(default_factory=utc_now, index=True)
@@ -205,4 +210,49 @@ class PhysicalJobApprovalRevocation(SQLModel, table=True):
     revoked_by: str = Field(index=True)
     attestation: str
     reason_sha256: str
+    created_at: datetime = Field(default_factory=utc_now, index=True)
+
+
+class PhysicalPrivacyBudget(SQLModel, table=True):
+    """Locked DP contract for one physical federation job."""
+
+    id: str = Field(default_factory=lambda: new_id("privacy-budget"), primary_key=True)
+    job_id: str = Field(
+        foreign_key="physicalfederationjob.id",
+        index=True,
+        sa_column_kwargs={"unique": True},
+    )
+    contract_sha256: str = Field(index=True)
+    max_epsilon: float
+    delta: float
+    consumed_epsilon: float = 0.0
+    status: str = Field(default="ACTIVE", index=True)
+    ledger_head_sha256: str | None = None
+    created_at: datetime = Field(default_factory=utc_now, index=True)
+    updated_at: datetime = Field(default_factory=utc_now, index=True)
+
+
+class PhysicalPrivacySpend(SQLModel, table=True):
+    """Immutable cumulative per-site DP accounting receipt."""
+
+    __table_args__ = (
+        UniqueConstraint(
+            "budget_id",
+            "site_id",
+            "round_number",
+            name="uq_privacy_spend_site_round",
+        ),
+    )
+
+    id: str = Field(default_factory=lambda: new_id("privacy-spend"), primary_key=True)
+    budget_id: str = Field(index=True, foreign_key="physicalprivacybudget.id")
+    job_id: str = Field(index=True, foreign_key="physicalfederationjob.id")
+    site_id: str = Field(index=True, foreign_key="physicalsite.site_id")
+    round_number: int = Field(index=True)
+    cumulative_epsilon: float
+    delta: float
+    accountant: str
+    optimizer_steps: int
+    previous_hash: str
+    receipt_sha256: str = Field(index=True, sa_column_kwargs={"unique": True})
     created_at: datetime = Field(default_factory=utc_now, index=True)

@@ -70,6 +70,7 @@ def healthy() -> HealthSnapshot:
                 status="available",
                 details={"versions": {"monai": "1.5", "nvflare": "2.7"}},
             ),
+            "startup_kit": CheckResult(ok=True, status="present"),
         },
     )
 
