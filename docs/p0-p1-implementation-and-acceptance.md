@@ -64,12 +64,21 @@ make p0-p1-acceptance
 
 验收器按顺序执行，任一失败即停止并返回非零退出码：
 
-1. 全量 **371 项** Python 单元、API、迁移和隔离集成测试；
+1. 全量 **382 项** Python 单元、API、迁移和隔离集成测试；
 2. Ruff 静态检查；
 3. React/TypeScript/Vite 生产构建；
 4. 三个独立 OS 进程的控制协议演练；
-5. PostgreSQL 生产 Compose 安全配置校验；
-6. Alembic 空库升级和降级往返。
+5. 网络、重启、资源和更新安全七场景故障注入矩阵；
+6. PostgreSQL 生产 Compose 安全配置校验；
+7. Alembic 空库升级和降级往返。
+
+新增的三物理设备现场验收工具采用只读采集，凭据只从环境读取，输出只包含
+endpoint 摘要和签名运行证据。它在没有设备时不会降级生成 L3；现场结果首先标记
+为 `L3-candidate`，必须由部署负责人核实三台设备、证书、网络和外部 Job ID。
+
+签名研究证据包把合同、三站收据、聚合指标、隐私账本、安全评估、审计链和模型
+发布绑定到 canonical Manifest，并自动生成 Data Card、Model Card 和 Run Card。
+离线验证必须匹配独立渠道取得的 Ed25519 公钥指纹，包内公钥不能自证信任。
 
 收据默认写入 `artifacts/acceptance/p0-p1-receipt.json`，只记录命令、退出码、耗时和输出摘要，不打包终端原文、令牌、密钥、影像、患者数据或本地数据路径。
 

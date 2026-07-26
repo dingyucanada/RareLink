@@ -10,7 +10,7 @@
 
 <a href="README.en.md">English</a> · <strong>中文</strong>
 
-<strong>📘 <a href="outputs/RareLink-项目报告书.md">阅读完整项目报告书</a></strong> · <strong><a href="docs/p0-p1-engineering-log.md">P0/P1 逐项状态与限制</a></strong> · <a href="#部署模型与快速开始">快速开始</a> · <a href="docs/physical-deployment.md">三物理 Spark 部署</a> · <a href="docs/physical-site-agent-reliability.md">Site Agent</a> · <a href="docs/physical-reconciliation-and-recovery.md">故障恢复</a> · <a href="docs/physical-dpsgd-contract.md">物理 DP-SGD</a> · <a href="docs/secure-aggregation-evaluation.md">安全聚合评估</a> · <a href="docs/oidc-jwks-lifecycle.md">OIDC/JWKS</a> · <a href="docs/postgresql-alembic.md">生产数据库</a>
+<strong>📘 <a href="outputs/RareLink-项目报告书.md">阅读完整项目报告书</a></strong> · <strong><a href="docs/p0-p1-engineering-log.md">P0/P1 逐项状态与限制</a></strong> · <strong><a href="docs/research-evidence-package.md">签名研究证据包</a></strong> · <a href="#部署模型与快速开始">快速开始</a> · <a href="docs/physical-deployment.md">三物理 Spark 部署</a> · <a href="docs/physical-field-acceptance.md">现场验收</a> · <a href="docs/fault-injection-matrix.md">故障矩阵</a> · <a href="docs/physical-dpsgd-contract.md">物理 DP-SGD</a> · <a href="docs/secure-aggregation-evaluation.md">安全聚合评估</a> · <a href="docs/oidc-jwks-lifecycle.md">OIDC/JWKS</a>
 
 <a href="https://www.nvidia.com/en-us/products/workstations/dgx-spark/"><img src="https://img.shields.io/badge/NVIDIA-DGX%20Spark-76B900?style=flat-square&logo=nvidia&logoColor=white" alt="NVIDIA DGX Spark" /></a>
 <a href="https://nvidia.github.io/NVFlare/"><img src="https://img.shields.io/badge/NVIDIA%20FLARE-2.7.2-2563EB?style=flat-square" alt="NVIDIA FLARE" /></a>
@@ -51,6 +51,9 @@
 - [工程验证与可信边界](#工程验证与可信边界)
 - [部署模型与快速开始](#部署模型与快速开始)
 - [三物理 Spark 部署](docs/physical-deployment.md)
+- [三物理设备现场验收](docs/physical-field-acceptance.md)
+- [签名研究证据包](docs/research-evidence-package.md)
+- [自动故障注入矩阵](docs/fault-injection-matrix.md)
 - [P0/P1 实施与自动验收](docs/p0-p1-implementation-and-acceptance.md)
 - [P0/P1 逐项状态、外部阻塞与证据等级](docs/p0-p1-engineering-log.md)
 - [路线图、资料与责任使用](#路线图资料与责任使用)
@@ -325,8 +328,9 @@ OIDC 离线验证、五角色十一权限、站点级读取过滤和待完成 IA
 make p0-p1-acceptance
 ```
 
-当前基线为 **371 项 Python 测试 + Ruff + 前端生产构建 + 三独立进程控制协议 +
-PostgreSQL 生产配置 + Alembic 迁移往返**。该结果只证明 L1/L2；没有三台设备、
+当前基线为 **382 项 Python 测试 + Ruff + 前端生产构建 + 三独立进程控制协议 +
+七场景故障矩阵 + PostgreSQL 生产配置 + Alembic 迁移往返**。该结果只证明
+L1/L2；没有三台设备、
 正式 Admin/Client Kit 或医院系统时，不会被描述成真实多院完成。
 
 P1-S06 已完成安全聚合候选选型和威胁模型，复用 NVIDIA FLARE
@@ -335,6 +339,23 @@ P1-S06 已完成安全聚合候选选型和威胁模型，复用 NVIDIA FLARE
 
 ```bash
 make secure-aggregation-assessment
+```
+
+三台设备到位后，使用只读现场验收工具核验真实 Site Agent、NVFLARE Job ID、
+`3/3` quorum、模型签名和审计链；凭据只从环境读取，输出不包含 endpoint：
+
+```bash
+python scripts/accept_three_physical_sites.py \
+  --plan deploy/physical/field-acceptance.yml \
+  --output artifacts/acceptance/physical-field.json
+```
+
+研究完成后可将合同、三站收据、聚合指标、隐私账本、安全评估和模型发布信息
+生成 Ed25519 签名证据包。审阅者必须使用独立渠道获得的公钥指纹离线验证。
+故障矩阵则自动验证断线重连、Agent 重启、GPU/磁盘/证书阻断以及重复/迟到更新：
+
+```bash
+make fault-injection-matrix
 ```
 
 ### 一键体验

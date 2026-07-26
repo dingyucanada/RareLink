@@ -23,9 +23,15 @@
   `FedAvgHERecipe` + TenSEAL; enablement remains fail-closed until ARM64 runtime,
   hospital key governance, client-side pre-encryption checks, and a three-device
   encrypted-round benchmark exist.
-- [x] Current acceptance baseline: 371 Python tests, Ruff, production web build,
-  three independent control-plane processes, PostgreSQL compose validation, and
-  Alembic migration round trip.
+- [x] Current acceptance baseline: 382 Python tests, Ruff, production web build,
+  three independent control-plane processes, a seven-scenario fault matrix,
+  PostgreSQL compose validation, and an Alembic migration round trip.
+- [x] Read-only three-physical-device field acceptance uses environment-only
+  credentials, endpoint digests, strict three-site/job/contract/quorum checks,
+  and an explicit `L3-candidate` human-signoff boundary.
+- [x] Signed research evidence ZIP binds the contract, three site receipts,
+  metrics, privacy/security/audit evidence and model release, generates
+  data/model/run cards, and requires an externally trusted Ed25519 fingerprint.
 
 The itemized status and every external blocker are recorded in
 [`p0-p1-engineering-log.md`](p0-p1-engineering-log.md). “Implemented” and

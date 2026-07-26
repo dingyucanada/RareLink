@@ -81,6 +81,10 @@ def main() -> int:
             [python, "scripts/smoke_three_site_control_plane.py"],
         ),
         (
+            "fault-injection-matrix",
+            [python, "scripts/run_fault_injection_matrix.py"],
+        ),
+        (
             "postgres-production-compose",
             [python, "scripts/validate_physical_postgres_compose.py"],
         ),

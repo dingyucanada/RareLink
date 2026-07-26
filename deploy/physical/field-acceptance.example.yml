@@ -1,0 +1,23 @@
+# Non-secret three-device acceptance plan. Tokens are read from environment
+# variables by the runner and must never be placed in this file.
+schema_version: rarelink-physical-field-acceptance-plan-v1
+coordinator_base_url: https://rarelink-coordinator.hospital.example
+sites:
+  - site_id: hospital-a
+    base_url: https://rarelink-a.hospital.example
+    device_attestation_sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  - site_id: hospital-b
+    base_url: https://rarelink-b.hospital.example
+    device_attestation_sha256: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+  - site_id: hospital-c
+    base_url: https://rarelink-c.hospital.example
+    device_attestation_sha256: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+job_id: replace-with-physical-job-id
+contract_sha256: dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+expected_rounds: 5
+quorum_required: 3
+require_completed_job: true
+require_clients_connected: false
+expected_model_sha256: eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+requested_evidence_level: L3-candidate
+allow_loopback_http: false
