@@ -60,7 +60,7 @@ jobs:
           output: rarelink-spark-arm64-trivy.json
           severity: HIGH,CRITICAL
           exit-code: "1"
-      - uses: actions/attest-build-provenance@v2
+      - uses: actions/attest-build-provenance@v4
         with:
           subject-name: ghcr.io/${{ github.repository_owner }}/rarelink-spark
           subject-digest: ${{ steps.build.outputs.digest }}

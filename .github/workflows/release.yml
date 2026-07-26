@@ -114,12 +114,12 @@ jobs:
           IDENTITY="^https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/(tags/v[0-9].*|heads/main)$"
           cosign verify --certificate-identity-regexp "${IDENTITY}" --certificate-oidc-issuer https://token.actions.githubusercontent.com --output json "${COORDINATOR_IMAGE}@${COORDINATOR_DIGEST}" > dist/release/cosign-coordinator-verification.json
           cosign verify --certificate-identity-regexp "${IDENTITY}" --certificate-oidc-issuer https://token.actions.githubusercontent.com --output json "${WEB_IMAGE}@${WEB_DIGEST}" > dist/release/cosign-web-verification.json
-      - uses: actions/attest-build-provenance@v2
+      - uses: actions/attest-build-provenance@v4
         with:
           subject-name: ${{ env.COORDINATOR_IMAGE }}
           subject-digest: ${{ steps.coordinator.outputs.digest }}
           push-to-registry: true
-      - uses: actions/attest-build-provenance@v2
+      - uses: actions/attest-build-provenance@v4
         with:
           subject-name: ${{ env.WEB_IMAGE }}
           subject-digest: ${{ steps.web.outputs.digest }}
@@ -182,7 +182,7 @@ jobs:
             --output "dist/release/rarelink-${{ steps.version.outputs.value }}-linux-arm64-offline.tar.gz"
           find dist -type f ! -name SHA256SUMS.release -print0 | sort -z | xargs -0 sha256sum > dist/release/SHA256SUMS.release
 
-      - uses: actions/attest-build-provenance@v2
+      - uses: actions/attest-build-provenance@v4
         with:
           subject-path: dist/release/rarelink-*-linux-arm64-offline.tar.gz
       - name: Create or update GitHub Release
