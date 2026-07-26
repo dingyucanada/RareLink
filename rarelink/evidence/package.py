@@ -11,7 +11,7 @@ import stat
 import tempfile
 import zipfile
 from datetime import UTC, datetime
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Any, Literal
 
 from cryptography.exceptions import InvalidSignature
@@ -22,14 +22,38 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 )
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from rarelink.evidence.standalone_verifier import (
+    VerificationError as StandaloneVerificationError,
+)
+from rarelink.evidence.standalone_verifier import verify as standalone_verify
 from rarelink.security.model_signing import ModelReleaseManifest
 from rarelink.services.physical_results import parse_aggregate_metrics
 
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 SAFE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{1,127}$")
-DOMAIN_SEPARATOR = b"RareLink research evidence package v1\x00"
-MAX_JSON_BYTES = 2 * 1024 * 1024
+DOMAIN_SEPARATOR = b"RareLink research evidence package v2\x00"
 MAX_PACKAGE_BYTES = 32 * 1024 * 1024
+ZERO_HASH = "0" * 64
+REQUIRED_SECURITY_GATES = {
+    "agent_redteam",
+    "art_membership_inference",
+    "art_model_inversion",
+    "update_guard",
+}
+ROOT_PAYLOAD_FILES = {
+    "study-contract.json",
+    "approvals.json",
+    "model-card.json",
+    "run-card.json",
+    "privacy-ledger.json",
+    "security-assessment.json",
+    "aggregate-metrics.json",
+    "global-model-manifest.json",
+    "audit-chain.json",
+    "report.md",
+    "model-release-public-key.pem",
+    "verify-evidence-package",
+}
 FORBIDDEN_KEY_PARTS = {
     "accession",
     "address",
@@ -53,27 +77,10 @@ FORBIDDEN_KEY_PARTS = {
     "submit_token",
     "token",
 }
-DOCUMENT_FILES = {
-    "study-contract.json": "study_contract",
-    "site-receipts.json": "site_receipts",
-    "aggregate-metrics.json": "aggregate_metrics",
-    "privacy-ledger.json": "privacy_ledger",
-    "security-assessment.json": "security_assessment",
-    "audit-chain.json": "audit_chain",
-    "global-model-manifest.json": "model_release",
-}
-GENERATED_FILES = {
-    "data-card.json",
-    "model-release-public-key.pem",
-    "model-card.json",
-    "run-card.json",
-    "report.md",
-}
-PACKAGE_FILES = set(DOCUMENT_FILES) | GENERATED_FILES
 
 
 class EvidencePackageError(ValueError):
-    """Evidence was unsafe, internally inconsistent, or cryptographically invalid."""
+    """Evidence was unsafe, incomplete, inconsistent, or cryptographically invalid."""
 
 
 def _canonical_json(value: Any) -> bytes:
@@ -92,6 +99,12 @@ def _sha256_bytes(value: bytes) -> str:
 def _safe_timestamp(value: datetime) -> str:
     normalized = value if value.tzinfo else value.replace(tzinfo=UTC)
     return normalized.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _validate_digest(value: Any, label: str) -> str:
+    if not isinstance(value, str) or not SHA256_RE.fullmatch(value):
+        raise EvidencePackageError(f"{label} must be a lowercase SHA-256 digest")
+    return value
 
 
 def _reject_sensitive(value: Any, *, trail: tuple[str, ...] = ()) -> None:
@@ -124,28 +137,106 @@ def _reject_sensitive(value: Any, *, trail: tuple[str, ...] = ()) -> None:
             raise EvidencePackageError("Evidence contains a local path or private key")
 
 
-def _validate_digest(value: str, label: str) -> str:
-    if not SHA256_RE.fullmatch(value):
-        raise EvidencePackageError(f"{label} must be a lowercase SHA-256 digest")
-    return value
+def _decode_signature(value: str) -> bytes:
+    try:
+        decoded = base64.urlsafe_b64decode(
+            (value + "=" * (-len(value) % 4)).encode("ascii")
+        )
+    except (UnicodeEncodeError, ValueError) as exc:
+        raise EvidencePackageError("Evidence signature encoding is invalid") from exc
+    if len(decoded) != 64:
+        raise EvidencePackageError("Evidence signature length is invalid")
+    return decoded
 
 
-class EvidencePackageSource(BaseModel):
-    """Allow-listed material used to create one immutable research evidence release."""
+def _public_fingerprint(key: Ed25519PublicKey) -> str:
+    raw = key.public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw,
+    )
+    return _sha256_bytes(raw)
+
+
+class ApprovalEvidence(BaseModel):
+    """One de-identified approval attestation bound to the locked contract."""
 
     model_config = {"extra": "forbid"}
 
-    schema_version: Literal["rarelink-evidence-source-v1"]
+    schema_version: Literal["rarelink-approval-evidence-v1"]
+    approval_type: Literal["study-release", "independent-review"]
+    approver_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{1,127}$")
+    approver_role: Literal["principal-investigator", "independent-reviewer"]
+    approved: Literal[True]
+    contract_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    approval_receipt_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    approved_at: datetime
+
+
+class SiteDataCardEvidence(BaseModel):
+    """A patient-free statement about one site's reviewed local dataset."""
+
+    model_config = {"extra": "forbid"}
+
+    schema_version: Literal["rarelink-site-data-card-v1"]
+    site_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{1,127}$")
+    dataset_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    manifest_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    data_version: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{1,127}$")
+    case_count: int = Field(ge=1)
+    modalities: list[str] = Field(min_length=4, max_length=4)
+    quality_passed: Literal[True]
+    source_data_exported: Literal[False]
+    case_identifiers_exported: Literal[False]
+    local_paths_exported: Literal[False]
+
+    @field_validator("modalities")
+    @classmethod
+    def validate_modalities(cls, values: list[str]) -> list[str]:
+        if len(set(values)) != 4 or set(values) != {"T1", "T1ce", "T2", "FLAIR"}:
+            raise ValueError("site data cards require T1, T1ce, T2, and FLAIR")
+        return values
+
+
+class SiteReceiptEvidence(BaseModel):
+    """A coordinator-verified, completed site execution receipt."""
+
+    model_config = {"extra": "forbid"}
+
+    schema_version: Literal["rarelink-site-receipt-v2"]
+    site_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{1,127}$")
+    job_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{1,127}$")
+    receipt_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    contract_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    code_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    dataset_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    state: Literal["COMPLETED"]
+    completed_round: int = Field(ge=1)
+    total_rounds: int = Field(ge=1)
+    signature_verified_by_coordinator: Literal[True]
+    patient_data_exported: Literal[False]
+    private_key_exported: Literal[False]
+    local_paths_exported: Literal[False]
+
+
+class EvidencePackageSource(BaseModel):
+    """Allow-listed material for one immutable, strictly verified research release."""
+
+    model_config = {"extra": "forbid"}
+
+    schema_version: Literal["rarelink-evidence-source-v2"]
     study_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{1,127}$")
     job_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{1,127}$")
     contract_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     bundle_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    code_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     model_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     expected_sites: list[str] = Field(min_length=3, max_length=3)
-    evidence_level: Literal["L2", "L3", "L4"]
+    evidence_level: Literal["L3", "L4"]
     generated_at: datetime
     study_contract: dict[str, Any]
-    site_receipts: list[dict[str, Any]] = Field(min_length=3, max_length=3)
+    approvals: list[ApprovalEvidence] = Field(min_length=2, max_length=2)
+    site_data_cards: list[SiteDataCardEvidence] = Field(min_length=3, max_length=3)
+    site_receipts: list[SiteReceiptEvidence] = Field(min_length=3, max_length=3)
     aggregate_metrics: dict[str, Any]
     privacy_ledger: dict[str, Any]
     security_assessment: dict[str, Any]
@@ -162,10 +253,12 @@ class EvidencePackageSource(BaseModel):
         return sites
 
     @model_validator(mode="after")
-    def validate_bindings_and_safety(self) -> EvidencePackageSource:
+    def validate_bindings_and_gates(self) -> EvidencePackageSource:
         for value in (
             self.study_contract,
-            self.site_receipts,
+            [item.model_dump(mode="json") for item in self.approvals],
+            [item.model_dump(mode="json") for item in self.site_data_cards],
+            [item.model_dump(mode="json") for item in self.site_receipts],
             self.aggregate_metrics,
             self.privacy_ledger,
             self.security_assessment,
@@ -177,27 +270,167 @@ class EvidencePackageSource(BaseModel):
             _reject_sensitive(value)
         if any(not item.strip() or len(item) > 500 for item in self.limitations):
             raise ValueError("limitations must be non-empty strings up to 500 characters")
-        receipt_sites = [item.get("site_id") for item in self.site_receipts]
-        if len(set(receipt_sites)) != 3 or set(receipt_sites) != set(self.expected_sites):
-            raise ValueError("site_receipts must cover every expected site exactly once")
-        for receipt in self.site_receipts:
-            _validate_digest(str(receipt.get("receipt_sha256", "")), "site receipt")
-            fingerprint = receipt.get("dataset_fingerprint")
-            if fingerprint is not None:
-                _validate_digest(str(fingerprint), "dataset fingerprint")
+        self._validate_contract_and_approvals()
+        self._validate_sites_and_completion()
         parse_aggregate_metrics(
             self.aggregate_metrics,
             (self.expected_sites[0], self.expected_sites[1], self.expected_sites[2]),
         )
-        if self.study_contract.get("contract_sha256") != self.contract_sha256:
-            raise ValueError("study_contract does not match the package contract")
-        audit_head = self.audit_chain.get("head_sha256")
+        self._validate_privacy_ledger()
+        self._validate_security_assessment()
+        self._validate_audit_chain()
+        self._validate_model_release()
+        return self
+
+    def _validate_contract_and_approvals(self) -> None:
         if (
-            self.audit_chain.get("verified") is not True
-            or not isinstance(audit_head, str)
-            or not SHA256_RE.fullmatch(audit_head)
+            self.study_contract.get("contract_sha256") != self.contract_sha256
+            or self.study_contract.get("bundle_sha256") != self.bundle_sha256
+            or self.study_contract.get("code_sha256") != self.code_sha256
+            or self.study_contract.get("expected_sites") != self.expected_sites
+            or self.study_contract.get("quorum_required") != 3
+            or not isinstance(self.study_contract.get("total_rounds"), int)
+            or self.study_contract["total_rounds"] < 1
         ):
-            raise ValueError("audit_chain must contain a verified SHA-256 head")
+            raise ValueError("study_contract does not bind contract, code, sites, and rounds")
+        if (
+            {item.approval_type for item in self.approvals}
+            != {"study-release", "independent-review"}
+            or len({item.approver_id for item in self.approvals}) != 2
+            or any(
+                item.contract_sha256 != self.contract_sha256
+                for item in self.approvals
+            )
+        ):
+            raise ValueError("two distinct approvers must approve the same contract")
+        expected_roles = {
+            "study-release": "principal-investigator",
+            "independent-review": "independent-reviewer",
+        }
+        if any(
+            item.approver_role != expected_roles[item.approval_type]
+            for item in self.approvals
+        ):
+            raise ValueError("approval roles do not match the required separation")
+
+    def _validate_sites_and_completion(self) -> None:
+        cards = {item.site_id: item for item in self.site_data_cards}
+        receipts = {item.site_id: item for item in self.site_receipts}
+        if (
+            len(cards) != 3
+            or len(receipts) != 3
+            or set(cards) != set(self.expected_sites)
+            or set(receipts) != set(self.expected_sites)
+        ):
+            raise ValueError("data cards and receipts must cover all three sites once")
+        total_rounds = self.study_contract["total_rounds"]
+        for site in self.expected_sites:
+            receipt = receipts[site]
+            if (
+                receipt.job_id != self.job_id
+                or receipt.contract_sha256 != self.contract_sha256
+                or receipt.code_sha256 != self.code_sha256
+                or receipt.dataset_fingerprint != cards[site].dataset_fingerprint
+                or receipt.completed_round != total_rounds
+                or receipt.total_rounds != total_rounds
+            ):
+                raise ValueError(f"site receipt binding or completion failed for {site}")
+
+    def _validate_privacy_ledger(self) -> None:
+        ledger = self.privacy_ledger
+        if (
+            ledger.get("budget_exceeded") is not False
+            or ledger.get("status") not in {"WITHIN_BUDGET", "NOT_APPLICABLE"}
+            or not isinstance(ledger.get("enabled"), bool)
+        ):
+            raise ValueError("privacy ledger does not pass the budget gate")
+        if ledger["enabled"]:
+            maximum = ledger.get("maximum_epsilon")
+            delta = ledger.get("delta")
+            sites = ledger.get("sites")
+            if (
+                isinstance(maximum, bool)
+                or not isinstance(maximum, int | float)
+                or maximum <= 0
+                or isinstance(delta, bool)
+                or not isinstance(delta, int | float)
+                or not 0 < delta < 1
+                or not isinstance(sites, list)
+                or len(sites) != 3
+            ):
+                raise ValueError("privacy ledger accounting is incomplete")
+            seen: set[str] = set()
+            for item in sites:
+                if not isinstance(item, dict):
+                    raise ValueError("site privacy accounting is invalid")
+                site = item.get("site_id")
+                epsilon = item.get("epsilon")
+                _validate_digest(item.get("receipt_sha256"), "privacy receipt")
+                if (
+                    site not in self.expected_sites
+                    or site in seen
+                    or isinstance(epsilon, bool)
+                    or not isinstance(epsilon, int | float)
+                    or epsilon < 0
+                    or epsilon > maximum
+                ):
+                    raise ValueError("site privacy budget is invalid or exceeded")
+                seen.add(str(site))
+            if seen != set(self.expected_sites) or ledger["status"] != "WITHIN_BUDGET":
+                raise ValueError("privacy ledger does not cover all expected sites")
+        elif ledger["status"] != "NOT_APPLICABLE":
+            raise ValueError("disabled DP accounting must be marked NOT_APPLICABLE")
+
+    def _validate_security_assessment(self) -> None:
+        assessment = self.security_assessment
+        gates = assessment.get("gates")
+        if (
+            assessment.get("all_required_gates_passed") is not True
+            or not isinstance(gates, list)
+            or len(gates) != len(REQUIRED_SECURITY_GATES)
+        ):
+            raise ValueError("security assessment does not pass every required gate")
+        seen: set[str] = set()
+        for gate in gates:
+            if not isinstance(gate, dict):
+                raise ValueError("security gate evidence is invalid")
+            gate_id = gate.get("gate_id")
+            if (
+                gate_id not in REQUIRED_SECURITY_GATES
+                or gate_id in seen
+                or gate.get("passed") is not True
+            ):
+                raise ValueError("Agent/ART security gate failed or is duplicated")
+            _validate_digest(gate.get("receipt_sha256"), "security gate receipt")
+            seen.add(str(gate_id))
+        if seen != REQUIRED_SECURITY_GATES:
+            raise ValueError("security assessment is missing a required gate")
+
+    def _validate_audit_chain(self) -> None:
+        audit = self.audit_chain
+        events = audit.get("events")
+        if (
+            audit.get("verified_by_coordinator") is not True
+            or audit.get("truncated") is not False
+            or not isinstance(events, list)
+            or not events
+            or audit.get("event_count") != len(events)
+        ):
+            raise ValueError("audit chain is incomplete or not coordinator-verified")
+        previous = ZERO_HASH
+        seen: set[str] = set()
+        for event in events:
+            if not isinstance(event, dict):
+                raise ValueError("audit event is invalid")
+            event_hash = _validate_digest(event.get("event_hash"), "audit event hash")
+            if event.get("previous_hash") != previous or event_hash in seen:
+                raise ValueError("audit chain linkage is invalid")
+            seen.add(event_hash)
+            previous = event_hash
+        if previous != audit.get("head_sha256"):
+            raise ValueError("audit chain head does not match the final event")
+
+    def _validate_model_release(self) -> None:
         bindings = {
             "job_id": self.job_id,
             "contract_sha256": self.contract_sha256,
@@ -215,10 +448,6 @@ class EvidencePackageSource(BaseModel):
             or not SHA256_RE.fullmatch(
                 str(self.model_release.get("key_fingerprint_sha256", ""))
             )
-            or not re.fullmatch(
-                r"[A-Za-z0-9_-]{80,100}",
-                str(self.model_release.get("signature", "")),
-            )
         ):
             raise ValueError("model_release must contain a verified Ed25519 receipt")
         try:
@@ -229,10 +458,9 @@ class EvidencePackageSource(BaseModel):
             raise ValueError("model release public key is invalid") from exc
         if not isinstance(release_key, Ed25519PublicKey):
             raise ValueError("model release public key must be Ed25519")
-        if (
-            _public_fingerprint(release_key)
-            != self.model_release["key_fingerprint_sha256"]
-        ):
+        if _public_fingerprint(release_key) != self.model_release[
+            "key_fingerprint_sha256"
+        ]:
             raise ValueError("model release public key fingerprint does not match")
         try:
             release_manifest = ModelReleaseManifest(
@@ -254,7 +482,6 @@ class EvidencePackageSource(BaseModel):
             )
         except (InvalidSignature, KeyError, ValueError) as exc:
             raise ValueError("model release signature did not verify") from exc
-        return self
 
 
 def _load_private_key(path: Path) -> Ed25519PrivateKey:
@@ -272,47 +499,59 @@ def _load_private_key(path: Path) -> Ed25519PrivateKey:
     return key
 
 
-def _public_fingerprint(key: Ed25519PublicKey) -> str:
-    raw = key.public_bytes(
-        encoding=serialization.Encoding.Raw,
-        format=serialization.PublicFormat.Raw,
-    )
-    return _sha256_bytes(raw)
+def _standalone_verifier_bytes() -> bytes:
+    path = Path(__file__).with_name("standalone_verifier.py")
+    try:
+        script = path.read_bytes()
+    except OSError as exc:
+        raise EvidencePackageError("Standalone verifier source is unavailable") from exc
+    if not script.startswith(b"#!/usr/bin/env python3\n"):
+        raise EvidencePackageError("Standalone verifier is not executable source")
+    return script
 
 
 def _document_payloads(source: EvidencePackageSource) -> dict[str, bytes]:
-    payloads = {
-        file_name: _canonical_json(getattr(source, source_field))
-        for file_name, source_field in DOCUMENT_FILES.items()
+    approvals = {
+        "schema_version": "rarelink-approvals-v1",
+        "approvals": [
+            item.model_dump(mode="json") for item in source.approvals
+        ],
+        "required_approval_count": 2,
+        "distinct_approvers_verified": True,
     }
-    site_receipts = {
-        item["site_id"]: item for item in source.site_receipts
+    cards = {item.site_id: item for item in source.site_data_cards}
+    receipts = {item.site_id: item for item in source.site_receipts}
+    data_fingerprints = {
+        site: cards[site].dataset_fingerprint for site in source.expected_sites
     }
-    payloads["model-release-public-key.pem"] = (
-        source.model_release_public_key_pem.encode("ascii")
-    )
-    payloads["data-card.json"] = _canonical_json(
-        {
-            "schema_version": "rarelink-data-card-v1",
-            "study_id": source.study_id,
-            "expected_sites": source.expected_sites,
-            "site_dataset_fingerprints": {
-                site: site_receipts[site].get("dataset_fingerprint")
-                for site in source.expected_sites
-            },
-            "source_data_exported": False,
-            "case_identifiers_exported": False,
-            "local_paths_exported": False,
-            "limitations": source.limitations,
-        }
-    )
+    payloads: dict[str, bytes] = {
+        "study-contract.json": _canonical_json(source.study_contract),
+        "approvals.json": _canonical_json(approvals),
+        "aggregate-metrics.json": _canonical_json(source.aggregate_metrics),
+        "privacy-ledger.json": _canonical_json(source.privacy_ledger),
+        "security-assessment.json": _canonical_json(source.security_assessment),
+        "audit-chain.json": _canonical_json(source.audit_chain),
+        "global-model-manifest.json": _canonical_json(source.model_release),
+        "model-release-public-key.pem": source.model_release_public_key_pem.encode(
+            "ascii"
+        ),
+        "verify-evidence-package": _standalone_verifier_bytes(),
+    }
+    for site in source.expected_sites:
+        payloads[f"site-data-cards/{site}.json"] = _canonical_json(
+            cards[site].model_dump(mode="json")
+        )
+        payloads[f"site-receipts/{site}.json"] = _canonical_json(
+            receipts[site].model_dump(mode="json")
+        )
     payloads["model-card.json"] = _canonical_json(
         {
-            "schema_version": "rarelink-model-card-v1",
+            "schema_version": "rarelink-model-card-v2",
             "study_id": source.study_id,
             "job_id": source.job_id,
             "model_sha256": source.model_sha256,
             "contract_sha256": source.contract_sha256,
+            "code_sha256": source.code_sha256,
             "intended_use": "approved multi-centre research only",
             "diagnostic_use_approved": False,
             "clinical_validity_claimed": False,
@@ -321,18 +560,23 @@ def _document_payloads(source: EvidencePackageSource) -> dict[str, bytes]:
     )
     payloads["run-card.json"] = _canonical_json(
         {
-            "schema_version": "rarelink-run-card-v1",
+            "schema_version": "rarelink-run-card-v2",
             "study_id": source.study_id,
             "job_id": source.job_id,
             "contract_sha256": source.contract_sha256,
             "bundle_sha256": source.bundle_sha256,
+            "code_sha256": source.code_sha256,
             "model_sha256": source.model_sha256,
             "expected_sites": source.expected_sites,
+            "site_dataset_fingerprints": data_fingerprints,
+            "completed_site_count": 3,
             "quorum_required": 3,
+            "completion_status": "COMPLETED_3_OF_3",
             "evidence_level": source.evidence_level,
             "generated_at": _safe_timestamp(source.generated_at),
             "patient_data_exported": False,
             "secret_exported": False,
+            "local_paths_exported": False,
         }
     )
     payloads["report.md"] = (
@@ -340,25 +584,41 @@ def _document_payloads(source: EvidencePackageSource) -> dict[str, bytes]:
         f"- Study: `{source.study_id}`\n"
         f"- Physical job: `{source.job_id}`\n"
         f"- Evidence level: `{source.evidence_level}`\n"
-        f"- Expected sites: `{', '.join(source.expected_sites)}`\n"
+        "- Completion: `3/3 expected sites completed`\n"
         f"- Contract SHA-256: `{source.contract_sha256}`\n"
+        f"- Code SHA-256: `{source.code_sha256}`\n"
         f"- Model SHA-256: `{source.model_sha256}`\n\n"
+        "The package signature protects the complete exported evidence set. The "
+        "offline verifier checks the external signer trust anchor, all file "
+        "digests, two-person approval separation, three-site completion, privacy "
+        "budget, Agent/ART gates, audit linkage, and the global model signature.\n\n"
+        "Audit event HMAC values are not recomputed offline because the coordinator "
+        "HMAC key is intentionally not exported. Offline verification checks the "
+        "complete linkage and coordinator verification assertion; the package "
+        "Ed25519 signature prevents post-export modification.\n\n"
         "This package contains aggregate research evidence only. It contains no "
         "source medical images, patient identifiers, local paths, credentials, "
         "private keys, or individual model updates.\n\n"
         "## Limitations\n\n"
         + "".join(f"- {item}\n" for item in source.limitations)
     ).encode("utf-8")
+    expected = ROOT_PAYLOAD_FILES | {
+        *(f"site-data-cards/{site}.json" for site in source.expected_sites),
+        *(f"site-receipts/{site}.json" for site in source.expected_sites),
+    }
+    if set(payloads) != expected:
+        raise EvidencePackageError("Evidence payload set is incomplete")
     return payloads
 
 
 def _manifest(source: EvidencePackageSource, payloads: dict[str, bytes]) -> dict[str, Any]:
     return {
-        "schema_version": "rarelink-evidence-package-manifest-v1",
+        "schema_version": "rarelink-evidence-package-manifest-v2",
         "study_id": source.study_id,
         "job_id": source.job_id,
         "contract_sha256": source.contract_sha256,
         "bundle_sha256": source.bundle_sha256,
+        "code_sha256": source.code_sha256,
         "model_sha256": source.model_sha256,
         "expected_sites": source.expected_sites,
         "evidence_level": source.evidence_level,
@@ -371,20 +631,29 @@ def _manifest(source: EvidencePackageSource, payloads: dict[str, bytes]) -> dict
             }
             for name in sorted(payloads)
         ],
+        "completed_site_count": 3,
+        "quorum_required": 3,
         "patient_data_included": False,
         "secret_included": False,
         "private_key_included": False,
         "claim_boundary": (
-            "The evidence level records the supplied verified environment. "
-            "L2 is isolated integration and is not three-physical-site evidence."
+            "Offline verification proves package integrity and exported evidence "
+            "consistency. It does not independently establish clinical validity."
         ),
     }
 
 
-def _zip_write(archive: zipfile.ZipFile, name: str, data: bytes) -> None:
+def _zip_write(
+    archive: zipfile.ZipFile,
+    name: str,
+    data: bytes,
+    *,
+    executable: bool = False,
+) -> None:
     info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
     info.compress_type = zipfile.ZIP_DEFLATED
-    info.external_attr = (stat.S_IFREG | 0o644) << 16
+    permissions = 0o755 if executable else 0o644
+    info.external_attr = (stat.S_IFREG | permissions) << 16
     archive.writestr(info, data)
 
 
@@ -394,7 +663,7 @@ def build_evidence_package(
     output_path: Path,
     private_key_path: Path,
 ) -> dict[str, Any]:
-    """Create one deterministic-format ZIP signed by a coordinator-local key."""
+    """Create a deterministic-format ZIP signed by a coordinator-local key."""
     output = output_path.resolve()
     if output_path.is_symlink() or output.suffix.lower() != ".zip":
         raise EvidencePackageError("Evidence package output must be a non-symlink .zip file")
@@ -405,13 +674,14 @@ def build_evidence_package(
     manifest_bytes = _canonical_json(manifest)
     canonical = DOMAIN_SEPARATOR + manifest_bytes
     public_key = key.public_key()
-    signature = key.sign(canonical)
     signature_receipt = {
-        "schema_version": "rarelink-evidence-package-signature-v1",
+        "schema_version": "rarelink-evidence-package-signature-v2",
         "algorithm": "Ed25519",
         "manifest_sha256": _sha256_bytes(canonical),
         "key_fingerprint_sha256": _public_fingerprint(public_key),
-        "signature": base64.urlsafe_b64encode(signature).rstrip(b"=").decode("ascii"),
+        "signature": base64.urlsafe_b64encode(key.sign(canonical))
+        .rstrip(b"=")
+        .decode("ascii"),
         "private_key_exported": False,
     }
     public_pem = public_key.public_bytes(
@@ -428,7 +698,12 @@ def build_evidence_package(
     try:
         with zipfile.ZipFile(temporary_path, "w") as archive:
             for name in sorted(payloads):
-                _zip_write(archive, name, payloads[name])
+                _zip_write(
+                    archive,
+                    name,
+                    payloads[name],
+                    executable=name == "verify-evidence-package",
+                )
             _zip_write(archive, "manifest.json", manifest_bytes)
             _zip_write(archive, "signature.json", _canonical_json(signature_receipt))
             _zip_write(archive, "signer-public-key.pem", public_pem)
@@ -439,12 +714,13 @@ def build_evidence_package(
     finally:
         temporary_path.unlink(missing_ok=True)
     return {
-        "schema_version": "rarelink-evidence-package-build-v1",
+        "schema_version": "rarelink-evidence-package-build-v2",
         "package_file_name": output.name,
         "package_sha256": _sha256_bytes(output.read_bytes()),
         "manifest_sha256": signature_receipt["manifest_sha256"],
         "key_fingerprint_sha256": signature_receipt["key_fingerprint_sha256"],
         "evidence_level": source.evidence_level,
+        "completed_site_count": 3,
         "file_count": len(payloads),
         "verified": True,
         "patient_data_exported": False,
@@ -453,180 +729,13 @@ def build_evidence_package(
     }
 
 
-def _decode_signature(value: str) -> bytes:
-    try:
-        decoded = base64.urlsafe_b64decode(
-            (value + "=" * (-len(value) % 4)).encode("ascii")
-        )
-    except (UnicodeEncodeError, ValueError) as exc:
-        raise EvidencePackageError("Evidence signature encoding is invalid") from exc
-    if len(decoded) != 64:
-        raise EvidencePackageError("Evidence signature length is invalid")
-    return decoded
-
-
-def _safe_archive_names(archive: zipfile.ZipFile) -> list[str]:
-    names: list[str] = []
-    for info in archive.infolist():
-        path = PurePosixPath(info.filename)
-        mode = info.external_attr >> 16
-        if (
-            info.is_dir()
-            or path.is_absolute()
-            or ".." in path.parts
-            or len(path.parts) != 1
-            or stat.S_ISLNK(mode)
-        ):
-            raise EvidencePackageError("Evidence package contains an unsafe archive entry")
-        if info.file_size > MAX_JSON_BYTES:
-            raise EvidencePackageError("Evidence package entry exceeds the size limit")
-        names.append(info.filename)
-    if len(names) != len(set(names)):
-        raise EvidencePackageError("Evidence package contains duplicate entries")
-    return names
-
-
 def verify_evidence_package(
     package_path: Path,
     *,
     expected_key_fingerprint_sha256: str,
 ) -> dict[str, Any]:
-    """Verify archive safety, every file digest, the signature, and trust anchor."""
-    _validate_digest(expected_key_fingerprint_sha256, "expected key fingerprint")
-    path = package_path.resolve()
-    if package_path.is_symlink() or not path.is_file():
-        raise EvidencePackageError("Evidence package must be a regular non-symlink file")
-    if path.stat().st_size > MAX_PACKAGE_BYTES:
-        raise EvidencePackageError("Evidence package exceeds the size limit")
-    expected_archive_files = PACKAGE_FILES | {
-        "manifest.json",
-        "signature.json",
-        "signer-public-key.pem",
-    }
+    """Run the same strict semantic and cryptographic checks as the embedded verifier."""
     try:
-        with zipfile.ZipFile(path) as archive:
-            names = _safe_archive_names(archive)
-            if set(names) != expected_archive_files:
-                raise EvidencePackageError("Evidence package file set is incomplete or unexpected")
-            manifest_bytes = archive.read("manifest.json")
-            signature_receipt = json.loads(archive.read("signature.json"))
-            manifest = json.loads(manifest_bytes)
-            public_pem = archive.read("signer-public-key.pem")
-            documents = {name: archive.read(name) for name in PACKAGE_FILES}
-    except (OSError, zipfile.BadZipFile, KeyError, json.JSONDecodeError) as exc:
-        raise EvidencePackageError("Evidence package cannot be parsed") from exc
-    if _canonical_json(manifest) != manifest_bytes:
-        raise EvidencePackageError("Evidence manifest is not canonical JSON")
-    if manifest.get("schema_version") != "rarelink-evidence-package-manifest-v1":
-        raise EvidencePackageError("Evidence manifest schema is unsupported")
-    if (
-        manifest.get("patient_data_included") is not False
-        or manifest.get("secret_included") is not False
-        or manifest.get("private_key_included") is not False
-    ):
-        raise EvidencePackageError("Evidence manifest does not assert a safe boundary")
-    listed = manifest.get("files")
-    if not isinstance(listed, list) or len(listed) != len(PACKAGE_FILES):
-        raise EvidencePackageError("Evidence manifest file list is invalid")
-    listed_names: set[str] = set()
-    for entry in listed:
-        if not isinstance(entry, dict) or set(entry) != {"path", "sha256", "size_bytes"}:
-            raise EvidencePackageError("Evidence manifest file entry is invalid")
-        name = entry["path"]
-        if name not in PACKAGE_FILES or name in listed_names:
-            raise EvidencePackageError("Evidence manifest contains an invalid file path")
-        listed_names.add(name)
-        content = documents[name]
-        if (
-            entry["sha256"] != _sha256_bytes(content)
-            or entry["size_bytes"] != len(content)
-        ):
-            raise EvidencePackageError("Evidence package file digest does not match")
-        if name.endswith(".json"):
-            try:
-                _reject_sensitive(json.loads(content))
-            except json.JSONDecodeError as exc:
-                raise EvidencePackageError("Evidence JSON document is invalid") from exc
-    if listed_names != PACKAGE_FILES:
-        raise EvidencePackageError("Evidence manifest does not cover every document")
-    try:
-        public_key = serialization.load_pem_public_key(public_pem)
-    except (TypeError, ValueError) as exc:
-        raise EvidencePackageError("Evidence public key is invalid") from exc
-    if not isinstance(public_key, Ed25519PublicKey):
-        raise EvidencePackageError("Evidence public key must be Ed25519")
-    actual_fingerprint = _public_fingerprint(public_key)
-    if actual_fingerprint != expected_key_fingerprint_sha256:
-        raise EvidencePackageError("Evidence signer fingerprint does not match trust policy")
-    canonical = DOMAIN_SEPARATOR + manifest_bytes
-    if (
-        not isinstance(signature_receipt, dict)
-        or signature_receipt.get("schema_version")
-        != "rarelink-evidence-package-signature-v1"
-        or signature_receipt.get("algorithm") != "Ed25519"
-        or signature_receipt.get("manifest_sha256") != _sha256_bytes(canonical)
-        or signature_receipt.get("key_fingerprint_sha256") != actual_fingerprint
-        or signature_receipt.get("private_key_exported") is not False
-    ):
-        raise EvidencePackageError("Evidence signature receipt is invalid")
-    try:
-        public_key.verify(
-            _decode_signature(str(signature_receipt.get("signature", ""))),
-            canonical,
-        )
-    except InvalidSignature as exc:
-        raise EvidencePackageError("Evidence package signature is invalid") from exc
-    try:
-        model_release = json.loads(documents["global-model-manifest.json"])
-        model_release_key = serialization.load_pem_public_key(
-            documents["model-release-public-key.pem"]
-        )
-        if not isinstance(model_release_key, Ed25519PublicKey):
-            raise EvidencePackageError("Model release public key must be Ed25519")
-        if (
-            _public_fingerprint(model_release_key)
-            != model_release.get("key_fingerprint_sha256")
-        ):
-            raise EvidencePackageError("Model release key fingerprint does not match")
-        model_release_manifest = ModelReleaseManifest(
-            job_id=str(model_release["job_id"]),
-            external_job_id=str(model_release["external_job_id"]),
-            contract_sha256=str(model_release["contract_sha256"]),
-            model_sha256=str(model_release["model_sha256"]),
-            model_file_name=str(model_release["model_file_name"]),
-            approved_at=str(model_release["approved_at"]),
-        )
-        if (
-            hashlib.sha256(model_release_manifest.canonical_bytes()).hexdigest()
-            != model_release.get("manifest_sha256")
-        ):
-            raise EvidencePackageError("Model release manifest digest does not match")
-        model_release_key.verify(
-            _decode_signature(str(model_release["signature"])),
-            model_release_manifest.canonical_bytes(),
-        )
-    except (
-        InvalidSignature,
-        KeyError,
-        TypeError,
-        ValueError,
-        json.JSONDecodeError,
-    ) as exc:
-        raise EvidencePackageError("Global model release signature is invalid") from exc
-    return {
-        "schema_version": "rarelink-evidence-package-verification-v1",
-        "package_sha256": _sha256_bytes(path.read_bytes()),
-        "manifest_sha256": _sha256_bytes(canonical),
-        "key_fingerprint_sha256": actual_fingerprint,
-        "study_id": manifest.get("study_id"),
-        "job_id": manifest.get("job_id"),
-        "evidence_level": manifest.get("evidence_level"),
-        "file_count": len(PACKAGE_FILES),
-        "verified": True,
-        "trust_anchor_matched": True,
-        "model_release_signature_verified": True,
-        "patient_data_exported": False,
-        "private_key_exported": False,
-        "local_path_exported": False,
-        "claim_boundary": manifest.get("claim_boundary"),
-    }
+        return standalone_verify(package_path, expected_key_fingerprint_sha256)
+    except (StandaloneVerificationError, OSError) as exc:
+        raise EvidencePackageError(str(exc)) from exc

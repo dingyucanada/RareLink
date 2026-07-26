@@ -314,7 +314,7 @@ Run the complete software and isolated-integration gate:
 make p0-p1-acceptance
 ```
 
-The current baseline is **382 Python tests plus Ruff, a production web build,
+The current baseline is **394 Python tests plus Ruff, a production web build,
 three independent control-plane processes, a seven-scenario fault matrix,
 PostgreSQL production-compose validation, and an Alembic migration round trip**.
 This is L1/L2 evidence, not
@@ -330,9 +330,13 @@ make secure-aggregation-assessment
 When three devices are available, the read-only field tool checks the real Site
 Agents, NVFLARE Job ID, `3/3` quorum, model signature, and audit chain without
 exporting credentials or endpoint URLs. A completed study can then be released
-as an Ed25519-signed evidence ZIP containing the contract, three-site receipts,
-aggregate metrics, privacy ledger, security assessment, data/model/run cards,
-and an offline verifier. The isolated fault matrix checks outage recovery,
+as a Research Evidence Package v2. It binds two distinct approvals, three
+per-site data cards, strict `3/3` completion receipts, aggregate metrics, the DP
+ledger, four Agent/ART gates, complete audit linkage, and the signed global
+model to one canonical manifest. A standalone verifier is embedded and covered
+by the package Ed25519 signature; any missing site, privacy overrun, failed
+security gate, broken chain, patient field, case identifier, path, or secret
+fails closed. The isolated fault matrix checks outage recovery,
 Agent restart, GPU/disk/certificate gates, and duplicate/late updates:
 
 ```bash

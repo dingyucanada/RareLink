@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline verifier for one signed RareLink research evidence ZIP."""
+"""Offline verifier for one signed RareLink Research Evidence Package v2."""
 
 from __future__ import annotations
 

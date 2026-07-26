@@ -328,7 +328,7 @@ OIDC 离线验证、五角色十一权限、站点级读取过滤和待完成 IA
 make p0-p1-acceptance
 ```
 
-当前基线为 **382 项 Python 测试 + Ruff + 前端生产构建 + 三独立进程控制协议 +
+当前基线为 **394 项 Python 测试 + Ruff + 前端生产构建 + 三独立进程控制协议 +
 七场景故障矩阵 + PostgreSQL 生产配置 + Alembic 迁移往返**。该结果只证明
 L1/L2；没有三台设备、
 正式 Admin/Client Kit 或医院系统时，不会被描述成真实多院完成。
@@ -350,8 +350,14 @@ python scripts/accept_three_physical_sites.py \
   --output artifacts/acceptance/physical-field.json
 ```
 
-研究完成后可将合同、三站收据、聚合指标、隐私账本、安全评估和模型发布信息
-生成 Ed25519 签名证据包。审阅者必须使用独立渠道获得的公钥指纹离线验证。
+研究完成后可生成 **RareLink Research Evidence Package v2**：合同、两位不同
+审批人、三份站点 Data Card、三份完成收据、聚合指标、DP 账本、Agent/ART
+安全门、完整审计链与全局模型发布被绑定到同一个 canonical Manifest。包内携带
+可执行离线验证器，并以独立 Ed25519 包签名和模型发布签名保护；审阅者仍必须从
+独立渠道取得可信公钥指纹。任一站点未完成、DP 超限、安全门失败、审计链断裂或
+出现患者字段/病例 ID/路径/密钥，生成或验证都会失败关闭。完整格式与准确声明见
+[签名研究证据包](docs/research-evidence-package.md)。
+
 故障矩阵则自动验证断线重连、Agent 重启、GPU/磁盘/证书阻断以及重复/迟到更新：
 
 ```bash

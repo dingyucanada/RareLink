@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a signed RareLink research evidence ZIP from reviewed aggregate JSON."""
+"""Build a signed RareLink Research Evidence Package v2 from reviewed JSON."""
 
 from __future__ import annotations
 

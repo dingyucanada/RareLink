@@ -23,15 +23,20 @@
   `FedAvgHERecipe` + TenSEAL; enablement remains fail-closed until ARM64 runtime,
   hospital key governance, client-side pre-encryption checks, and a three-device
   encrypted-round benchmark exist.
-- [x] Current acceptance baseline: 382 Python tests, Ruff, production web build,
+- [x] Current acceptance baseline: 394 Python tests, Ruff, production web build,
   three independent control-plane processes, a seven-scenario fault matrix,
   PostgreSQL compose validation, and an Alembic migration round trip.
 - [x] Read-only three-physical-device field acceptance uses environment-only
   credentials, endpoint digests, strict three-site/job/contract/quorum checks,
   and an explicit `L3-candidate` human-signoff boundary.
-- [x] Signed research evidence ZIP binds the contract, three site receipts,
-  metrics, privacy/security/audit evidence and model release, generates
-  data/model/run cards, and requires an externally trusted Ed25519 fingerprint.
+- [x] Research Evidence Package v2 binds contract/bundle/code/model hashes,
+  two distinct approvals, three per-site data cards, strict 3/3 completed
+  receipts, recomputed aggregate metrics, DP budget, four Agent/ART security
+  gates, complete audit linkage and a separately signed model release.
+- [x] The package embeds a standalone offline verifier, signs its own file
+  inventory with Ed25519, requires an external trust fingerprint, and fails
+  closed on tampering, incomplete sites, budget overrun, failed security gates,
+  broken audit linkage, patient fields, case IDs, credentials, keys or paths.
 
 The itemized status and every external blocker are recorded in
 [`p0-p1-engineering-log.md`](p0-p1-engineering-log.md). “Implemented” and
